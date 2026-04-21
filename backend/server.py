@@ -200,6 +200,8 @@ async def login(data: LoginIn):
     user = await db.users.find_one({"email": email})
     if not user or not verify_pw(data.password, user.get("password_hash", "")):
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    if user.get("is_disabled"):
+        raise HTTPException(status_code=403, detail="This account has been disabled. Please contact the admin.")
     token = create_token(user["id"], user["email"], user["role"])
     return {
         "token": token,
@@ -300,6 +302,23 @@ async def list_invites(admin: dict = Depends(require_admin)):
 async def list_users(admin: dict = Depends(require_admin)):
     users = await db.users.find({}, {"_id": 0, "password_hash": 0}).sort("created_at", -1).to_list(500)
     return users
+
+
+class DisableIn(BaseModel):
+    disabled: bool
+
+
+@api.patch("/users/{user_id}/disable")
+async def set_user_disabled(user_id: str, data: DisableIn, admin: dict = Depends(require_admin)):
+    if user_id == admin["id"]:
+        raise HTTPException(status_code=400, detail="You cannot disable your own account.")
+    target = await db.users.find_one({"id": user_id})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.get("role") == "admin":
+        raise HTTPException(status_code=400, detail="Admin accounts cannot be disabled.")
+    await db.users.update_one({"id": user_id}, {"$set": {"is_disabled": bool(data.disabled)}})
+    return {"ok": True, "id": user_id, "is_disabled": bool(data.disabled)}
 
 
 # ---------- Calendars ----------

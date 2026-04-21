@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { api, formatApiError } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { Copy, Mail } from "lucide-react";
+import { Copy, Mail, Ban, CircleCheck } from "lucide-react";
 
 export default function Members() {
   const [users, setUsers] = useState([]);
@@ -37,6 +37,18 @@ export default function Members() {
 
   const copy = (txt) => {
     navigator.clipboard.writeText(txt);
+  };
+
+  const toggleDisabled = async (u) => {
+    const next = !u.is_disabled;
+    const verb = next ? "disable" : "re-enable";
+    if (!window.confirm(`Are you sure you want to ${verb} ${u.name}'s account?`)) return;
+    try {
+      await api.patch(`/users/${u.id}/disable`, { disabled: next });
+      refresh();
+    } catch (e) {
+      alert(formatApiError(e?.response?.data?.detail) || "Action failed");
+    }
   };
 
   return (
@@ -86,16 +98,52 @@ export default function Members() {
             {users.map((u) => (
               <div
                 key={u.id}
-                className="border border-neutral-900 bg-[#0F0F11] px-4 py-3 rounded-sm flex items-center justify-between gap-3"
+                className={`border border-neutral-900 bg-[#0F0F11] px-4 py-3 rounded-sm flex items-center justify-between gap-3 ${
+                  u.is_disabled ? "opacity-50" : ""
+                }`}
                 data-testid={`user-row-${u.id}`}
               >
-                <div>
-                  <div className="text-sm font-medium">{u.name}</div>
-                  <div className="label-tech">{u.email}</div>
+                <div className="min-w-0">
+                  <div className="text-sm font-medium truncate flex items-center gap-2">
+                    {u.name}
+                    {u.is_disabled && (
+                      <span className="label-tech px-1.5 py-0.5 border border-red-900 text-red-300 bg-red-950/40 rounded-sm">
+                        Disabled
+                      </span>
+                    )}
+                  </div>
+                  <div className="label-tech truncate">{u.email}</div>
                 </div>
-                <span className={`label-tech px-2 py-0.5 border rounded-sm ${u.role === "admin" ? "border-white text-white" : "border-neutral-700 text-neutral-400"}`}>
-                  {u.role}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`label-tech px-2 py-0.5 border rounded-sm ${
+                      u.role === "admin"
+                        ? "border-white text-white"
+                        : "border-neutral-700 text-neutral-400"
+                    }`}
+                  >
+                    {u.role}
+                  </span>
+                  {u.role === "member" && (
+                    <button
+                      type="button"
+                      onClick={() => toggleDisabled(u)}
+                      data-testid={`toggle-disabled-${u.id}`}
+                      title={u.is_disabled ? "Re-enable account" : "Disable account"}
+                      className={`p-1.5 border rounded-sm transition-colors ${
+                        u.is_disabled
+                          ? "border-emerald-900/70 text-emerald-300 hover:bg-emerald-950/40"
+                          : "border-red-900/70 text-red-300 hover:bg-red-950/40"
+                      }`}
+                    >
+                      {u.is_disabled ? (
+                        <CircleCheck className="w-4 h-4" strokeWidth={1.5} />
+                      ) : (
+                        <Ban className="w-4 h-4" strokeWidth={1.5} />
+                      )}
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
