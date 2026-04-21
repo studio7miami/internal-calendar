@@ -68,16 +68,17 @@ export default function ChatBot() {
           type="button"
           onClick={() => setOpen(true)}
           data-testid="chatbot-open-button"
-          className="fixed bottom-24 md:bottom-6 left-4 md:left-6 z-40 flex items-center gap-2 bg-white text-black hover:bg-neutral-200 h-11 px-4 rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.4)] font-medium transition-transform hover:-translate-y-0.5"
+          aria-label="Open Studio 7 Assistant"
+          className="fixed bottom-24 md:bottom-20 right-4 md:right-6 z-40 flex items-center justify-center bg-white text-black hover:bg-neutral-200 h-14 w-14 rounded-full shadow-[0_12px_40px_rgba(255,255,255,0.15)] transition-transform hover:scale-110 chat-float"
         >
-          <Sparkles className="w-4 h-4" strokeWidth={1.8} />
-          <span className="hidden sm:inline">Ask Studio 7</span>
+          <span className="absolute inset-0 rounded-full chat-pulse-ring pointer-events-none" />
+          <Sparkles className="w-5 h-5 relative z-10" strokeWidth={1.8} />
         </button>
       )}
 
       {open && (
         <div
-          className="fixed bottom-24 md:bottom-6 left-4 md:left-6 z-40 w-[min(92vw,360px)] h-[min(70vh,520px)] bg-[#0F0F11] border border-neutral-800 rounded-lg shadow-[0_20px_60px_rgba(0,0,0,0.6)] flex flex-col overflow-hidden"
+          className="fixed bottom-24 md:bottom-20 right-4 md:right-6 z-40 w-[min(92vw,360px)] h-[min(70vh,520px)] bg-[#0F0F11] border border-neutral-800 rounded-lg shadow-[0_20px_60px_rgba(0,0,0,0.6)] flex flex-col overflow-hidden"
           data-testid="chatbot-panel"
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-900">

@@ -60,6 +60,18 @@ body {
   animation: slide-in-right 500ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+@keyframes chat-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.chat-float { animation: chat-float 2.8s ease-in-out infinite; }
+
+@keyframes chat-pulse-ring {
+  0% { box-shadow: 0 0 0 0 rgba(255,255,255,0.45); }
+  80%, 100% { box-shadow: 0 0 0 16px rgba(255,255,255,0); }
+}
+.chat-pulse-ring { animation: chat-pulse-ring 2.2s ease-out infinite; }
+
 .brand-logo {
   /* source logos are black-on-transparent; invert to white for dark UI */
   filter: invert(1) brightness(1.08);
