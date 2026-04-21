@@ -9,21 +9,21 @@ import uuid
 import secrets
 import logging
 from datetime import datetime, timezone, timedelta
-from typing import List, Optional, Literal
+from typing import Optional
 import bcrypt
 import jwt
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel, Field, EmailStr
+from supabase import create_client, Client
+from pydantic import BaseModel, EmailStr
 
 # ---------- Setup ----------
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-mongo_url = os.environ["MONGO_URL"]
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ["DB_NAME"]]
+SUPABASE_URL = os.environ["SUPABASE_URL"]
+SUPABASE_SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALG = "HS256"
@@ -70,10 +70,10 @@ async def get_current_user(request: Request) -> dict:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
-    user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
-    if not user:
+    res = supabase.table("users").select("id,email,name,role,is_disabled,created_at").eq("id", payload["sub"]).single().execute()
+    if not res.data:
         raise HTTPException(status_code=401, detail="User not found")
-    return user
+    return res.data
 
 
 async def require_admin(user: dict = Depends(get_current_user)) -> dict:
@@ -84,7 +84,6 @@ async def require_admin(user: dict = Depends(get_current_user)) -> dict:
 
 # ---------- Google Calendar STUB ----------
 def gcal_push_event(calendar_google_id: Optional[str], booking: dict) -> Optional[str]:
-    """STUB: would push event to Google Calendar via API. Returns mock google_event_id."""
     logger.info(f"[GCAL STUB] push event -> gcal={calendar_google_id} booking={booking.get('id')}")
     return f"gcal_mock_{uuid.uuid4().hex[:12]}"
 
@@ -105,14 +104,6 @@ class LoginIn(BaseModel):
     password: str
 
 
-class UserOut(BaseModel):
-    id: str
-    email: str
-    name: str
-    role: str
-    created_at: str
-
-
 class InviteIn(BaseModel):
     email: EmailStr
 
@@ -126,15 +117,15 @@ class CalendarIn(BaseModel):
 
 class BookingRequestIn(BaseModel):
     calendar_id: str
-    date: str  # YYYY-MM-DD
-    start_time: str  # HH:MM
-    end_time: str  # HH:MM
+    date: str
+    start_time: str
+    end_time: str
     notes: Optional[str] = ""
 
 
 class ManualBookingIn(BaseModel):
     calendar_id: str
-    member_id: Optional[str] = None  # admin may book on behalf of member
+    member_id: Optional[str] = None
     date: str
     start_time: str
     end_time: str
@@ -145,31 +136,32 @@ class ApproveDenyIn(BaseModel):
     message: Optional[str] = ""
 
 
+class DisableIn(BaseModel):
+    disabled: bool
+
+
 # ---------- Startup ----------
 @app.on_event("startup")
 async def startup():
-    await db.users.create_index("email", unique=True)
-    await db.invites.create_index("token", unique=True)
-    await db.bookings.create_index([("date", 1), ("calendar_id", 1)])
-    await db.notifications.create_index([("user_id", 1), ("created_at", -1)])
-
     # Seed admin
     admin_email = os.environ["ADMIN_EMAIL"].lower()
     admin_password = os.environ["ADMIN_PASSWORD"]
-    existing = await db.users.find_one({"email": admin_email})
-    if not existing:
-        await db.users.insert_one({
+    existing = supabase.table("users").select("id,password_hash").eq("email", admin_email).execute()
+    if not existing.data:
+        supabase.table("users").insert({
             "id": str(uuid.uuid4()),
             "email": admin_email,
             "name": "Seven",
             "role": "admin",
             "password_hash": hash_pw(admin_password),
             "created_at": now_iso(),
-        })
+        }).execute()
         logger.info(f"Seeded admin {admin_email}")
-    elif not verify_pw(admin_password, existing.get("password_hash", "")):
-        await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_pw(admin_password)}})
-        logger.info(f"Admin password updated for {admin_email}")
+    else:
+        existing_user = existing.data[0]
+        if not verify_pw(admin_password, existing_user.get("password_hash", "")):
+            supabase.table("users").update({"password_hash": hash_pw(admin_password)}).eq("email", admin_email).execute()
+            logger.info(f"Admin password updated for {admin_email}")
 
     # Seed default calendars
     defaults = [
@@ -177,28 +169,27 @@ async def startup():
         {"name": "Studio 7 Miami", "color": "#38BDF8"},
     ]
     for cal in defaults:
-        if not await db.calendars.find_one({"name": cal["name"]}):
-            await db.calendars.insert_one({
+        existing_cal = supabase.table("calendars").select("id").eq("name", cal["name"]).execute()
+        if not existing_cal.data:
+            supabase.table("calendars").insert({
                 "id": str(uuid.uuid4()),
                 "name": cal["name"],
                 "color": cal["color"],
                 "google_calendar_id": "",
                 "is_active": True,
                 "created_at": now_iso(),
-            })
+            }).execute()
 
 
-@app.on_event("shutdown")
-async def shutdown():
-    client.close()
-
-
-# ---------- Auth endpoints ----------
+# ---------- Auth ----------
 @api.post("/auth/login")
 async def login(data: LoginIn):
     email = data.email.lower()
-    user = await db.users.find_one({"email": email})
-    if not user or not verify_pw(data.password, user.get("password_hash", "")):
+    res = supabase.table("users").select("*").eq("email", email).execute()
+    if not res.data:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    user = res.data[0]
+    if not verify_pw(data.password, user.get("password_hash", "")):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if user.get("is_disabled"):
         raise HTTPException(status_code=403, detail="This account has been disabled. Please contact the admin.")
@@ -222,29 +213,28 @@ async def me(user: dict = Depends(get_current_user)):
 
 @api.post("/auth/register")
 async def register(data: RegisterIn):
-    """Registration happens via an admin-created invite token."""
-    invite = await db.invites.find_one({"token": data.invite_token})
-    if not invite:
+    res = supabase.table("invites").select("*").eq("invite_token", data.invite_token).execute()
+    if not res.data:
         raise HTTPException(status_code=404, detail="Invite not found")
+    invite = res.data[0]
     if invite.get("used"):
         raise HTTPException(status_code=400, detail="Invite already used")
     if datetime.fromisoformat(invite["expires_at"]) < datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="Invite expired")
-
     email = invite["email"].lower()
-    if await db.users.find_one({"email": email}):
+    existing = supabase.table("users").select("id").eq("email", email).execute()
+    if existing.data:
         raise HTTPException(status_code=400, detail="User already exists")
-
     user_id = str(uuid.uuid4())
-    await db.users.insert_one({
+    supabase.table("users").insert({
         "id": user_id,
         "email": email,
         "name": data.name,
         "role": "member",
         "password_hash": hash_pw(data.password),
         "created_at": now_iso(),
-    })
-    await db.invites.update_one({"token": data.invite_token}, {"$set": {"used": True, "used_at": now_iso()}})
+    }).execute()
+    supabase.table("invites").update({"used": True, "used_at": now_iso()}).eq("invite_token", data.invite_token).execute()
     token = create_token(user_id, email, "member")
     return {
         "token": token,
@@ -254,9 +244,10 @@ async def register(data: RegisterIn):
 
 @api.get("/auth/invite/{token}")
 async def get_invite(token: str):
-    invite = await db.invites.find_one({"token": token}, {"_id": 0})
-    if not invite:
+    res = supabase.table("invites").select("*").eq("invite_token", token).execute()
+    if not res.data:
         raise HTTPException(status_code=404, detail="Invite not found")
+    invite = res.data[0]
     if invite.get("used"):
         raise HTTPException(status_code=400, detail="Invite already used")
     if datetime.fromisoformat(invite["expires_at"]) < datetime.now(timezone.utc):
@@ -268,64 +259,61 @@ async def get_invite(token: str):
 @api.post("/invites")
 async def create_invite(data: InviteIn, admin: dict = Depends(require_admin)):
     email = data.email.lower()
-    if await db.users.find_one({"email": email}):
+    existing = supabase.table("users").select("id").eq("email", email).execute()
+    if existing.data:
         raise HTTPException(status_code=400, detail="User already exists")
-    # Invalidate existing pending invites
-    await db.invites.update_many({"email": email, "used": {"$ne": True}}, {"$set": {"used": True, "used_at": now_iso()}})
+    supabase.table("invites").update({"used": True, "used_at": now_iso()}).eq("email", email).eq("used", False).execute()
     token = secrets.token_urlsafe(32)
     doc = {
         "id": str(uuid.uuid4()),
-        "token": token,
+        "invite_token": token,
         "email": email,
         "used": False,
         "created_by": admin["id"],
         "created_at": now_iso(),
         "expires_at": (datetime.now(timezone.utc) + timedelta(days=7)).isoformat(),
     }
-    await db.invites.insert_one(doc)
+    supabase.table("invites").insert(doc).execute()
     link = f"{FRONTEND_URL}/invite/{token}"
-    # STUB email sending
     logger.info(f"[EMAIL STUB] Magic link for {email}: {link}")
     return {"id": doc["id"], "email": email, "invite_link": link, "expires_at": doc["expires_at"]}
 
 
 @api.get("/invites")
 async def list_invites(admin: dict = Depends(require_admin)):
-    items = await db.invites.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    res = supabase.table("invites").select("*").order("created_at", desc=True).execute()
+    items = res.data or []
     for it in items:
-        it["invite_link"] = f"{FRONTEND_URL}/invite/{it['token']}"
+        it["invite_link"] = f"{FRONTEND_URL}/invite/{it['invite_token']}"
     return items
 
 
 # ---------- Users (admin) ----------
 @api.get("/users")
 async def list_users(admin: dict = Depends(require_admin)):
-    users = await db.users.find({}, {"_id": 0, "password_hash": 0}).sort("created_at", -1).to_list(500)
-    return users
-
-
-class DisableIn(BaseModel):
-    disabled: bool
+    res = supabase.table("users").select("id,email,name,role,is_disabled,created_at").order("created_at", desc=True).execute()
+    return res.data or []
 
 
 @api.patch("/users/{user_id}/disable")
 async def set_user_disabled(user_id: str, data: DisableIn, admin: dict = Depends(require_admin)):
     if user_id == admin["id"]:
         raise HTTPException(status_code=400, detail="You cannot disable your own account.")
-    target = await db.users.find_one({"id": user_id})
-    if not target:
+    res = supabase.table("users").select("id,role").eq("id", user_id).execute()
+    if not res.data:
         raise HTTPException(status_code=404, detail="User not found")
+    target = res.data[0]
     if target.get("role") == "admin":
         raise HTTPException(status_code=400, detail="Admin accounts cannot be disabled.")
-    await db.users.update_one({"id": user_id}, {"$set": {"is_disabled": bool(data.disabled)}})
+    supabase.table("users").update({"is_disabled": bool(data.disabled)}).eq("id", user_id).execute()
     return {"ok": True, "id": user_id, "is_disabled": bool(data.disabled)}
 
 
 # ---------- Calendars ----------
 @api.get("/calendars")
 async def list_calendars(user: dict = Depends(get_current_user)):
-    cals = await db.calendars.find({}, {"_id": 0}).sort("created_at", 1).to_list(200)
-    return cals
+    res = supabase.table("calendars").select("*").order("created_at").execute()
+    return res.data or []
 
 
 @api.post("/calendars")
@@ -339,44 +327,36 @@ async def create_calendar(data: CalendarIn, admin: dict = Depends(require_admin)
         "created_by": admin["id"],
         "created_at": now_iso(),
     }
-    await db.calendars.insert_one(doc)
-    doc.pop("_id", None)
+    supabase.table("calendars").insert(doc).execute()
     return doc
 
 
 @api.patch("/calendars/{cal_id}")
 async def update_calendar(cal_id: str, data: CalendarIn, admin: dict = Depends(require_admin)):
     upd = {"name": data.name, "color": data.color, "google_calendar_id": data.google_calendar_id or "", "is_active": data.is_active}
-    res = await db.calendars.update_one({"id": cal_id}, {"$set": upd})
-    if res.matched_count == 0:
+    res = supabase.table("calendars").update(upd).eq("id", cal_id).execute()
+    if not res.data:
         raise HTTPException(status_code=404, detail="Calendar not found")
-    cal = await db.calendars.find_one({"id": cal_id}, {"_id": 0})
-    return cal
+    return res.data[0]
 
 
 @api.delete("/calendars/{cal_id}")
 async def delete_calendar(cal_id: str, admin: dict = Depends(require_admin)):
-    res = await db.calendars.delete_one({"id": cal_id})
-    if res.deleted_count == 0:
+    res = supabase.table("calendars").delete().eq("id", cal_id).execute()
+    if not res.data:
         raise HTTPException(status_code=404, detail="Calendar not found")
     return {"ok": True}
 
 
 # ---------- Bookings ----------
-async def _get_user_lookup():
-    users = await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(1000)
-    return {u["id"]: u for u in users}
-
-
 def _serialize_booking(b: dict, viewer: dict, users_by_id: dict) -> dict:
-    """Return booking with detail only if viewer is admin or owner; otherwise anonymize."""
     is_admin = viewer.get("role") == "admin"
-    is_owner = b.get("member_id") == viewer["id"]
+    is_owner = str(b.get("member_id")) == str(viewer["id"])
     can_see_detail = is_admin or is_owner
     base = {
         "id": b["id"],
         "calendar_id": b["calendar_id"],
-        "date": b["date"],
+        "date": str(b["date"]),
         "start_time": b["start_time"],
         "end_time": b["end_time"],
         "status": b.get("status", "approved"),
@@ -384,7 +364,7 @@ def _serialize_booking(b: dict, viewer: dict, users_by_id: dict) -> dict:
         "is_own": is_owner,
     }
     if can_see_detail:
-        owner = users_by_id.get(b.get("member_id"))
+        owner = users_by_id.get(str(b.get("member_id")))
         base.update({
             "notes": b.get("notes", ""),
             "member_id": b.get("member_id"),
@@ -399,32 +379,36 @@ def _serialize_booking(b: dict, viewer: dict, users_by_id: dict) -> dict:
 
 @api.get("/bookings")
 async def list_bookings(user: dict = Depends(get_current_user), status: Optional[str] = None):
-    q = {}
+    query = supabase.table("bookings").select("*")
     if status:
-        q["status"] = status
+        query = query.eq("status", status)
     else:
-        q["status"] = {"$in": ["approved", "pending"]}
-    raw = await db.bookings.find(q, {"_id": 0}).sort("date", 1).to_list(2000)
-    users_by_id = await _get_user_lookup()
+        query = query.in_("status", ["approved", "pending"])
+    res = query.order("date").execute()
+    raw = res.data or []
+    users_res = supabase.table("users").select("id,name,email").execute()
+    users_by_id = {u["id"]: u for u in (users_res.data or [])}
     return [_serialize_booking(b, user, users_by_id) for b in raw]
 
 
 @api.get("/bookings/requests")
 async def list_requests(user: dict = Depends(get_current_user)):
-    """Admin sees all pending; member sees own (all statuses)."""
     if user["role"] == "admin":
-        raw = await db.bookings.find({"status": "pending"}, {"_id": 0}).sort("created_at", -1).to_list(500)
+        res = supabase.table("bookings").select("*").eq("status", "pending").order("created_at", desc=True).execute()
     else:
-        raw = await db.bookings.find({"member_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(500)
-    users_by_id = await _get_user_lookup()
+        res = supabase.table("bookings").select("*").eq("member_id", user["id"]).order("created_at", desc=True).execute()
+    raw = res.data or []
+    users_res = supabase.table("users").select("id,name,email").execute()
+    users_by_id = {u["id"]: u for u in (users_res.data or [])}
     return [_serialize_booking(b, user, users_by_id) for b in raw]
 
 
 @api.post("/bookings/request")
 async def create_request(data: BookingRequestIn, user: dict = Depends(get_current_user)):
-    cal = await db.calendars.find_one({"id": data.calendar_id})
-    if not cal:
+    cal_res = supabase.table("calendars").select("*").eq("id", data.calendar_id).execute()
+    if not cal_res.data:
         raise HTTPException(status_code=404, detail="Calendar not found")
+    cal = cal_res.data[0]
     booking = {
         "id": str(uuid.uuid4()),
         "calendar_id": data.calendar_id,
@@ -435,15 +419,12 @@ async def create_request(data: BookingRequestIn, user: dict = Depends(get_curren
         "notes": data.notes or "",
         "status": "pending",
         "source": "member_request",
-        "google_event_id": None,
         "created_at": now_iso(),
     }
-    await db.bookings.insert_one(booking)
-
-    # Notify all admins
-    admins = await db.users.find({"role": "admin"}, {"_id": 0}).to_list(50)
-    for a in admins:
-        await db.notifications.insert_one({
+    supabase.table("bookings").insert(booking).execute()
+    admins_res = supabase.table("users").select("id").eq("role", "admin").execute()
+    for a in (admins_res.data or []):
+        supabase.table("notifications").insert({
             "id": str(uuid.uuid4()),
             "user_id": a["id"],
             "booking_id": booking["id"],
@@ -452,9 +433,8 @@ async def create_request(data: BookingRequestIn, user: dict = Depends(get_curren
             "message": f"{user['name']} requested {cal['name']} on {data.date} {data.start_time}-{data.end_time}",
             "is_read": False,
             "created_at": now_iso(),
-        })
-    # Confirmation to member
-    await db.notifications.insert_one({
+        }).execute()
+    supabase.table("notifications").insert({
         "id": str(uuid.uuid4()),
         "user_id": user["id"],
         "booking_id": booking["id"],
@@ -463,16 +443,16 @@ async def create_request(data: BookingRequestIn, user: dict = Depends(get_curren
         "message": f"Your {cal['name']} request for {data.date} is awaiting approval.",
         "is_read": False,
         "created_at": now_iso(),
-    })
-    booking.pop("_id", None)
+    }).execute()
     return booking
 
 
 @api.post("/bookings/manual")
 async def create_manual(data: ManualBookingIn, admin: dict = Depends(require_admin)):
-    cal = await db.calendars.find_one({"id": data.calendar_id})
-    if not cal:
+    cal_res = supabase.table("calendars").select("*").eq("id", data.calendar_id).execute()
+    if not cal_res.data:
         raise HTTPException(status_code=404, detail="Calendar not found")
+    cal = cal_res.data[0]
     member_id = data.member_id or admin["id"]
     booking = {
         "id": str(uuid.uuid4()),
@@ -486,31 +466,31 @@ async def create_manual(data: ManualBookingIn, admin: dict = Depends(require_adm
         "source": "manual",
         "created_at": now_iso(),
     }
-    # Push to Google Calendar (stub)
     gid = gcal_push_event(cal.get("google_calendar_id"), booking)
     booking["google_event_id"] = gid
-    await db.bookings.insert_one(booking)
-    booking.pop("_id", None)
+    supabase.table("bookings").insert(booking).execute()
     return booking
 
 
 @api.post("/bookings/{booking_id}/approve")
 async def approve_booking(booking_id: str, data: ApproveDenyIn, admin: dict = Depends(require_admin)):
-    b = await db.bookings.find_one({"id": booking_id})
-    if not b:
+    res = supabase.table("bookings").select("*").eq("id", booking_id).execute()
+    if not res.data:
         raise HTTPException(status_code=404, detail="Booking not found")
+    b = res.data[0]
     if b["status"] != "pending":
         raise HTTPException(status_code=400, detail="Booking not pending")
-    cal = await db.calendars.find_one({"id": b["calendar_id"]})
-    gid = gcal_push_event(cal.get("google_calendar_id") if cal else None, b)
-    await db.bookings.update_one({"id": booking_id}, {"$set": {
+    cal_res = supabase.table("calendars").select("*").eq("id", b["calendar_id"]).execute()
+    cal = cal_res.data[0] if cal_res.data else {}
+    gid = gcal_push_event(cal.get("google_calendar_id"), b)
+    supabase.table("bookings").update({
         "status": "approved",
         "google_event_id": gid,
         "approval_message": data.message or "",
         "approved_at": now_iso(),
         "approved_by": admin["id"],
-    }})
-    await db.notifications.insert_one({
+    }).eq("id", booking_id).execute()
+    supabase.table("notifications").insert({
         "id": str(uuid.uuid4()),
         "user_id": b["member_id"],
         "booking_id": booking_id,
@@ -519,24 +499,25 @@ async def approve_booking(booking_id: str, data: ApproveDenyIn, admin: dict = De
         "message": data.message or f"Your booking on {b['date']} has been approved.",
         "is_read": False,
         "created_at": now_iso(),
-    })
+    }).execute()
     return {"ok": True}
 
 
 @api.post("/bookings/{booking_id}/deny")
 async def deny_booking(booking_id: str, data: ApproveDenyIn, admin: dict = Depends(require_admin)):
-    b = await db.bookings.find_one({"id": booking_id})
-    if not b:
+    res = supabase.table("bookings").select("*").eq("id", booking_id).execute()
+    if not res.data:
         raise HTTPException(status_code=404, detail="Booking not found")
+    b = res.data[0]
     if b["status"] != "pending":
         raise HTTPException(status_code=400, detail="Booking not pending")
-    await db.bookings.update_one({"id": booking_id}, {"$set": {
+    supabase.table("bookings").update({
         "status": "denied",
         "approval_message": data.message or "",
         "denied_at": now_iso(),
         "denied_by": admin["id"],
-    }})
-    await db.notifications.insert_one({
+    }).eq("id", booking_id).execute()
+    supabase.table("notifications").insert({
         "id": str(uuid.uuid4()),
         "user_id": b["member_id"],
         "booking_id": booking_id,
@@ -545,121 +526,104 @@ async def deny_booking(booking_id: str, data: ApproveDenyIn, admin: dict = Depen
         "message": data.message or f"Your booking on {b['date']} was denied.",
         "is_read": False,
         "created_at": now_iso(),
-    })
+    }).execute()
     return {"ok": True}
 
 
 @api.delete("/bookings/{booking_id}")
 async def delete_booking(booking_id: str, admin: dict = Depends(require_admin)):
-    b = await db.bookings.find_one({"id": booking_id})
-    if not b:
+    res = supabase.table("bookings").select("*").eq("id", booking_id).execute()
+    if not res.data:
         raise HTTPException(status_code=404, detail="Booking not found")
-    cal = await db.calendars.find_one({"id": b["calendar_id"]})
-    gcal_delete_event(cal.get("google_calendar_id") if cal else None, b.get("google_event_id"))
-    await db.bookings.delete_one({"id": booking_id})
+    b = res.data[0]
+    cal_res = supabase.table("calendars").select("*").eq("id", b["calendar_id"]).execute()
+    cal = cal_res.data[0] if cal_res.data else {}
+    gcal_delete_event(cal.get("google_calendar_id"), b.get("google_event_id"))
+    supabase.table("bookings").delete().eq("id", booking_id).execute()
     return {"ok": True}
 
 
 # ---------- Notifications ----------
 @api.get("/notifications")
 async def list_notifications(user: dict = Depends(get_current_user)):
-    notifs = await db.notifications.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).limit(50).to_list(50)
-    return notifs
+    res = supabase.table("notifications").select("*").eq("user_id", user["id"]).order("created_at", desc=True).limit(50).execute()
+    return res.data or []
 
 
 @api.post("/notifications/{notif_id}/read")
 async def mark_read(notif_id: str, user: dict = Depends(get_current_user)):
-    await db.notifications.update_one({"id": notif_id, "user_id": user["id"]}, {"$set": {"is_read": True}})
+    supabase.table("notifications").update({"is_read": True}).eq("id", notif_id).eq("user_id", user["id"]).execute()
     return {"ok": True}
 
 
 @api.post("/notifications/read-all")
 async def mark_all_read(user: dict = Depends(get_current_user)):
-    await db.notifications.update_many({"user_id": user["id"], "is_read": False}, {"$set": {"is_read": True}})
+    supabase.table("notifications").update({"is_read": True}).eq("user_id", user["id"]).eq("is_read", False).execute()
     return {"ok": True}
 
 
-# ---------- Chat (LLM) ----------
+# ---------- Chat (Anthropic direct) ----------
 class ChatIn(BaseModel):
     message: str
-    model: Optional[str] = "claude"  # "claude" | "gpt"
+    model: Optional[str] = "claude"
 
 
-async def _build_calendar_context(user: dict) -> str:
-    """Assemble a text snapshot of calendars + upcoming bookings visible to this user."""
-    cals = await db.calendars.find({}, {"_id": 0}).to_list(200)
+@api.post("/chat")
+async def chat(data: ChatIn, user: dict = Depends(get_current_user)):
+    import anthropic
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="LLM key not configured")
+
+    # Build calendar context
+    cals_res = supabase.table("calendars").select("*").execute()
+    cals = cals_res.data or []
     cal_by_id = {c["id"]: c for c in cals}
-    # Upcoming + today (last 30 days + next 180 days to keep context bounded)
     today = datetime.now(timezone.utc).date().isoformat()
     lookback = (datetime.now(timezone.utc).date() - timedelta(days=30)).isoformat()
     horizon = (datetime.now(timezone.utc).date() + timedelta(days=180)).isoformat()
-    raw = await db.bookings.find(
-        {"status": {"$in": ["approved", "pending"]}, "date": {"$gte": lookback, "$lte": horizon}},
-        {"_id": 0},
-    ).sort("date", 1).to_list(2000)
-    users_by_id = await _get_user_lookup()
-
+    bookings_res = supabase.table("bookings").select("*").in_("status", ["approved", "pending"]).gte("date", lookback).lte("date", horizon).order("date").execute()
+    raw = bookings_res.data or []
+    users_res = supabase.table("users").select("id,name,email").execute()
+    users_by_id = {u["id"]: u for u in (users_res.data or [])}
     is_admin = user.get("role") == "admin"
     lines = []
     for b in raw:
         cal = cal_by_id.get(b["calendar_id"], {})
         cal_name = cal.get("name", "Unknown")
-        is_owner = b.get("member_id") == user["id"]
+        is_owner = str(b.get("member_id")) == str(user["id"])
         if is_admin or is_owner:
-            owner = users_by_id.get(b.get("member_id"), {})
+            owner = users_by_id.get(str(b.get("member_id")), {})
             who = owner.get("name", "—")
             note = (b.get("notes") or "").replace("\n", " ")[:120]
-            lines.append(
-                f"- {b['date']} {b['start_time']}-{b['end_time']} | {cal_name} | {b['status']} | {who}"
-                + (f" | notes: {note}" if note else "")
-            )
+            lines.append(f"- {b['date']} {b['start_time']}-{b['end_time']} | {cal_name} | {b['status']} | {who}" + (f" | notes: {note}" if note else ""))
         else:
-            # Members see other bookings as anonymous "Booked"
             lines.append(f"- {b['date']} {b['start_time']}-{b['end_time']} | {cal_name} | booked")
 
     cal_list = ", ".join(f"{c['name']} ({c.get('color','')})" for c in cals) or "(none)"
-    return (
-        f"Calendars: {cal_list}\n"
-        f"Today (UTC): {today}\n"
-        f"Upcoming and recent bookings visible to this user:\n"
+    context = (
+        f"Calendars: {cal_list}\nToday (UTC): {today}\nUpcoming bookings:\n"
         + ("\n".join(lines) if lines else "(none)")
     )
-
-
-@api.post("/chat")
-async def chat(data: ChatIn, user: dict = Depends(get_current_user)):
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
-
-    api_key = os.environ.get("EMERGENT_LLM_KEY")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="LLM key not configured")
-
-    provider, model_id = ("anthropic", "claude-sonnet-4-5-20250929")
-    if (data.model or "").lower() in ("gpt", "openai", "gpt-5.2"):
-        provider, model_id = ("openai", "gpt-5.2")
-
-    context = await _build_calendar_context(user)
     system_prompt = (
-        "You are the Studio 7 Miami internal calendar assistant.\n"
+        f"You are the Studio 7 Miami internal calendar assistant.\n"
         f"The current user is {user.get('name')} (role: {user.get('role')}, email: {user.get('email')}).\n"
-        "You answer scheduling questions (availability, what's booked when, who has what, etc.) concisely.\n"
-        "- Be succinct. Use bullet points for lists.\n"
-        "- All times are in the America/New_York (Miami) local timezone.\n"
-        "- If the user asks whether a specific date/time is available, check the booking list and answer yes/no, citing any overlaps.\n"
-        "- Format times in 12-hour format (e.g., 4:00 PM).\n"
-        "- Respect visibility: members only see detail for their own bookings; others appear as 'booked'.\n"
-        "- If you don't know, say so — do not invent.\n\n"
+        "Answer scheduling questions concisely. Use bullet points for lists.\n"
+        "All times are America/New_York (Miami). Format times in 12-hour format.\n"
+        "Respect visibility: members only see detail for their own bookings.\n"
         f"=== Calendar context ===\n{context}"
     )
 
     try:
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"s7-{user['id']}",
-            system_message=system_prompt,
-        ).with_model(provider, model_id)
-        reply = await chat.send_message(UserMessage(text=data.message))
-        return {"reply": reply, "model": f"{provider}/{model_id}"}
+        client = anthropic.Anthropic(api_key=api_key)
+        message = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            system=system_prompt,
+            messages=[{"role": "user", "content": data.message}]
+        )
+        reply = message.content[0].text
+        return {"reply": reply, "model": "anthropic/claude-sonnet-4-6"}
     except Exception as e:
         logger.exception("chat error")
         raise HTTPException(status_code=500, detail=f"Chat error: {str(e)[:200]}")

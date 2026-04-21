@@ -66,7 +66,7 @@ export default function Members() {
         <div className="flex gap-2">
           <Input
             type="email"
-            placeholder="person@studio7miami.com"
+            placeholder="member@studio7.miami"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
@@ -130,7 +130,7 @@ export default function Members() {
                       onClick={() => toggleDisabled(u)}
                       data-testid={`toggle-disabled-${u.id}`}
                       title={u.is_disabled ? "Re-enable account" : "Disable account"}
-                      className={`p-1.5 border rounded-sm transition-colors ${
+                      className={`px-4 py-3 border rounded-sm transition-colors ${
                         u.is_disabled
                           ? "border-emerald-900/70 text-emerald-300 hover:bg-emerald-950/40"
                           : "border-red-900/70 text-red-300 hover:bg-red-950/40"
