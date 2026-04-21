@@ -4,7 +4,11 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "../ui/drawer";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { Calendar as CalendarPicker } from "../ui/calendar";
+import { Calendar as CalendarIcon } from "lucide-react";
 import { api, formatApiError } from "../../lib/api";
+import { useAuth } from "../../context/AuthContext";
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = React.useState(
@@ -29,6 +33,7 @@ export default function BookingForm({
   isAdmin,
   members = [],
 }) {
+  const { user } = useAuth();
   const isMobile = useIsMobile();
   const [calendarId, setCalendarId] = useState(calendars?.[0]?.id || "");
   const [date, setDate] = useState(defaultDate || "");
@@ -133,7 +138,7 @@ export default function BookingForm({
             data-testid="booking-member-select"
             className="w-full bg-[#121214] border border-neutral-800 rounded-sm h-10 px-3 text-sm focus:outline-none focus:ring-1 focus:ring-white"
           >
-            <option value="">Admin (self)</option>
+            <option value="">{user?.name || "Admin"} (self)</option>
             {members.filter((m) => m.role === "member").map((m) => (
               <option key={m.id} value={m.id} style={{ background: "#121214" }}>
                 {m.name} · {m.email}
@@ -145,14 +150,42 @@ export default function BookingForm({
 
       <div>
         <label className="label-tech block mb-1">Date</label>
-        <Input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          required
-          data-testid="booking-date-input"
-          className="bg-[#121214] border-neutral-800 h-10 focus-visible:ring-white"
-        />
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              data-testid="booking-date-button"
+              className="w-full flex items-center justify-between bg-[#121214] border border-neutral-800 rounded-sm h-10 px-3 text-sm hover:bg-neutral-900 focus:outline-none focus:ring-1 focus:ring-white"
+            >
+              <span className={date ? "text-white" : "text-neutral-500"}>
+                {date
+                  ? new Date(date + "T00:00:00").toLocaleDateString(undefined, {
+                      weekday: "short",
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })
+                  : "Select a date"}
+              </span>
+              <CalendarIcon className="w-4 h-4 text-neutral-400" strokeWidth={1.5} />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0 bg-[#0F0F11] border-neutral-800" align="start">
+            <CalendarPicker
+              mode="single"
+              selected={date ? new Date(date + "T00:00:00") : undefined}
+              onSelect={(d) => {
+                if (!d) return;
+                const y = d.getFullYear();
+                const m = String(d.getMonth() + 1).padStart(2, "0");
+                const dd = String(d.getDate()).padStart(2, "0");
+                setDate(`${y}-${m}-${dd}`);
+              }}
+              initialFocus
+              className="text-white"
+            />
+          </PopoverContent>
+        </Popover>
       </div>
 
       <div className="grid grid-cols-2 gap-3">

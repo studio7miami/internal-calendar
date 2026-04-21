@@ -19,6 +19,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from "../../components/ui/dropdown-menu";
+import ChatBot from "./ChatBot";
 
 function NotificationBell() {
   const [notifs, setNotifs] = useState([]);
@@ -210,6 +211,8 @@ export default function Layout() {
           ))}
         </div>
       </nav>
+
+      <ChatBot />
     </div>
   );
 }

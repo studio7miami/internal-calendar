@@ -5,6 +5,7 @@ import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import BookingForm from "../components/app/BookingForm";
+import { fmtTimeShort } from "../lib/time";
 
 function ymd(d) {
   const y = d.getFullYear();
@@ -28,34 +29,62 @@ function sameMonth(a, b) {
   return a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear();
 }
 
-function BookingChip({ b, calendar, onClick }) {
+// Convert #RRGGBB -> rgba(r,g,b,alpha)
+function rgba(hex, alpha) {
+  const h = (hex || "#888").replace("#", "");
+  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function chipLabel(b, calendar) {
+  // Special titling for Studio 7 Miami calendar (member @ Studio 7 Miami)
+  const isStudio7 = (calendar?.name || "").trim().toLowerCase() === "studio 7 miami";
+  const who = b.member_name ? b.member_name.split(" ")[0] : "Member";
+  if (isStudio7) return `${who} @ Studio 7 Miami`;
+  return b.notes?.trim() || calendar?.name || "Booking";
+}
+
+function BookingChip({ b, calendar, viewerIsAdmin, onClick }) {
   const isOwn = b.is_own;
   const isPending = b.status === "pending";
-  let bg = "bg-neutral-900 border-neutral-800 text-neutral-400 booked-stripe";
-  let label = "Booked";
-  if (isOwn && !isPending) {
-    bg = "bg-white text-black border-white";
-    label = `${b.start_time} · ${b.notes || calendar?.name || "Mine"}`;
-  } else if (isOwn && isPending) {
-    bg = "border-amber-800 text-amber-300 bg-amber-950/40";
-    label = `⏳ ${b.start_time} · Pending`;
-  } else if (isPending) {
-    bg = "border-amber-900 text-amber-400 bg-amber-950/30";
-    label = `⏳ Pending`;
+  const canSeeDetail = viewerIsAdmin || isOwn;
+
+  // Admin and owner: color-coded chip tinted with calendar color
+  if (canSeeDetail) {
+    const color = calendar?.color || "#FAFAFA";
+    const label = `${fmtTimeShort(b.start_time)} · ${chipLabel(b, calendar)}`;
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        data-testid={`booking-chip-${b.id}`}
+        className="text-[10px] leading-tight px-1.5 py-1 w-full text-left border rounded-sm truncate text-white transition-colors hover:brightness-125"
+        style={{
+          background: isPending ? rgba(color, 0.12) : rgba(color, 0.22),
+          borderColor: isPending ? rgba(color, 0.4) : rgba(color, 0.7),
+          borderLeft: `3px solid ${color}`,
+          opacity: isPending ? 0.9 : 1,
+        }}
+        title={isPending ? `Pending · ${label}` : label}
+      >
+        {isPending ? "⏳ " : ""}{label}
+      </button>
+    );
   }
+
+  // Other members' bookings (member view only): anonymous stripe
   return (
     <button
       type="button"
       onClick={onClick}
       data-testid={`booking-chip-${b.id}`}
-      className={`text-[10px] leading-tight px-1.5 py-1 w-full text-left border rounded-sm truncate ${bg}`}
-      style={
-        !isOwn && !isPending && calendar
-          ? { borderLeftColor: calendar.color, borderLeftWidth: 3 }
-          : undefined
-      }
+      className="text-[10px] leading-tight px-1.5 py-1 w-full text-left border border-neutral-800 text-neutral-400 rounded-sm truncate booked-stripe"
+      style={{ borderLeftColor: calendar?.color || "#333", borderLeftWidth: 3 }}
     >
-      {label}
+      Booked
     </button>
   );
 }
@@ -164,6 +193,7 @@ export default function CalendarPage() {
                       key={b.id}
                       b={b}
                       calendar={calendarMap[b.calendar_id]}
+                      viewerIsAdmin={isAdmin}
                       onClick={() => {}}
                     />
                   ))}
@@ -202,7 +232,7 @@ export default function CalendarPage() {
           {hours.map((h) => (
             <React.Fragment key={h}>
               <div className="label-tech p-2 border-r border-b border-neutral-900 text-right font-mono">
-                {String(h).padStart(2, "0")}:00
+                {fmtTimeShort(`${String(h).padStart(2, "0")}:00`)}
               </div>
               {dayList.map((d) => {
                 const key = ymd(d);
@@ -227,6 +257,7 @@ export default function CalendarPage() {
                         key={b.id}
                         b={b}
                         calendar={calendarMap[b.calendar_id]}
+                        viewerIsAdmin={isAdmin}
                         onClick={(e) => {
                           e?.stopPropagation?.();
                         }}

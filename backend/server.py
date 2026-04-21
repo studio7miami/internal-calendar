@@ -10,7 +10,6 @@ import secrets
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Literal
-
 import bcrypt
 import jwt
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request
@@ -559,6 +558,92 @@ async def mark_read(notif_id: str, user: dict = Depends(get_current_user)):
 async def mark_all_read(user: dict = Depends(get_current_user)):
     await db.notifications.update_many({"user_id": user["id"], "is_read": False}, {"$set": {"is_read": True}})
     return {"ok": True}
+
+
+# ---------- Chat (LLM) ----------
+class ChatIn(BaseModel):
+    message: str
+    model: Optional[str] = "claude"  # "claude" | "gpt"
+
+
+async def _build_calendar_context(user: dict) -> str:
+    """Assemble a text snapshot of calendars + upcoming bookings visible to this user."""
+    cals = await db.calendars.find({}, {"_id": 0}).to_list(200)
+    cal_by_id = {c["id"]: c for c in cals}
+    # Upcoming + today (last 30 days + next 180 days to keep context bounded)
+    today = datetime.now(timezone.utc).date().isoformat()
+    lookback = (datetime.now(timezone.utc).date() - timedelta(days=30)).isoformat()
+    horizon = (datetime.now(timezone.utc).date() + timedelta(days=180)).isoformat()
+    raw = await db.bookings.find(
+        {"status": {"$in": ["approved", "pending"]}, "date": {"$gte": lookback, "$lte": horizon}},
+        {"_id": 0},
+    ).sort("date", 1).to_list(2000)
+    users_by_id = await _get_user_lookup()
+
+    is_admin = user.get("role") == "admin"
+    lines = []
+    for b in raw:
+        cal = cal_by_id.get(b["calendar_id"], {})
+        cal_name = cal.get("name", "Unknown")
+        is_owner = b.get("member_id") == user["id"]
+        if is_admin or is_owner:
+            owner = users_by_id.get(b.get("member_id"), {})
+            who = owner.get("name", "—")
+            note = (b.get("notes") or "").replace("\n", " ")[:120]
+            lines.append(
+                f"- {b['date']} {b['start_time']}-{b['end_time']} | {cal_name} | {b['status']} | {who}"
+                + (f" | notes: {note}" if note else "")
+            )
+        else:
+            # Members see other bookings as anonymous "Booked"
+            lines.append(f"- {b['date']} {b['start_time']}-{b['end_time']} | {cal_name} | booked")
+
+    cal_list = ", ".join(f"{c['name']} ({c.get('color','')})" for c in cals) or "(none)"
+    return (
+        f"Calendars: {cal_list}\n"
+        f"Today (UTC): {today}\n"
+        f"Upcoming and recent bookings visible to this user:\n"
+        + ("\n".join(lines) if lines else "(none)")
+    )
+
+
+@api.post("/chat")
+async def chat(data: ChatIn, user: dict = Depends(get_current_user)):
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+
+    api_key = os.environ.get("EMERGENT_LLM_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="LLM key not configured")
+
+    provider, model_id = ("anthropic", "claude-sonnet-4-5-20250929")
+    if (data.model or "").lower() in ("gpt", "openai", "gpt-5.2"):
+        provider, model_id = ("openai", "gpt-5.2")
+
+    context = await _build_calendar_context(user)
+    system_prompt = (
+        "You are the Studio 7 Miami internal calendar assistant.\n"
+        f"The current user is {user.get('name')} (role: {user.get('role')}, email: {user.get('email')}).\n"
+        "You answer scheduling questions (availability, what's booked when, who has what, etc.) concisely.\n"
+        "- Be succinct. Use bullet points for lists.\n"
+        "- All times are in the America/New_York (Miami) local timezone.\n"
+        "- If the user asks whether a specific date/time is available, check the booking list and answer yes/no, citing any overlaps.\n"
+        "- Format times in 12-hour format (e.g., 4:00 PM).\n"
+        "- Respect visibility: members only see detail for their own bookings; others appear as 'booked'.\n"
+        "- If you don't know, say so — do not invent.\n\n"
+        f"=== Calendar context ===\n{context}"
+    )
+
+    try:
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"s7-{user['id']}",
+            system_message=system_prompt,
+        ).with_model(provider, model_id)
+        reply = await chat.send_message(UserMessage(text=data.message))
+        return {"reply": reply, "model": f"{provider}/{model_id}"}
+    except Exception as e:
+        logger.exception("chat error")
+        raise HTTPException(status_code=500, detail=f"Chat error: {str(e)[:200]}")
 
 
 @api.get("/")

@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { Button } from "../components/ui/button";
 import { Textarea } from "../components/ui/textarea";
 import { Check, X, Clock } from "lucide-react";
+import { fmtTimeShort } from "../lib/time";
 
 function StatusBadge({ status }) {
   const map = {
@@ -86,7 +87,7 @@ export default function Requests() {
                   <span className="label-tech">{calName(b.calendar_id)}</span>
                 </div>
                 <div className="font-display text-xl mt-2">
-                  {b.date} · {b.start_time}–{b.end_time}
+                  {b.date} · {fmtTimeShort(b.start_time)}–{fmtTimeShort(b.end_time)}
                 </div>
                 {isAdmin && b.member_name && (
                   <div className="text-sm text-neutral-400 mt-1">
