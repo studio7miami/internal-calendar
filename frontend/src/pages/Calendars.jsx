@@ -4,6 +4,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Switch } from "../components/ui/switch";
 import { Trash2, Plus } from "lucide-react";
+import ColorWheel from "../components/app/ColorWheel";
 
 const DEFAULT_COLOR = "#A78BFA";
 
@@ -86,25 +87,11 @@ export default function CalendarsAdmin() {
             data-testid="new-calendar-gcal"
             className="bg-[#121214] border-neutral-800 h-10 font-mono"
           />
-          <div className="flex items-center gap-3">
-            <label className="relative cursor-pointer" data-testid="new-calendar-color">
-              <input
-                type="color"
-                value={form.color}
-                onChange={(e) => setForm({ ...form, color: e.target.value })}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                data-testid="new-calendar-color-input"
-              />
-              <span
-                className="block w-10 h-10 rounded-full border-2 border-neutral-800"
-                style={{ background: form.color }}
-              />
-            </label>
-            <div>
-              <div className="label-tech">Color</div>
-              <div className="font-mono text-xs text-neutral-400 uppercase">{form.color}</div>
-            </div>
-          </div>
+          <ColorWheel
+            value={form.color}
+            onChange={(c) => setForm({ ...form, color: c })}
+            testId="new-calendar-color"
+          />
         </div>
         {err && <div className="text-sm text-red-400">{err}</div>}
         <Button type="submit" data-testid="new-calendar-submit" className="bg-white text-black hover:bg-neutral-200 rounded-sm">
@@ -128,26 +115,12 @@ export default function CalendarsAdmin() {
                   placeholder="Google Calendar ID"
                   className="bg-[#121214] border-neutral-800 h-10 font-mono"
                 />
-                <div className="flex items-center gap-3">
-                  <label className="relative cursor-pointer">
-                    <input
-                      type="color"
-                      value={c.color}
-                      onChange={(e) =>
-                        setCals((prev) => prev.map((p) => (p.id === c.id ? { ...p, color: e.target.value } : p)))
-                      }
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    />
-                    <span
-                      className="block w-10 h-10 rounded-full border-2 border-neutral-800"
-                      style={{ background: c.color }}
-                    />
-                  </label>
-                  <div>
-                    <div className="label-tech">Color</div>
-                    <div className="font-mono text-xs text-neutral-400 uppercase">{c.color}</div>
-                  </div>
-                </div>
+                <ColorWheel
+                  value={c.color}
+                  onChange={(nc) =>
+                    setCals((prev) => prev.map((p) => (p.id === c.id ? { ...p, color: nc } : p)))
+                  }
+                />
               </div>
               <div className="flex gap-2">
                 <Button onClick={() => saveEdit(c)} className="bg-white text-black hover:bg-neutral-200 rounded-sm">Save</Button>
