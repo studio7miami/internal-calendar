@@ -1,9 +1,16 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { api, formatApiError } from "../lib/api";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
 import { Navigate } from "react-router-dom";
+
+const SLIDES = [
+  "/brand/slide-1.jpg",
+  "/brand/slide-2.jpg",
+  "/brand/slide-3.jpg",
+  "/brand/slide-4.jpg",
+];
 
 export default function Login() {
   const { user, loginWithToken, loading } = useAuth();
@@ -11,6 +18,14 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [slide, setSlide] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setSlide((s) => (s + 1) % SLIDES.length);
+    }, 2500);
+    return () => clearInterval(id);
+  }, []);
 
   if (!loading && user) return <Navigate to="/" replace />;
 
@@ -31,14 +46,13 @@ export default function Login() {
   return (
     <div className="min-h-screen grid md:grid-cols-2 bg-[#09090B] text-white">
       {/* Visual side */}
-      <div
-        className="relative hidden md:block"
-        style={{
-          backgroundImage: "url(/brand/login-bg.jpg)",
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-        }}
-      >
+      <div className="relative hidden md:block overflow-hidden bg-black">
+        <img
+          key={slide}
+          src={SLIDES[slide]}
+          alt=""
+          className="absolute inset-0 w-full h-full object-cover slide-in-right"
+        />
         <div className="absolute inset-0 bg-black/55" />
         <div className="absolute inset-0 p-12 flex flex-col justify-between">
           <div>
