@@ -1,0 +1,121 @@
+{
+  "project_domain": "Creative Studio Internal Calendar SaaS",
+  "theme": "Dark",
+  "archetype": "Archetype 4: Swiss & High-Contrast (Authority, Clarity, Truth)",
+  "rationale": "As a premium photography studio's internal tool, it needs to feel exclusive, precise, and highly functional. A dark, high-contrast 'Swiss/Technical' theme acts as a command center for the founder, allowing bookings to stand out visually without distraction.",
+  "colors": {
+    "background": "#09090B",
+    "surface": "#121214",
+    "border": "#27272A",
+    "text_primary": "#FAFAFA",
+    "text_secondary": "#A1A1AA",
+    "accent_primary": "#FFFFFF",
+    "accent_hover": "#E4E4E7",
+    "calendar_semantics": {
+      "own_confirmed": {
+        "bg": "#FAFAFA",
+        "text": "#09090B",
+        "border": "#FFFFFF",
+        "description": "High contrast, solid white block for immediate visibility of the member's own bookings."
+      },
+      "anonymous_booked": {
+        "bg": "#18181B",
+        "text": "#71717A",
+        "border": "#27272A",
+        "style": "repeating-linear-gradient(45deg, #18181B, #18181B 10px, #27272A 10px, #27272A 20px)",
+        "description": "Subtle striped pattern or dark grey block indicating unavailability without giving details."
+      },
+      "pending_request": {
+        "bg": "#3F2C00",
+        "text": "#FACC15",
+        "border": "#854D0E",
+        "description": "Warm amber warning color for requests awaiting admin approval."
+      },
+      "denied_request": {
+        "bg": "#450A0A",
+        "text": "#F87171",
+        "border": "#991B1B",
+        "description": "Muted, dark red for denied requests."
+      },
+      "calendar_hues": {
+        "photobooth": "#A78BFA",
+        "studio_7_miami": "#38BDF8",
+        "new_calendar_default": "#34D399"
+      }
+    }
+  },
+  "typography": {
+    "fonts": {
+      "heading": "Clash Display, sans-serif",
+      "body": "Satoshi, sans-serif",
+      "mono": "JetBrains Mono, monospace"
+    },
+    "scale": {
+      "h1": "text-4xl sm:text-5xl tracking-tight font-medium",
+      "h2": "text-2xl sm:text-3xl tracking-tight font-medium",
+      "h3": "text-xl font-medium",
+      "body": "text-base font-normal leading-relaxed",
+      "labels": "text-xs font-mono uppercase tracking-[0.2em] text-neutral-400"
+    },
+    "rules": [
+      "Headings must use tight letter spacing (tracking-tight).",
+      "Timestamps and technical data (like Google Calendar IDs) must use JetBrains Mono.",
+      "Never use Inter or Roboto."
+    ]
+  },
+  "layout_and_spacing": {
+    "mobile_first": true,
+    "navigation": {
+      "mobile": "Fixed bottom navigation bar (h-16 or h-20), applying pb-24 to main container.",
+      "desktop": "Fixed left sidebar (w-64), main content takes remaining width."
+    },
+    "spacing_scale": {
+      "generous": "p-6 md:p-8 lg:p-12 for main section padding.",
+      "dense": "p-2 gap-2 for calendar grid cells."
+    },
+    "grid_modes": {
+      "dashboard": "MODE B (Control Room): grid-cols-1 md:grid-cols-4. Strict hierarchy, tight gaps (gap-4 or gap-6)."
+    }
+  },
+  "components": {
+    "forms": "Use Shadcn Form, Input, Select. Customize to be flat with 1px border-neutral-800, focus:ring-1 focus:ring-white focus:border-white.",
+    "buttons": {
+      "primary": "bg-white text-black hover:bg-neutral-200 font-medium rounded-none or rounded-sm",
+      "secondary": "bg-transparent border border-neutral-800 text-white hover:bg-neutral-900 rounded-none or rounded-sm"
+    },
+    "modals_and_sheets": {
+      "desktop": "Shadcn Dialog. Glassmorphism backdrop (bg-black/80 backdrop-blur-xl), solid dark surface (bg-neutral-950), 1px border (border-neutral-800).",
+      "mobile": "Shadcn Drawer (bottom sheet) for booking forms. Pull tab at top, snaps to content height."
+    },
+    "calendar": "Custom grid implementation using pure HTML/Tailwind for structural layout to allow absolute positioning of multi-hour bookings. Month/Week/Day toggle uses Shadcn Tabs.",
+    "notifications": "Shadcn DropdownMenu on desktop, Drawer on mobile, triggered by a Bell icon.",
+    "testing_attributes": "All interactive elements MUST include data-testid (e.g., data-testid='approve-booking-button')."
+  },
+  "motion_and_interaction": {
+    "hover_states": "Buttons translate-y-[-1px] with subtle brightness increase. Explicit text color on hover (hover:text-black).",
+    "transitions": "transition-all duration-200 ease-[cubic-bezier(0.25,1,0.5,1)]",
+    "focus": "High contrast ring: focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+  },
+  "media_and_assets": {
+    "images": {
+      "login_background": {
+        "url": "https://images.unsplash.com/photo-1642723965458-112cdb37c1c2?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTB8MHwxfHNlYXJjaHwyfHxwaG90b2dyYXBoeSUyMHN0dWRpbyUyMGRhcmt8ZW58MHx8fHwxNzc2NzgyODIwfDA&ixlib=rb-4.1.0&q=85",
+        "description": "Dark, abstract camera lens close-up for the auth/login entry point overlay. Use with bg-black/60 overlay.",
+        "category": "background"
+      }
+    },
+    "icons": {
+      "library": "lucide-react",
+      "style": "Use 1.5px stroke width for a precise, technical look."
+    }
+  },
+  "instructions_to_main_agent": [
+    "Build standard JS files (.js/.jsx), NO TYPESCRIPT (.tsx).",
+    "Start with the unauthenticated Auth/Login screen using the provided background image.",
+    "Implement the Layout wrapper that switches between Mobile Bottom Nav and Desktop Sidebar based on viewport (Tailwind hidden/md:flex classes).",
+    "Develop the Calendar Views (Month/Week/Day) with a focus on data density and clear visual semantics for 'Own Confirmed', 'Booked' (Anonymous), and 'Pending' states.",
+    "Ensure the booking form uses a Bottom Sheet (Drawer) on mobile and a Modal (Dialog) on desktop.",
+    "Include 'data-testid' on ALL buttons, inputs, tabs, and interactive elements.",
+    "Use standard Shadcn components installed in /app/frontend/src/components/ui/ but override their styles to match the 'Swiss Dark' aesthetic (flat, 1px borders, sharp or slightly rounded corners, no soft shadows)."
+  ]
+}
