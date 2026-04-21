@@ -129,8 +129,7 @@ export default function Layout() {
       {/* Desktop sidebar */}
       <aside className="hidden md:flex fixed top-0 left-0 bottom-0 w-60 border-r border-neutral-900 flex-col p-6 z-30">
         <div className="mb-8">
-          <img src="/brand/logo.png" alt="Studio 7 Miami" className="brand-logo h-7 w-auto" />
-          <div className="label-tech mt-3">Miami · Console</div>
+          <img src="/brand/favicon.png" alt="Studio 7" className="brand-logo h-8 w-8" />
         </div>
         <nav className="space-y-1 flex-1">
           {items.map((it) => (
@@ -170,7 +169,7 @@ export default function Layout() {
       {/* Top bar (mobile + desktop right-side actions) */}
       <header className="fixed top-0 right-0 left-0 md:left-60 z-20 bg-[#09090B]/80 backdrop-blur-xl border-b border-neutral-900 px-4 md:px-8 h-14 flex items-center justify-between">
         <div className="md:hidden">
-          <img src="/brand/logo.png" alt="Studio 7 Miami" className="brand-logo h-5 w-auto" />
+          <img src="/brand/favicon.png" alt="Studio 7" className="brand-logo h-6 w-6" />
         </div>
         <div className="hidden md:block label-tech">
           {new Date().toLocaleDateString(undefined, {

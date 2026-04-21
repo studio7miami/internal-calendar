@@ -5,14 +5,11 @@ import { Input } from "../components/ui/input";
 import { Switch } from "../components/ui/switch";
 import { Trash2, Plus } from "lucide-react";
 
-const COLOR_OPTIONS = [
-  "#A78BFA", "#38BDF8", "#34D399", "#F472B6", "#FB7185",
-  "#FBBF24", "#60A5FA", "#F97316", "#A3E635", "#E879F9",
-];
+const DEFAULT_COLOR = "#A78BFA";
 
 export default function CalendarsAdmin() {
   const [cals, setCals] = useState([]);
-  const [form, setForm] = useState({ name: "", color: COLOR_OPTIONS[0], google_calendar_id: "" });
+  const [form, setForm] = useState({ name: "", color: DEFAULT_COLOR, google_calendar_id: "" });
   const [err, setErr] = useState("");
   const [editing, setEditing] = useState(null);
 
@@ -30,7 +27,7 @@ export default function CalendarsAdmin() {
     setErr("");
     try {
       await api.post("/calendars", { ...form, is_active: true });
-      setForm({ name: "", color: COLOR_OPTIONS[0], google_calendar_id: "" });
+      setForm({ name: "", color: DEFAULT_COLOR, google_calendar_id: "" });
       refresh();
     } catch (e) {
       setErr(formatApiError(e?.response?.data?.detail) || "Failed");
@@ -89,17 +86,24 @@ export default function CalendarsAdmin() {
             data-testid="new-calendar-gcal"
             className="bg-[#121214] border-neutral-800 h-10 font-mono"
           />
-          <div className="flex items-center gap-2 flex-wrap">
-            {COLOR_OPTIONS.map((c) => (
-              <button
-                type="button"
-                key={c}
-                onClick={() => setForm({ ...form, color: c })}
-                data-testid={`color-${c}`}
-                className={`w-6 h-6 rounded-full border-2 ${form.color === c ? "border-white" : "border-transparent"}`}
-                style={{ background: c }}
+          <div className="flex items-center gap-3">
+            <label className="relative cursor-pointer" data-testid="new-calendar-color">
+              <input
+                type="color"
+                value={form.color}
+                onChange={(e) => setForm({ ...form, color: e.target.value })}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                data-testid="new-calendar-color-input"
               />
-            ))}
+              <span
+                className="block w-10 h-10 rounded-full border-2 border-neutral-800"
+                style={{ background: form.color }}
+              />
+            </label>
+            <div>
+              <div className="label-tech">Color</div>
+              <div className="font-mono text-xs text-neutral-400 uppercase">{form.color}</div>
+            </div>
           </div>
         </div>
         {err && <div className="text-sm text-red-400">{err}</div>}
@@ -124,16 +128,25 @@ export default function CalendarsAdmin() {
                   placeholder="Google Calendar ID"
                   className="bg-[#121214] border-neutral-800 h-10 font-mono"
                 />
-                <div className="flex items-center gap-2 flex-wrap">
-                  {COLOR_OPTIONS.map((co) => (
-                    <button
-                      type="button"
-                      key={co}
-                      onClick={() => setCals((prev) => prev.map((p) => (p.id === c.id ? { ...p, color: co } : p)))}
-                      className={`w-6 h-6 rounded-full border-2 ${c.color === co ? "border-white" : "border-transparent"}`}
-                      style={{ background: co }}
+                <div className="flex items-center gap-3">
+                  <label className="relative cursor-pointer">
+                    <input
+                      type="color"
+                      value={c.color}
+                      onChange={(e) =>
+                        setCals((prev) => prev.map((p) => (p.id === c.id ? { ...p, color: e.target.value } : p)))
+                      }
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     />
-                  ))}
+                    <span
+                      className="block w-10 h-10 rounded-full border-2 border-neutral-800"
+                      style={{ background: c.color }}
+                    />
+                  </label>
+                  <div>
+                    <div className="label-tech">Color</div>
+                    <div className="font-mono text-xs text-neutral-400 uppercase">{c.color}</div>
+                  </div>
                 </div>
               </div>
               <div className="flex gap-2">

@@ -43,9 +43,9 @@ export default function Members() {
     <div className="space-y-8" data-testid="members-page">
       <div>
         <div className="label-tech">Admin</div>
-        <h1 className="font-display text-3xl sm:text-4xl mt-1">Members</h1>
+        <h1 className="font-display text-3xl sm:text-4xl mt-1">Invite the team.</h1>
         <p className="text-sm text-neutral-400 mt-2">
-          Invite photographers, videographers, and the rest of the team. Invites are single-use and expire in 7 days.
+          Note: Invites are single-use and expire in 7 days.
         </p>
       </div>
 
