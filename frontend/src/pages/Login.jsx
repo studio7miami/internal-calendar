@@ -8,7 +8,6 @@ import { Navigate } from "react-router-dom";
 const SLIDES = [
   "/brand/slide-2.jpg",
   "/brand/slide-3.jpg",
-  "/brand/slide-4.jpg",
 ];
 
 export default function Login() {
