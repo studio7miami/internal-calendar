@@ -34,20 +34,34 @@ function hexToHsl(hex) {
   return { h: Math.round(h), s: Math.round(s * 100), l: Math.round(l * 100) };
 }
 
+const normalizeHex = (v) => {
+  if (!v) return null;
+  const t = v.trim().replace(/^#/, "");
+  if (/^[0-9a-f]{6}$/i.test(t)) return `#${t.toUpperCase()}`;
+  if (/^[0-9a-f]{3}$/i.test(t))
+    return `#${t.split("").map((c) => c + c).join("").toUpperCase()}`;
+  return null;
+};
+
 export default function ColorWheel({ value, onChange, testId }) {
   const [hsl, setHsl] = useState(() => hexToHsl(value));
+  const [hexDraft, setHexDraft] = useState(value?.toUpperCase() || "");
   const wheelRef = useRef(null);
   const draggingRef = useRef(false);
 
   useEffect(() => {
     setHsl(hexToHsl(value));
+    setHexDraft((value || "").toUpperCase());
   }, [value]);
 
   const commit = (next) => {
     setHsl(next);
-    onChange?.(hslToHex(next.h, next.s, next.l));
+    const hex = hslToHex(next.h, next.s, next.l);
+    setHexDraft(hex);
+    onChange?.(hex);
   };
 
+  // Pointer → hue/sat. Align 0° = TOP (12 o'clock), clockwise, matching conic-gradient from 0deg.
   const updateFromEvent = (e) => {
     const el = wheelRef.current;
     if (!el) return;
@@ -59,8 +73,8 @@ export default function ColorWheel({ value, onChange, testId }) {
     const x = pt.clientX - rect.left - cx;
     const y = pt.clientY - rect.top - cy;
     const dist = Math.min(Math.sqrt(x * x + y * y), r);
-    // angle: 0 = right, grow counterclockwise; convert to CSS hue (0 red at right when using hsl)
-    let angle = Math.atan2(y, x) * (180 / Math.PI);
+    // atan2(x, -y): 0° at top (x=0, y<0), grows clockwise
+    let angle = Math.atan2(x, -y) * (180 / Math.PI);
     if (angle < 0) angle += 360;
     const h = Math.round(angle);
     const s = Math.round((dist / r) * 100);
@@ -69,27 +83,35 @@ export default function ColorWheel({ value, onChange, testId }) {
 
   const onPointerDown = (e) => {
     draggingRef.current = true;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
     updateFromEvent(e);
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
   };
   const onPointerMove = (e) => {
     if (draggingRef.current) updateFromEvent(e);
   };
-  const onPointerUp = () => {
+  const onPointerUp = (e) => {
     draggingRef.current = false;
-    window.removeEventListener("pointermove", onPointerMove);
-    window.removeEventListener("pointerup", onPointerUp);
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
   };
 
-  // Cursor position on wheel
+  // Cursor position (0° = top, clockwise)
   const sizePct = 100;
   const angleRad = (hsl.h * Math.PI) / 180;
   const radius = (hsl.s / 100) * (sizePct / 2);
-  const cursorX = sizePct / 2 + Math.cos(angleRad) * radius;
-  const cursorY = sizePct / 2 + Math.sin(angleRad) * radius;
+  const cursorX = sizePct / 2 + Math.sin(angleRad) * radius;
+  const cursorY = sizePct / 2 - Math.cos(angleRad) * radius;
 
   const currentHex = hslToHex(hsl.h, hsl.s, hsl.l);
+  const grayAtL = `hsl(0, 0%, ${hsl.l}%)`;
+
+  const applyHexDraft = () => {
+    const normalized = normalizeHex(hexDraft);
+    if (normalized) {
+      commit(hexToHsl(normalized));
+    } else {
+      setHexDraft(currentHex);
+    }
+  };
 
   return (
     <Popover>
@@ -118,22 +140,30 @@ export default function ColorWheel({ value, onChange, testId }) {
         <div
           ref={wheelRef}
           onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
           className="relative w-[228px] h-[228px] mx-auto rounded-full cursor-crosshair touch-none select-none"
           style={{
             background:
               "conic-gradient(from 0deg, hsl(0,100%,50%), hsl(60,100%,50%), hsl(120,100%,50%), hsl(180,100%,50%), hsl(240,100%,50%), hsl(300,100%,50%), hsl(360,100%,50%))",
           }}
         >
-          {/* saturation falloff */}
-          <div
-            className="absolute inset-0 rounded-full pointer-events-none"
-            style={{ background: "radial-gradient(circle, #fff 0%, transparent 70%)" }}
-          />
-          {/* lightness overlay (darkens or lightens wheel preview) */}
+          {/* saturation falloff toward the gray at current lightness */}
           <div
             className="absolute inset-0 rounded-full pointer-events-none"
             style={{
-              background: hsl.l < 50 ? `rgba(0,0,0,${(50 - hsl.l) / 50 * 0.6})` : `rgba(255,255,255,${(hsl.l - 50) / 50 * 0.4})`,
+              background: `radial-gradient(circle at center, ${grayAtL} 0%, transparent 70%)`,
+            }}
+          />
+          {/* lightness shade/tint for the saturated ring edge */}
+          <div
+            className="absolute inset-0 rounded-full pointer-events-none mix-blend-normal"
+            style={{
+              background:
+                hsl.l < 50
+                  ? `rgba(0,0,0,${((50 - hsl.l) / 50) * 0.55})`
+                  : `rgba(255,255,255,${((hsl.l - 50) / 50) * 0.35})`,
             }}
           />
           {/* cursor */}
@@ -163,23 +193,32 @@ export default function ColorWheel({ value, onChange, testId }) {
           />
         </div>
 
-        {/* Hex display + presets */}
-        <div className="mt-4 flex items-center justify-between">
+        {/* Hex input */}
+        <div className="mt-4 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span className="block w-6 h-6 rounded-sm border border-neutral-700" style={{ background: currentHex }} />
-            <span className="font-mono text-xs uppercase">{currentHex}</span>
+            <span
+              className="block w-6 h-6 rounded-sm border border-neutral-700"
+              style={{ background: currentHex }}
+            />
           </div>
           <input
             type="text"
-            value={currentHex}
+            value={hexDraft}
             onChange={(e) => {
-              const v = e.target.value;
-              if (/^#?[0-9a-f]{6}$/i.test(v)) {
-                const next = hexToHsl(v.startsWith("#") ? v : `#${v}`);
-                commit(next);
+              setHexDraft(e.target.value);
+              const normalized = normalizeHex(e.target.value);
+              if (normalized) commit(hexToHsl(normalized));
+            }}
+            onBlur={applyHexDraft}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                applyHexDraft();
               }
             }}
-            className="w-24 bg-[#121214] border border-neutral-800 h-7 px-2 font-mono text-xs uppercase focus:outline-none focus:ring-1 focus:ring-white rounded-sm"
+            placeholder="#RRGGBB"
+            spellCheck={false}
+            className="flex-1 bg-[#121214] border border-neutral-800 h-8 px-2 font-mono text-xs uppercase focus:outline-none focus:ring-1 focus:ring-white rounded-sm"
           />
         </div>
       </PopoverContent>
