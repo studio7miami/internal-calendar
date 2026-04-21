@@ -8,6 +8,7 @@ import { Navigate } from "react-router-dom";
 const SLIDES = [
   "/brand/slide-2.jpg",
   "/brand/slide-3.jpg",
+  "/brand/slide-4.jpg",
 ];
 
 export default function Login() {
@@ -45,12 +46,15 @@ export default function Login() {
     <div className="min-h-screen grid md:grid-cols-2 bg-[#09090B] text-white">
       {/* Visual side */}
       <div className="relative hidden md:block overflow-hidden bg-black">
-        <img
-          key={slide}
-          src={SLIDES[slide]}
-          alt=""
-          className="absolute inset-0 w-full h-full object-cover slide-in-right"
-        />
+        {SLIDES.map((src, i) => (
+          <img
+            key={src}
+            src={src}
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover transition-opacity duration-[900ms] ease-in-out"
+            style={{ opacity: i === slide ? 1 : 0 }}
+          />
+        ))}
         <div className="absolute inset-0 bg-black/55" />
         <div className="absolute inset-0 p-12 flex flex-col justify-between">
           <div>
