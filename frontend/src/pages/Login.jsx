@@ -43,17 +43,16 @@ export default function Login() {
         <div className="absolute inset-0 p-12 flex flex-col justify-between">
           <div>
             <img src="/brand/logo.png" alt="Studio 7 Miami" className="brand-logo h-10 w-auto" />
-            <div className="label-tech text-neutral-300 mt-4">Internal · Miami</div>
           </div>
           <div>
             <h1 className="font-display text-5xl lg:text-6xl leading-[1.05] text-white">
-              The Studio<br />Calendar.
+              The studio<br />calendar.
             </h1>
             <p className="mt-4 text-neutral-300 max-w-sm">
-              A private booking console for the founder and the team. Members only.
+              An internal booking system for members only.
             </p>
           </div>
-          <div className="label-tech text-neutral-400">v1.0 · invite-only</div>
+          <div />
         </div>
       </div>
 
@@ -111,7 +110,7 @@ export default function Login() {
           </Button>
 
           <div className="label-tech pt-4 border-t border-neutral-900">
-            Private · Invite-only
+            Invite only
           </div>
         </form>
       </div>
