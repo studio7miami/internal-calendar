@@ -69,7 +69,7 @@ export default function ChatBot() {
           onClick={() => setOpen(true)}
           data-testid="chatbot-open-button"
           aria-label="Open Studio 7 Assistant"
-          className="fixed bottom-24 md:bottom-20 right-4 md:right-6 z-40 flex items-center justify-center bg-white text-black hover:bg-neutral-200 h-14 w-14 rounded-full shadow-[0_12px_40px_rgba(255,255,255,0.15)] transition-transform hover:scale-110 chat-float"
+          className="fixed bottom-24 md:bottom-6 right-4 md:right-6 z-40 flex items-center justify-center bg-white text-black hover:bg-neutral-200 h-14 w-14 rounded-full shadow-[0_12px_40px_rgba(255,255,255,0.15)] transition-transform hover:scale-110 chat-float"
         >
           <span className="absolute inset-0 rounded-full chat-pulse-ring pointer-events-none" />
           <Sparkles className="w-5 h-5 relative z-10" strokeWidth={1.8} />
