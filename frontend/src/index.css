@@ -2,7 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://api.fontshare.com/v2/css?f[]=clash-display@500,600,700&f[]=satoshi@400,500,700&f[]=jetbrains-mono@400,500&display=swap');
+@font-face {
+  font-family: 'Manrope';
+  src: url('./assets/fonts/Manrope-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Manrope';
+  src: url('./assets/fonts/Manrope-SemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@import url('https://api.fontshare.com/v2/css?f[]=jetbrains-mono@400,500&display=swap');
 
 :root {
   color-scheme: dark;
@@ -17,18 +32,29 @@ html, body, #root {
 }
 
 body {
-  font-family: 'Satoshi', system-ui, sans-serif;
+  font-family: 'Manrope', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-.font-display { font-family: 'Clash Display', sans-serif; letter-spacing: -0.02em; }
+.font-display { font-family: 'Manrope', sans-serif; font-weight: 600; letter-spacing: -0.02em; }
 .font-mono, code, pre { font-family: 'JetBrains Mono', monospace; }
 
-.label-tech { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; letter-spacing: 0.2em; text-transform: uppercase; color: #A1A1AA; }
+.label-tech {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #A1A1AA;
+}
 
 .booked-stripe {
   background: repeating-linear-gradient(45deg, #18181B, #18181B 6px, #27272A 6px, #27272A 12px);
+}
+
+.brand-logo {
+  /* source logos are black-on-transparent; invert to white for dark UI */
+  filter: invert(1) brightness(1.08);
 }
 
 .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }

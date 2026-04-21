@@ -34,18 +34,20 @@ export default function Login() {
       <div
         className="relative hidden md:block"
         style={{
-          backgroundImage:
-            "url(https://images.unsplash.com/photo-1642723965458-112cdb37c1c2?crop=entropy&cs=srgb&fm=jpg&q=85&w=1600)",
+          backgroundImage: "url(/brand/login-bg.jpg)",
           backgroundSize: "cover",
           backgroundPosition: "center",
         }}
       >
-        <div className="absolute inset-0 bg-black/70" />
+        <div className="absolute inset-0 bg-black/55" />
         <div className="absolute inset-0 p-12 flex flex-col justify-between">
-          <div className="label-tech text-neutral-300">Studio 7 Miami · Internal</div>
+          <div>
+            <img src="/brand/logo.png" alt="Studio 7 Miami" className="brand-logo h-10 w-auto" />
+            <div className="label-tech text-neutral-300 mt-4">Internal · Miami</div>
+          </div>
           <div>
             <h1 className="font-display text-5xl lg:text-6xl leading-[1.05] text-white">
-              The house<br />calendar.
+              The Studio<br />Calendar.
             </h1>
             <p className="mt-4 text-neutral-300 max-w-sm">
               A private booking console for the founder and the team. Members only.
@@ -59,6 +61,7 @@ export default function Login() {
       <div className="flex items-center justify-center p-6 sm:p-12">
         <form onSubmit={submit} className="w-full max-w-sm space-y-6" data-testid="login-form">
           <div>
+            <img src="/brand/logo.png" alt="Studio 7 Miami" className="brand-logo h-8 w-auto md:hidden mb-6" />
             <div className="label-tech">Authenticate</div>
             <h2 className="font-display text-3xl mt-2">Sign in</h2>
             <p className="text-sm text-neutral-400 mt-2">
@@ -108,7 +111,7 @@ export default function Login() {
           </Button>
 
           <div className="label-tech pt-4 border-t border-neutral-900">
-            Studio 7 Miami · Private
+            Private · Invite-only
           </div>
         </form>
       </div>
