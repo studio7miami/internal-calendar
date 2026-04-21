@@ -6,7 +6,6 @@ import { Button } from "../components/ui/button";
 import { Navigate } from "react-router-dom";
 
 const SLIDES = [
-  "/brand/slide-1.jpg",
   "/brand/slide-2.jpg",
   "/brand/slide-3.jpg",
   "/brand/slide-4.jpg",
