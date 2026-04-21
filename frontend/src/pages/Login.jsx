@@ -58,8 +58,8 @@ export default function Login() {
             <img src="/brand/logo.png" alt="Studio 7 Miami" className="brand-logo h-10 w-auto" />
           </div>
           <div>
-            <h1 className="font-display text-5xl lg:text-6xl leading-[1.05] text-white">
-              The studio<br />calendar.
+            <h1 className="font-display text-[clamp(2rem,5vw,4.25rem)] leading-[1.05] text-white whitespace-nowrap">
+              The studio calendar.
             </h1>
             <p className="mt-4 text-neutral-300 max-w-sm">
               An internal booking system for members only.
