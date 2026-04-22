@@ -13,7 +13,7 @@ function StatusBadge({ status }) {
     denied: "border-red-900 text-red-300 bg-red-950/40",
   };
   return (
-    <span className={`label-tech px-2 py-0.5 border rounded-sm ${map[status]}`}>
+    <span className={`label-tech px-2 py-0.5 border rounded-[16px] ${map[status]}`}>
       {status}
     </span>
   );
@@ -67,7 +67,7 @@ export default function Requests() {
       </div>
 
       {items.length === 0 && (
-        <div className="border border-neutral-900 p-12 rounded-sm text-center text-neutral-500" data-testid="requests-empty">
+        <div className="border border-neutral-900 p-12 rounded-[16px] text-center text-neutral-500" data-testid="requests-empty">
           <Clock className="w-6 h-6 mx-auto mb-2 opacity-50" strokeWidth={1.5} />
           Nothing here yet.
         </div>
@@ -77,7 +77,7 @@ export default function Requests() {
         {items.map((b) => (
           <div
             key={b.id}
-            className="border border-neutral-900 bg-[#0F0F11] rounded-sm p-4"
+            className="border border-neutral-900 bg-[#0F0F11] rounded-[16px] p-4"
             data-testid={`request-card-${b.id}`}
           >
             <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -122,14 +122,14 @@ export default function Requests() {
                         onClick={() => act(b.id, "deny")}
                         data-testid={`deny-${b.id}`}
                         variant="ghost"
-                        className="border border-red-900/70 text-red-300 hover:bg-red-950/40 rounded-sm"
+                        className="border border-red-900/70 text-red-300 hover:bg-red-950/40 rounded-[16px]6px]"
                       >
                         <X className="w-4 h-4 mr-1" strokeWidth={1.5} /> Deny
                       </Button>
                       <Button
                         onClick={() => act(b.id, "approve")}
                         data-testid={`approve-${b.id}`}
-                        className="bg-white text-black hover:bg-neutral-200 rounded-sm"
+                        className="bg-white text-black hover:bg-neutral-200 rounded-[16px]"
                       >
                         <Check className="w-4 h-4 mr-1" strokeWidth={1.5} /> Approve
                       </Button>

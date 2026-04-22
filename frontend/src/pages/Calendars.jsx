@@ -69,7 +69,7 @@ export default function CalendarsAdmin() {
         <h1 className="font-display text-3xl sm:text-4xl mt-1">Calendars</h1>
       </div>
 
-      <form onSubmit={create} className="border border-neutral-900 bg-[#0F0F11] p-4 rounded-sm space-y-3" data-testid="new-calendar-form">
+      <form onSubmit={create} className="border border-neutral-900 bg-[#0F0F11] p-4 rounded-[16px] space-y-3" data-testid="new-calendar-form">
         <div className="label-tech">New calendar</div>
         <div className="grid sm:grid-cols-3 gap-3">
           <Input
@@ -94,7 +94,7 @@ export default function CalendarsAdmin() {
           />
         </div>
         {err && <div className="text-sm text-red-400">{err}</div>}
-        <Button type="submit" data-testid="new-calendar-submit" className="bg-white text-black hover:bg-neutral-200 rounded-sm">
+        <Button type="submit" data-testid="new-calendar-submit" className="bg-white text-black hover:bg-neutral-200 rounded-[16px]">
           <Plus className="w-4 h-4 mr-1" strokeWidth={1.5} /> Add calendar
         </Button>
       </form>
@@ -102,7 +102,7 @@ export default function CalendarsAdmin() {
       <div className="grid gap-3">
         {cals.map((c) =>
           editing === c.id ? (
-            <div key={c.id} className="border border-neutral-800 bg-[#0F0F11] p-4 rounded-sm space-y-3">
+            <div key={c.id} className="border border-neutral-800 bg-[#0F0F11] p-4 rounded-[16px] space-y-3">
               <div className="grid sm:grid-cols-3 gap-3">
                 <Input
                   value={c.name}
@@ -123,14 +123,14 @@ export default function CalendarsAdmin() {
                 />
               </div>
               <div className="flex gap-2">
-                <Button onClick={() => saveEdit(c)} className="bg-white text-black hover:bg-neutral-200 rounded-sm">Save</Button>
-                <Button variant="ghost" onClick={() => { setEditing(null); refresh(); }} className="border border-neutral-800 rounded-sm">Cancel</Button>
+                <Button onClick={() => saveEdit(c)} className="bg-white text-black hover:bg-neutral-200 rounded-[16px]">Save</Button>
+                <Button variant="ghost" onClick={() => { setEditing(null); refresh(); }} className="border border-neutral-800 rounded-[16px]">Cancel</Button>
               </div>
             </div>
           ) : (
             <div
               key={c.id}
-              className="border border-neutral-900 bg-[#0F0F11] p-4 rounded-sm flex items-center justify-between gap-4"
+              className="border border-neutral-900 bg-[#0F0F11] p-4 rounded-[16px] flex items-center justify-between gap-4"
               data-testid={`calendar-row-${c.id}`}
             >
               <div className="flex items-center gap-3 min-w-0">
@@ -155,7 +155,7 @@ export default function CalendarsAdmin() {
                   variant="ghost"
                   onClick={() => setEditing(c.id)}
                   data-testid={`calendar-edit-${c.id}`}
-                  className="border border-neutral-800 rounded-sm"
+                  className="border border-neutral-800 rounded-[16px]"
                 >
                   Edit
                 </Button>
@@ -163,7 +163,7 @@ export default function CalendarsAdmin() {
                   variant="ghost"
                   onClick={() => remove(c.id)}
                   data-testid={`calendar-delete-${c.id}`}
-                  className="border border-red-900/70 text-red-300 hover:bg-red-950/40 rounded-sm"
+                  className="border border-red-900/70 text-red-300 hover:bg-red-950/40 rounded-[16px]"
                 >
                   <Trash2 className="w-4 h-4" strokeWidth={1.5} />
                 </Button>

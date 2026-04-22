@@ -61,7 +61,7 @@ function BookingChip({ b, calendar, viewerIsAdmin, onClick }) {
         type="button"
         onClick={onClick}
         data-testid={`booking-chip-${b.id}`}
-        className="text-[10px] leading-tight px-1.5 py-1 w-full text-left border rounded-sm truncate text-white transition-colors hover:brightness-125"
+        className="text-[10px] leading-tight px-1.5 py-1 w-full text-left border rounded-[16px] truncate text-white transition-colors hover:brightness-125"
         style={{
           background: isPending ? rgba(color, 0.12) : rgba(color, 0.22),
           borderColor: isPending ? rgba(color, 0.4) : rgba(color, 0.7),

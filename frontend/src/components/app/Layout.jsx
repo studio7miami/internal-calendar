@@ -51,12 +51,12 @@ function NotificationBell() {
       <DropdownMenuTrigger asChild>
         <button
           data-testid="notification-bell-button"
-          className="relative p-2 border border-neutral-300 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-900 rounded-sm"
+          className="relative p-2 border border-neutral-300 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-900 rounded-[16px]"
         >
           <Bell className="w-4 h-4" strokeWidth={1.5} />
           {unread > 0 && (
             <span
-              className="absolute -top-1 -right-1 bg-black text-white dark:bg-white dark:text-black text-[10px] font-mono font-bold min-w-[16px] h-[16px] px-1 flex items-center justify-center rounded-sm"
+              className="absolute -top-1 -right-1 bg-black text-white dark:bg-white dark:text-black text-[10px] font-mono font-bold min-w-[16px] h-[16px] px-1 flex items-center justify-center rounded-[16px]"
               data-testid="notification-unread-count"
             >
               {unread}
@@ -150,7 +150,7 @@ export default function Layout() {
               end={it.end}
               data-testid={it.testid}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 text-sm rounded-sm transition-colors ${
+                `flex items-center gap-3 px-3 py-2 text-sm rounded-[16px] transition-colors ${
                   isActive
                     ? "bg-black text-white dark:bg-white dark:text-black"
                     : "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-900 hover:text-black dark:hover:text-white"
@@ -170,7 +170,7 @@ export default function Layout() {
           <button
             data-testid="logout-button"
             onClick={logout}
-            className="w-full flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white px-3 py-2 border border-neutral-300 dark:border-neutral-800 rounded-sm"
+            className="w-full flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white px-3 py-2 border border-neutral-300 dark:border-neutral-800 rounded-[16px]"
           >
             <LogOut className="w-3.5 h-3.5" strokeWidth={1.5} /> Sign out
           </button>
@@ -193,7 +193,7 @@ export default function Layout() {
           </div>
           <button
             onClick={toggleTheme}
-            className="p-2 border border-neutral-300 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-900 rounded-sm"
+            className="p-2 border border-neutral-300 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-900 rounded-[16px]"
             data-testid="theme-toggle"
           >
             {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
