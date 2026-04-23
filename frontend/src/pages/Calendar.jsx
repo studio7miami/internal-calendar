@@ -156,10 +156,10 @@ export default function CalendarPage() {
     for (let i = 0; i < 42; i++) days.push(addDays(gridStart, i));
 
     return (
-      <div className="border border-neutral-900 rounded-sm">
-        <div className="grid grid-cols-7 border-b border-neutral-900">
-          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
-            <div key={d} className="label-tech px-2 py-2 text-center border-r border-neutral-900 last:border-r-0">
+      <div className="border border-[#E8E8E8] rounded">
+        <div className="grid grid-cols-7 border-b border-[#E8E8E8]">
+          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d, idx) => (
+            <div key={d} className={`label-tech px-2 py-2 text-center border-[#E8E8E8] ${idx !== 6 ? "border-r" : ""}`}>
               {d}
             </div>
           ))}
@@ -172,9 +172,9 @@ export default function CalendarPage() {
             return (
               <div
                 key={i}
-                className={`min-h-[92px] border-r border-b border-neutral-900 last:border-r-0 p-1 flex flex-col gap-1 ${
-                  inMonth ? "bg-transparent" : "bg-neutral-950/50 text-neutral-600"
-                }`}
+                className={`min-h-[92px] border-b border-[#E8E8E8] p-1 flex flex-col gap-1 ${
+                  (i % 7) !== 6 ? "border-r" : ""
+                } ${inMonth ? "" : "text-neutral-600"}`}
                 data-testid={`month-cell-${key}`}
               >
                 <button
@@ -213,13 +213,13 @@ export default function CalendarPage() {
   const renderHourGrid = (dayList) => {
     const hours = Array.from({ length: 14 }, (_, i) => i + 7); // 7am..8pm
     return (
-      <div className="border border-neutral-900 rounded-sm overflow-hidden">
+      <div className="border border-[#E8E8E8] rounded overflow-hidden">
         <div className="grid" style={{ gridTemplateColumns: `60px repeat(${dayList.length}, minmax(0, 1fr))` }}>
-          <div className="label-tech p-2 border-r border-b border-neutral-900"></div>
+          <div className="label-tech p-2 border-r border-b border-[#E8E8E8]"></div>
           {dayList.map((d) => (
             <div
               key={ymd(d)}
-              className="p-2 border-r border-b border-neutral-900 last:border-r-0 text-center"
+              className="p-2 border-r border-b border-[#E8E8E8] last:border-r-0 text-center"
             >
               <div className="label-tech">
                 {d.toLocaleDateString(undefined, { weekday: "short" })}
@@ -231,7 +231,7 @@ export default function CalendarPage() {
         <div className="grid" style={{ gridTemplateColumns: `60px repeat(${dayList.length}, minmax(0, 1fr))` }}>
           {hours.map((h) => (
             <React.Fragment key={h}>
-              <div className="label-tech p-2 border-r border-b border-neutral-900 text-right font-mono">
+              <div className="label-tech p-2 border-r border-b border-[#E8E8E8] text-right font-mono">
                 {fmtTimeShort(`${String(h).padStart(2, "0")}:00`)}
               </div>
               {dayList.map((d) => {
@@ -249,7 +249,7 @@ export default function CalendarPage() {
                     type="button"
                     key={`${key}-${h}`}
                     onClick={() => openForm(key, slotStart, slotEnd)}
-                    className="relative min-h-[56px] border-r border-b border-neutral-900 last:border-r-0 hover:bg-neutral-900/40 p-1 flex flex-col gap-1 text-left"
+                    className="relative min-h-[56px] border-r border-b border-[#E8E8E8] last:border-r-0 hover:bg-neutral-900/40 p-1 flex flex-col gap-1 text-left"
                     data-testid={`slot-${key}-${h}`}
                   >
                     {inSlot.map((b) => (
