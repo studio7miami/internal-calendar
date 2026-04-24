@@ -43,9 +43,10 @@ function rgba(hex, alpha) {
 
 
 function chipLabel(b, calendar) {
-  const isStudio7 = (calendar?.name || "").trim().toLowerCase() === "studio 7 miami";
   const who = b.member_name ? b.member_name.split(" ")[0] : "Member";
-  if (isStudio7) return `${who} @ Studio 7 Miami`;
+  const n = (calendar?.name || "").trim().toLowerCase();
+  if (n === "studio 7 miami") return `${who} @ Studio 7 Miami`;
+  if (n === "studio 7 photobooth") return `${who} @ Studio 7 Photobooth`;
   return b.notes?.trim() || calendar?.name || "Booking";
 }
 
@@ -155,7 +156,6 @@ export default function CalendarPage() {
     setFormOpen(true);
   };
 
-
   // ---- Month grid ----
   const renderMonth = () => {
     const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
@@ -165,72 +165,112 @@ export default function CalendarPage() {
     const todayKey = ymd(new Date());
 
     return (
-      <div className="space-y-2">
-        <div className="grid grid-cols-7">
-          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d, idx) => (
-            <div
-              key={d}
-              className="px-3 py-2 text-center text-[11px] tracking-[0.22em] uppercase text-slate-600 dark:text-zinc-500"
-            >
-              {d}
-            </div>
-          ))}
-        </div>
+      <div className="w-full min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
+        <div className="w-full min-w-0 overflow-hidden rounded-[7px] border soft-divider bg-white/[0.15] dark:bg-white/[0.02]">
+          <div className="grid min-w-0 grid-cols-7 border-b soft-divider">
+            {[
+              { short: "Su", day: "Sun" },
+              { short: "Mo", day: "Mon" },
+              { short: "Tu", day: "Tue" },
+              { short: "We", day: "Wed" },
+              { short: "Th", day: "Thu" },
+              { short: "Fr", day: "Fri" },
+              { short: "Sa", day: "Sat" },
+            ].map(({ short, day }) => (
+              <div
+                key={day}
+                className="px-0.5 py-1.5 text-center text-[9px] font-medium uppercase leading-tight tracking-tight text-slate-600 dark:text-zinc-500 sm:px-1 sm:py-2 sm:text-[11px] sm:tracking-[0.22em] sm:font-normal md:px-2"
+              >
+                <span className="sm:hidden" title={day}>
+                  {short}
+                </span>
+                <span className="hidden sm:inline">{day}</span>
+              </div>
+            ))}
+          </div>
 
-        <div className="grid grid-cols-7 auto-rows-fr gap-1">
-          {days.map((d, i) => {
+          <div className="grid min-h-0 min-w-0 auto-rows-fr grid-cols-7 gap-0.5 p-0.5 sm:gap-1 sm:p-1">
+            {days.map((d, i) => {
             const key = ymd(d);
             const inMonth = sameMonth(d, cursor);
             const todaysBookings = visibleBookings.filter((b) => b.date === key);
-            const isSelected = key === selectedYmd;
+            const isCellSelected = inMonth && key === selectedYmd;
             const isToday = key === todayKey;
+            // Thin circle on “today” only when another (in-month) day is selected
+            const showTodayRing = inMonth && isToday && selectedYmd !== todayKey;
+            const tEase = "transition-[background-color,color,box-shadow] duration-200 ease-out";
+            // In-month: same #222 hover + select for all days. Out-of-month: static, no hover/click.
+            const cellShell = !inMonth
+              ? `border border-white/5 bg-white/[0.04] text-slate-500 shadow-none backdrop-blur-sm dark:border-white/[0.04] dark:bg-white/[0.02] dark:text-zinc-500 ${tEase} pointer-events-none select-none`
+              : isCellSelected
+              ? `group bg-[#222222] text-zinc-100 ${tEase} motion-reduce:transition-none`
+              : `group glass-tile text-slate-900 ${tEase} motion-reduce:transition-none hover:bg-[#222222] hover:text-zinc-100 dark:text-zinc-300 dark:hover:bg-[#222222] dark:hover:text-zinc-100`;
             return (
               <div
                 key={i}
-                className={`glass-tile group min-h-[96px] rounded-[7px] p-2.5 flex flex-col gap-2 ${
-                  inMonth ? "text-slate-900 dark:text-zinc-300" : "text-slate-400 dark:text-zinc-600"
-                }`}
                 data-testid={`month-cell-${key}`}
+                className={`relative flex h-full min-h-[4.5rem] min-w-0 max-w-full flex-col rounded-[3px] p-1.5 sm:min-h-[5.5rem] sm:rounded-[5px] sm:p-2 md:min-h-[6rem] md:p-2.5 ${cellShell}`}
               >
-                <button
-                  type="button"
-                  onClick={() => openForm(key)}
-                  className="relative flex items-center justify-between text-[12px] leading-none"
-                >
-                  <span
-                    className={`h-8 w-8 rounded-full grid place-items-center transition-colors ${
-                      isSelected
-                        ? "bg-slate-900 text-white dark:bg-zinc-200 dark:text-zinc-900"
-                        : isToday
-                        ? "bg-slate-900/10 text-slate-900 dark:bg-white/[0.08] dark:text-zinc-200"
-                        : "text-current"
-                    } ${inMonth ? "" : "opacity-70"}`}
-                  >
-                    {d.getDate()}
-                  </span>
-                  <span className="opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Plus className="w-3.5 h-3.5 text-slate-400 hover:text-slate-900 dark:text-zinc-500 dark:hover:text-zinc-200" strokeWidth={1.5} />
-                  </span>
-                </button>
-                <div className="space-y-1 overflow-hidden">
-                  {todaysBookings.slice(0, 3).map((b) => (
-                    <BookingChip
-                      key={b.id}
-                      b={b}
-                      calendar={calendarMap[b.calendar_id]}
-                      viewerIsAdmin={isAdmin}
-                      onClick={() => {}}
-                    />
-                  ))}
-                  {todaysBookings.length > 3 && (
-                    <div className="text-[10px] tracking-[0.18em] uppercase text-slate-500 dark:text-zinc-600">
-                      +{todaysBookings.length - 3} more
+                {inMonth && (
+                  <button
+                    type="button"
+                    className="absolute top-0 right-0 bottom-0 left-0 z-0 min-h-0 w-full min-w-0 max-h-full max-w-full cursor-pointer rounded-[3px] border-0 bg-transparent p-0 sm:rounded-[5px] touch-manipulation focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-500/50 dark:focus-visible:ring-zinc-500/50"
+                    aria-label={d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+                    onClick={() => openForm(key)}
+                  />
+                )}
+                <div className="pointer-events-none relative z-[1] flex h-full min-h-0 min-w-0 flex-1 flex-col gap-1 sm:gap-2">
+                  <div className="min-w-0 shrink-0">
+                    <div
+                      className={`flex w-full min-h-[1.5rem] items-center text-left text-[11px] leading-none min-[380px]:text-xs sm:min-h-0 sm:text-[12px] ${
+                        inMonth ? "justify-start" : "select-none"
+                      }`}
+                    >
+                      <span
+                        className={`w-fit min-w-0 text-left tabular-nums align-middle transition-all duration-200 ease-out motion-reduce:transition-none ${
+                          showTodayRing
+                            ? "inline-flex h-6 w-6 max-w-6 max-h-6 shrink-0 items-center justify-center rounded-full sm:h-7 sm:w-7 sm:max-h-7 sm:max-w-7 [box-shadow:inset_0_0_0_0.5px_#222222] group-hover:[box-shadow:none] dark:[box-shadow:inset_0_0_0_0.5px_#a1a1aa] dark:group-hover:[box-shadow:none] text-slate-900 group-hover:text-zinc-100 dark:text-zinc-200 dark:group-hover:text-zinc-100"
+                            : inMonth
+                            ? isCellSelected
+                              ? "inline-block max-w-full text-zinc-100"
+                              : "inline-block max-w-full text-current group-hover:text-zinc-100"
+                            : "inline-block max-w-full text-slate-500 dark:text-zinc-500"
+                        }`}
+                      >
+                        {d.getDate()}
+                      </span>
                     </div>
-                  )}
+                  </div>
+                  <div className="pointer-events-none min-h-0 min-w-0 flex-1 space-y-0.5 overflow-hidden sm:space-y-1">
+                    {todaysBookings.slice(0, 3).map((b) => (
+                      <div key={b.id} className="pointer-events-auto w-full min-w-0">
+                        <BookingChip
+                          b={b}
+                          calendar={calendarMap[b.calendar_id]}
+                          viewerIsAdmin={isAdmin}
+                          onClick={() => {}}
+                        />
+                      </div>
+                    ))}
+                    {todaysBookings.length > 3 && (
+                      <div
+                        className={`text-[9px] tracking-[0.12em] uppercase min-[400px]:text-[10px] min-[400px]:tracking-[0.18em] ${
+                          inMonth
+                            ? isCellSelected
+                              ? "text-zinc-500"
+                              : "text-slate-500 transition-colors duration-200 ease-out group-hover:text-zinc-500 dark:text-zinc-600 dark:group-hover:text-zinc-500"
+                            : "text-slate-500/80 dark:text-zinc-600"
+                        }`}
+                      >
+                        +{todaysBookings.length - 3} more
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             );
           })}
+          </div>
         </div>
       </div>
     );
@@ -446,11 +486,15 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {view === "month" && renderMonth()}
+      {view === "month" && (
+        <div className="w-full min-w-0 max-w-full overflow-x-auto sm:overflow-visible">
+          {renderMonth()}
+        </div>
+      )}
       {view === "week" && (
         <div className="overflow-x-auto scrollbar-thin">{renderWeek()}</div>
       )}
-      {view === "day" && renderDay()}
+      {view === "day" && <div className="w-full min-w-0 overflow-x-auto sm:overflow-visible">{renderDay()}</div>}
 
       <BookingForm
         open={formOpen}

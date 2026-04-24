@@ -68,26 +68,56 @@ class TestCalendars:
     def test_list_has_seeds(self, admin_headers):
         r = requests.get(f"{API}/calendars", headers=admin_headers)
         assert r.status_code == 200
-        names = [c["name"] for c in r.json()]
-        assert "Photobooth" in names and "Studio 7 Miami" in names
+        cals = r.json()
+        names = [c["name"] for c in cals]
+        assert "Studio 7 Photobooth" in names and "Studio 7 Miami" in names
+        assert all(c.get("is_fixed") is True for c in cals)
+        assert len(cals) == 2
 
     def test_member_cannot_create(self, member):
         r = requests.post(f"{API}/calendars", json={"name": "X", "color": "#fff"}, headers=member["headers"])
         assert r.status_code == 403
 
-    def test_admin_crud(self, admin_headers):
-        r = requests.post(f"{API}/calendars", json={"name": f"TEST_{uuid.uuid4().hex[:6]}", "color": "#FF0000"}, headers=admin_headers)
-        assert r.status_code == 200
-        cid = r.json()["id"]
-        # patch
-        p = requests.patch(f"{API}/calendars/{cid}", json={"name": "TEST_upd", "color": "#00FF00", "is_active": False}, headers=admin_headers)
-        assert p.status_code == 200 and p.json()["color"] == "#00FF00"
-        # verify
-        g = requests.get(f"{API}/calendars", headers=admin_headers).json()
-        assert any(c["id"] == cid and c["name"] == "TEST_upd" for c in g)
-        # delete
-        d = requests.delete(f"{API}/calendars/{cid}", headers=admin_headers)
-        assert d.status_code == 200
+    def test_admin_cannot_create_extra(self, admin_headers):
+        r = requests.post(
+            f"{API}/calendars",
+            json={"name": f"TEST_{uuid.uuid4().hex[:6]}", "color": "#FF0000", "is_active": True},
+            headers=admin_headers,
+        )
+        assert r.status_code == 400
+
+    def test_admin_can_patch_color(self, admin_headers):
+        cals = requests.get(f"{API}/calendars", headers=admin_headers).json()
+        miami = next(c for c in cals if c["name"] == "Studio 7 Miami")
+        orig_color = miami["color"]
+        p = requests.patch(
+            f"{API}/calendars/{miami['id']}",
+            json={
+                "name": miami["name"],
+                "color": "#33CCFF",
+                "google_calendar_id": miami.get("google_calendar_id") or "",
+                "is_active": True,
+            },
+            headers=admin_headers,
+        )
+        assert p.status_code == 200
+        assert p.json()["color"] == "#33CCFF" and p.json().get("is_fixed") is True
+        requests.patch(
+            f"{API}/calendars/{miami['id']}",
+            json={
+                "name": miami["name"],
+                "color": orig_color,
+                "google_calendar_id": miami.get("google_calendar_id") or "",
+                "is_active": True,
+            },
+            headers=admin_headers,
+        )
+
+    def test_cannot_delete_fixed(self, admin_headers):
+        cals = requests.get(f"{API}/calendars", headers=admin_headers).json()
+        miami = next(c for c in cals if c["name"] == "Studio 7 Miami")
+        d = requests.delete(f"{API}/calendars/{miami['id']}", headers=admin_headers)
+        assert d.status_code == 400
 
 
 # ----- Invites & RBAC -----

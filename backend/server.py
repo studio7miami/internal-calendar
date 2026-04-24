@@ -32,6 +32,54 @@ FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 app = FastAPI(title="Studio 7 Miami Calendar API")
 api = APIRouter(prefix="/api")
 
+# Only these two production calendars; extras are deactivated on startup.
+CANONICAL_CALENDAR_NAMES = frozenset({"Studio 7 Miami", "Studio 7 Photobooth"})
+DEFAULT_CALENDARS = [
+    {"name": "Studio 7 Miami", "color": "#38BDF8"},
+    {"name": "Studio 7 Photobooth", "color": "#A78BFA"},
+]
+
+
+def _calendar_enriched(row: dict) -> dict:
+    if not row:
+        return row
+    r = {**row}
+    r["is_fixed"] = r.get("name") in CANONICAL_CALENDAR_NAMES
+    return r
+
+
+def normalize_canonical_calendars() -> None:
+    """Ensure exactly two active calendars: rename legacy Photobooth, seed missing, deactivate others."""
+    all_res = supabase.table("calendars").select("*").execute()
+    rows = all_res.data or []
+    by_name = {r["name"]: r for r in rows}
+
+    if "Photobooth" in by_name and "Studio 7 Photobooth" not in by_name:
+        pid = by_name["Photobooth"]["id"]
+        supabase.table("calendars").update({"name": "Studio 7 Photobooth"}).eq("id", pid).execute()
+    elif "Photobooth" in by_name and "Studio 7 Photobooth" in by_name:
+        supabase.table("calendars").update({"is_active": False}).eq("id", by_name["Photobooth"]["id"]).execute()
+
+    all_res = supabase.table("calendars").select("*").execute()
+    for r in all_res.data or []:
+        n = r.get("name", "")
+        if n not in CANONICAL_CALENDAR_NAMES:
+            supabase.table("calendars").update({"is_active": False}).eq("id", r["id"]).execute()
+        else:
+            supabase.table("calendars").update({"is_active": True}).eq("id", r["id"]).execute()
+
+    for cal in DEFAULT_CALENDARS:
+        existing = supabase.table("calendars").select("id").eq("name", cal["name"]).execute()
+        if not existing.data:
+            supabase.table("calendars").insert({
+                "id": str(uuid.uuid4()),
+                "name": cal["name"],
+                "color": cal["color"],
+                "google_calendar_id": "",
+                "is_active": True,
+                "created_at": now_iso(),
+            }).execute()
+
 
 # ---------- Helpers ----------
 def hash_pw(p: str) -> str:
@@ -163,22 +211,7 @@ async def startup():
             supabase.table("users").update({"password_hash": hash_pw(admin_password)}).eq("email", admin_email).execute()
             logger.info(f"Admin password updated for {admin_email}")
 
-    # Seed default calendars
-    defaults = [
-        {"name": "Photobooth", "color": "#A78BFA"},
-        {"name": "Studio 7 Miami", "color": "#38BDF8"},
-    ]
-    for cal in defaults:
-        existing_cal = supabase.table("calendars").select("id").eq("name", cal["name"]).execute()
-        if not existing_cal.data:
-            supabase.table("calendars").insert({
-                "id": str(uuid.uuid4()),
-                "name": cal["name"],
-                "color": cal["color"],
-                "google_calendar_id": "",
-                "is_active": True,
-                "created_at": now_iso(),
-            }).execute()
+    normalize_canonical_calendars()
 
 
 # ---------- Auth ----------
@@ -312,36 +345,46 @@ async def set_user_disabled(user_id: str, data: DisableIn, admin: dict = Depends
 # ---------- Calendars ----------
 @api.get("/calendars")
 async def list_calendars(user: dict = Depends(get_current_user)):
-    res = supabase.table("calendars").select("*").order("created_at").execute()
-    return res.data or []
+    res = supabase.table("calendars").select("*").eq("is_active", True).order("created_at").execute()
+    return [_calendar_enriched(c) for c in (res.data or [])]
 
 
 @api.post("/calendars")
-async def create_calendar(data: CalendarIn, admin: dict = Depends(require_admin)):
-    doc = {
-        "id": str(uuid.uuid4()),
-        "name": data.name,
-        "color": data.color,
-        "google_calendar_id": data.google_calendar_id or "",
-        "is_active": data.is_active,
-        "created_by": admin["id"],
-        "created_at": now_iso(),
-    }
-    supabase.table("calendars").insert(doc).execute()
-    return doc
+async def create_calendar(_data: CalendarIn, _admin: dict = Depends(require_admin)):
+    raise HTTPException(
+        status_code=400,
+        detail="This app uses only Studio 7 Miami and Studio 7 Photobooth. New calendars are not available.",
+    )
 
 
 @api.patch("/calendars/{cal_id}")
 async def update_calendar(cal_id: str, data: CalendarIn, admin: dict = Depends(require_admin)):
+    pre = supabase.table("calendars").select("name").eq("id", cal_id).execute()
+    if not pre.data:
+        raise HTTPException(status_code=404, detail="Calendar not found")
+    name = pre.data[0].get("name", "")
+    if name in CANONICAL_CALENDAR_NAMES:
+        if data.name != name:
+            raise HTTPException(
+                status_code=400,
+                detail="The name of a fixed calendar cannot be changed.",
+            )
+        if not data.is_active:
+            raise HTTPException(status_code=400, detail="Fixed calendars must stay active.")
     upd = {"name": data.name, "color": data.color, "google_calendar_id": data.google_calendar_id or "", "is_active": data.is_active}
     res = supabase.table("calendars").update(upd).eq("id", cal_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Calendar not found")
-    return res.data[0]
+    return _calendar_enriched(res.data[0])
 
 
 @api.delete("/calendars/{cal_id}")
 async def delete_calendar(cal_id: str, admin: dict = Depends(require_admin)):
+    pre = supabase.table("calendars").select("name").eq("id", cal_id).execute()
+    if not pre.data:
+        raise HTTPException(status_code=404, detail="Calendar not found")
+    if pre.data[0].get("name") in CANONICAL_CALENDAR_NAMES:
+        raise HTTPException(status_code=400, detail="Cannot delete a fixed calendar.")
     res = supabase.table("calendars").delete().eq("id", cal_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Calendar not found")
