@@ -52,6 +52,16 @@ body {
   background: repeating-linear-gradient(45deg, #18181B, #18181B 6px, #27272A 6px, #27272A 12px);
 }
 
+.booked-stripe-light {
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(15, 23, 42, 0.06),
+    rgba(15, 23, 42, 0.06) 6px,
+    rgba(15, 23, 42, 0.10) 6px,
+    rgba(15, 23, 42, 0.10) 12px
+  );
+}
+
 @keyframes slide-in-right {
   from { transform: translateX(100%); }
   to { transform: translateX(0); }

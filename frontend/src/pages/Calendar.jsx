@@ -62,10 +62,10 @@ function BookingChip({ b, calendar, viewerIsAdmin, onClick }) {
         type="button"
         onClick={onClick}
         data-testid={`booking-chip-${b.id}`}
-        className="text-[10px] leading-tight px-1.5 py-1 w-full text-left border rounded-sm truncate text-white transition-colors hover:brightness-125"
+        className="text-[10px] leading-tight px-2 py-1.5 w-full text-left border rounded-md truncate text-slate-900 transition-colors hover:brightness-105"
         style={{
-          background: isPending ? rgba(color, 0.12) : rgba(color, 0.22),
-          borderColor: isPending ? rgba(color, 0.4) : rgba(color, 0.7),
+          background: isPending ? rgba(color, 0.14) : rgba(color, 0.20),
+          borderColor: isPending ? rgba(color, 0.28) : rgba(color, 0.38),
           borderLeft: `3px solid ${color}`,
           opacity: isPending ? 0.9 : 1,
         }}
@@ -81,8 +81,12 @@ function BookingChip({ b, calendar, viewerIsAdmin, onClick }) {
       type="button"
       onClick={onClick}
       data-testid={`booking-chip-${b.id}`}
-      className="text-[10px] leading-tight px-1.5 py-1 w-full text-left border border-neutral-800 text-neutral-400 rounded-sm truncate booked-stripe"
-      style={{ borderLeftColor: calendar?.color || "#333", borderLeftWidth: 3 }}
+      className="text-[10px] leading-tight px-2 py-1.5 w-full text-left border rounded-md truncate booked-stripe-light text-slate-600"
+      style={{
+        borderColor: "rgba(15, 23, 42, 0.16)",
+        borderLeftColor: calendar?.color || "#333",
+        borderLeftWidth: 3,
+      }}
     >
       Booked
     </button>
@@ -94,6 +98,7 @@ export default function CalendarPage() {
   const { user } = useAuth();
   const [view, setView] = useState("month");
   const [cursor, setCursor] = useState(new Date());
+  const [selectedYmd, setSelectedYmd] = useState(() => ymd(new Date()));
   const [calendars, setCalendars] = useState([]);
   const [enabledCalIds, setEnabledCalIds] = useState(new Set());
   const [bookings, setBookings] = useState([]);
@@ -145,6 +150,7 @@ export default function CalendarPage() {
   };
 
   const openForm = (date, start = "10:00", end = "11:00") => {
+    setSelectedYmd(date);
     setFormInit({ date, start, end });
     setFormOpen(true);
   };
@@ -156,14 +162,17 @@ export default function CalendarPage() {
     const gridStart = startOfWeek(first);
     const days = [];
     for (let i = 0; i < 42; i++) days.push(addDays(gridStart, i));
+    const todayKey = ymd(new Date());
 
     return (
-      <div className="border border-[#E8E8E8]" style={{ borderRadius: "7px", overflow: "hidden" }}>
-        <div className="grid grid-cols-7 border-b border-[#E8E8E8]">
+      <div className="glass-card rounded-[28px] overflow-hidden">
+        <div className="grid grid-cols-7 border-b soft-divider">
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d, idx) => (
             <div
               key={d}
-              className={`label-tech px-2 py-2 text-center border-[#E8E8E8] ${idx !== 6 ? "border-r" : ""}`}
+              className={`px-3 py-3 text-center text-[11px] tracking-[0.22em] uppercase font-mono text-slate-500 soft-divider ${
+                idx !== 6 ? "border-r" : ""
+              }`}
             >
               {d}
             </div>
@@ -174,23 +183,35 @@ export default function CalendarPage() {
             const key = ymd(d);
             const inMonth = sameMonth(d, cursor);
             const todaysBookings = visibleBookings.filter((b) => b.date === key);
+            const isSelected = key === selectedYmd;
+            const isToday = key === todayKey;
             return (
               <div
                 key={i}
-                className={`min-h-[92px] border-b border-[#E8E8E8] p-1 flex flex-col gap-1 ${
-                  (i % 7) !== 6 ? "border-r" : ""
-                } ${inMonth ? "" : "text-neutral-600"}`}
+                className={`group min-h-[96px] border-b soft-divider p-2.5 flex flex-col gap-2 ${
+                  (i % 7) !== 6 ? "border-r soft-divider" : ""
+                } ${inMonth ? "text-slate-900" : "text-slate-400"}`}
                 data-testid={`month-cell-${key}`}
               >
                 <button
                   type="button"
                   onClick={() => openForm(key)}
-                  className="flex items-center justify-between text-[11px] hover:text-white"
+                  className="relative flex items-center justify-center text-[12px] leading-none"
                 >
-                  <span className={`font-mono ${inMonth ? "" : "opacity-50"}`}>
+                  <span
+                    className={`h-8 w-8 rounded-full grid place-items-center font-mono transition-colors ${
+                      isSelected
+                        ? "bg-slate-900 text-white"
+                        : isToday
+                        ? "bg-slate-900/10 text-slate-900"
+                        : "text-current"
+                    } ${inMonth ? "" : "opacity-70"}`}
+                  >
                     {d.getDate()}
                   </span>
-                  <Plus className="w-3 h-3 opacity-40 hover:opacity-100" strokeWidth={1.5} />
+                  <span className="absolute right-0 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Plus className="w-3.5 h-3.5 text-slate-500 hover:text-slate-900" strokeWidth={1.5} />
+                  </span>
                 </button>
                 <div className="space-y-1 overflow-hidden">
                   {todaysBookings.slice(0, 3).map((b) => (
@@ -203,7 +224,9 @@ export default function CalendarPage() {
                     />
                   ))}
                   {todaysBookings.length > 3 && (
-                    <div className="label-tech text-[9px]">+{todaysBookings.length - 3} more</div>
+                    <div className="text-[10px] font-mono tracking-[0.18em] uppercase text-slate-500">
+                      +{todaysBookings.length - 3} more
+                    </div>
                   )}
                 </div>
               </div>
@@ -219,21 +242,21 @@ export default function CalendarPage() {
   const renderHourGrid = (dayList) => {
     const hours = Array.from({ length: 14 }, (_, i) => i + 7);
     return (
-      <div className="border border-[#E8E8E8]" style={{ borderRadius: "25px", overflow: "hidden" }}>
+      <div className="glass-card rounded-[28px] overflow-hidden">
         <div
           className="grid"
           style={{ gridTemplateColumns: `60px repeat(${dayList.length}, minmax(0, 1fr))` }}
         >
-          <div className="label-tech p-2 border-r border-b border-[#E8E8E8]"></div>
+          <div className="p-3 border-r border-b soft-divider" />
           {dayList.map((d) => (
             <div
               key={ymd(d)}
-              className="p-2 border-r border-b border-[#E8E8E8] last:border-r-0 text-center"
+              className="p-3 border-r border-b soft-divider last:border-r-0 text-center"
             >
-              <div className="label-tech">
+              <div className="text-[11px] tracking-[0.22em] uppercase font-mono text-slate-500">
                 {d.toLocaleDateString(undefined, { weekday: "short" })}
               </div>
-              <div className="font-display text-lg">{d.getDate()}</div>
+              <div className="font-display text-[18px] text-slate-900 mt-0.5">{d.getDate()}</div>
             </div>
           ))}
         </div>
@@ -243,7 +266,7 @@ export default function CalendarPage() {
         >
           {hours.map((h) => (
             <React.Fragment key={h}>
-              <div className="label-tech p-2 border-r border-b border-[#E8E8E8] text-right font-mono">
+              <div className="p-2 border-r border-b soft-divider text-right font-mono text-[11px] text-slate-500">
                 {fmtTimeShort(`${String(h).padStart(2, "0")}:00`)}
               </div>
               {dayList.map((d) => {
@@ -261,7 +284,7 @@ export default function CalendarPage() {
                     type="button"
                     key={`${key}-${h}`}
                     onClick={() => openForm(key, slotStart, slotEnd)}
-                    className="relative min-h-[56px] border-r border-b border-[#E8E8E8] last:border-r-0 hover:bg-neutral-900/40 p-1 flex flex-col gap-1 text-left"
+                    className="relative min-h-[56px] border-r border-b soft-divider last:border-r-0 hover:bg-black/5 p-2 flex flex-col gap-1 text-left"
                     data-testid={`slot-${key}-${h}`}
                   >
                     {inSlot.map((b) => (
@@ -322,7 +345,7 @@ export default function CalendarPage() {
             variant="ghost"
             onClick={() => setCursor(new Date())}
             data-testid="today-button"
-            className="bg-white text-black hover:bg-neutral-200 rounded-sm h-9"
+            className="bg-white/80 backdrop-blur-md text-black hover:bg-white rounded-[14px] h-9 border border-white/30"
             style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.10)" }}
           >
             Today
@@ -332,7 +355,7 @@ export default function CalendarPage() {
           <button
             onClick={() => navigate(-1)}
             data-testid="nav-prev-button"
-            className="p-2 bg-white text-black hover:bg-neutral-200 rounded-sm h-9 flex items-center justify-center"
+            className="p-2 bg-white/80 backdrop-blur-md text-black hover:bg-white rounded-[14px] h-9 flex items-center justify-center border border-white/30"
             style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.10)" }}
           >
             <ChevronLeft className="w-4 h-4" strokeWidth={1.5} />
@@ -342,7 +365,7 @@ export default function CalendarPage() {
           <button
             onClick={() => navigate(1)}
             data-testid="nav-next-button"
-            className="p-2 bg-white text-black hover:bg-neutral-200 rounded-sm h-9 flex items-center justify-center"
+            className="p-2 bg-white/80 backdrop-blur-md text-black hover:bg-white rounded-[14px] h-9 flex items-center justify-center border border-white/30"
             style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.10)" }}
           >
             <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
@@ -352,7 +375,7 @@ export default function CalendarPage() {
           <Button
             onClick={() => openForm(ymd(cursor))}
             data-testid="new-booking-button"
-            className="bg-white text-black hover:bg-neutral-200 rounded-sm h-9"
+            className="bg-white/80 backdrop-blur-md text-black hover:bg-white rounded-[14px] h-9 border border-white/30"
           >
             <Plus className="w-4 h-4 mr-1" strokeWidth={1.5} /> New
           </Button>
