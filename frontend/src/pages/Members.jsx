@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { api, formatApiError } from "../lib/api";
+import { useAuth } from "../context/AuthContext";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Copy, Mail, Ban, CircleCheck } from "lucide-react";
@@ -7,11 +8,16 @@ import { pageTitleClass, pageSubtextClass, pageCardClass, pageInputClass, pageBt
 import { cn } from "@/lib/utils";
 
 export default function Members() {
+  const { user: me } = useAuth();
   const [users, setUsers] = useState([]);
   const [invites, setInvites] = useState([]);
   const [email, setEmail] = useState("");
   const [err, setErr] = useState("");
   const [latestLink, setLatestLink] = useState("");
+  const [permCfg, setPermCfg] = useState(null);
+  const [permErr, setPermErr] = useState("");
+  const [permDirty, setPermDirty] = useState(null);
+  const [savingPerms, setSavingPerms] = useState(false);
 
   const refresh = async () => {
     const [u, i] = await Promise.all([api.get("/users"), api.get("/invites")]);
@@ -19,9 +25,68 @@ export default function Members() {
     setInvites(i.data);
   };
 
+  const loadPerms = async () => {
+    setPermErr("");
+    try {
+      const { data } = await api.get("/app-config/permissions");
+      setPermCfg(data);
+      setPermDirty(
+        data?.effective
+          ? {
+              member: { ...data.effective.member },
+              manager: { ...data.effective.manager },
+            }
+          : null
+      );
+    } catch (e) {
+      setPermErr(formatApiError(e?.response?.data?.detail) || "Could not load permissions. Create `app_config` in Supabase (see supabase/001_app_config.sql).");
+    }
+  };
+
   useEffect(() => {
     refresh();
   }, []);
+
+  useEffect(() => {
+    loadPerms();
+  }, []);
+
+  const setRole = async (u, role) => {
+    if (u.id === me?.id) return;
+    try {
+      await api.patch(`/users/${u.id}/role`, { role });
+      await refresh();
+    } catch (e) {
+      alert(formatApiError(e?.response?.data?.detail) || "Could not change role");
+    }
+  };
+
+  const savePerms = async () => {
+    if (!permDirty) return;
+    setSavingPerms(true);
+    setPermErr("");
+    try {
+      await api.patch("/app-config/permissions", {
+        member: permDirty.member,
+        manager: permDirty.manager,
+      });
+      await loadPerms();
+    } catch (e) {
+      setPermErr(formatApiError(e?.response?.data?.detail) || "Save failed");
+    } finally {
+      setSavingPerms(false);
+    }
+  };
+
+  const flipPerm = (row, col, next) => {
+    setPermDirty((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        [col]: { ...prev[col], [row]: next },
+      };
+    });
+  };
 
   const invite = async (e) => {
     e.preventDefault();
@@ -124,18 +189,31 @@ export default function Members() {
                   </div>
                   <div className="label-tech truncate text-slate-500 dark:text-neutral-400">{u.email}</div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={cn(
-                      "label-tech rounded-[7px] border px-2 py-0.5",
-                      u.role === "admin"
-                        ? "border-slate-300 text-slate-900 dark:border-white dark:text-white"
-                        : "border-gray-200/80 text-slate-500 dark:border-white/20 dark:text-neutral-400"
-                    )}
-                  >
-                    {u.role}
-                  </span>
-                  {u.role === "member" && (
+                <div className="flex items-center gap-2 min-w-0 max-w-full flex-wrap sm:flex-nowrap sm:justify-end">
+                  {u.id !== me?.id ? (
+                    <select
+                      value={u.role}
+                      onChange={(e) => setRole(u, e.target.value)}
+                      className="label-tech max-w-[140px] rounded-[7px] border border-gray-200/80 bg-white px-2 py-1.5 text-slate-900 dark:border-white/20 dark:bg-zinc-900 dark:text-zinc-200"
+                      data-testid={`user-role-select-${u.id}`}
+                    >
+                      <option value="member">member</option>
+                      <option value="manager">manager</option>
+                      <option value="admin">admin</option>
+                    </select>
+                  ) : (
+                    <span
+                      className={cn(
+                        "label-tech rounded-[7px] border px-2 py-0.5",
+                        u.role === "admin"
+                          ? "border-slate-300 text-slate-900 dark:border-white dark:text-white"
+                          : "border-gray-200/80 text-slate-500 dark:border-white/20 dark:text-neutral-400"
+                      )}
+                    >
+                      {u.role} (you)
+                    </span>
+                  )}
+                  {u.role !== "admin" && (
                     <button
                       type="button"
                       onClick={() => toggleDisabled(u)}
@@ -160,6 +238,62 @@ export default function Members() {
             ))}
           </div>
         </div>
+
+        {permCfg?.definitions && permDirty && (
+          <div className="space-y-3" data-testid="role-permissions-section">
+            <div>
+              <div className="label-tech mb-2">Role permissions</div>
+              <p className={cn(pageSubtextClass, "mb-3")}>
+                Admins always have full access. The matrix below sets capabilities for the member and manager account types.
+              </p>
+            </div>
+            <div className={cn("overflow-x-auto p-2", pageCardClass)}>
+              <table className="w-full min-w-[360px] text-left text-sm text-slate-800 dark:text-zinc-200">
+                <thead>
+                  <tr className="label-tech border-b border-slate-200/80 text-slate-500 dark:border-white/10 dark:text-zinc-500">
+                    <th className="py-2 pr-2 font-medium">Permission</th>
+                    <th className="px-1 py-2 font-medium">Member</th>
+                    <th className="px-1 py-2 font-medium">Manager</th>
+                    <th className="px-1 py-2 font-medium">Admin</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {permCfg.definitions.map((d) => (
+                    <tr key={d.key} className="border-b border-slate-200/50 last:border-0 dark:border-white/5">
+                      <td className="py-2.5 pr-2 align-top">{d.label}</td>
+                      <td className="px-1 align-middle text-center">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 cursor-pointer"
+                          checked={!!permDirty.member?.[d.key]}
+                          onChange={(e) => flipPerm(d.key, "member", e.target.checked)}
+                        />
+                      </td>
+                      <td className="px-1 align-middle text-center">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 cursor-pointer"
+                          checked={!!permDirty.manager?.[d.key]}
+                          onChange={(e) => flipPerm(d.key, "manager", e.target.checked)}
+                        />
+                      </td>
+                      <td className="px-1 text-center text-xs text-slate-500 dark:text-zinc-500">on</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {permErr && <div className="text-sm text-red-600 dark:text-red-400">{permErr}</div>}
+            <Button
+              onClick={savePerms}
+              disabled={savingPerms}
+              data-testid="save-role-permissions"
+              className={cn("whitespace-nowrap", pageBtnPrimaryClass)}
+            >
+              {savingPerms ? "Saving…" : "Save role permissions"}
+            </Button>
+          </div>
+        )}
 
         <div>
           <div className="label-tech mb-3">Invites</div>

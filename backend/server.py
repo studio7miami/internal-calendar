@@ -9,10 +9,12 @@ import uuid
 import secrets
 import logging
 from datetime import datetime, timezone, timedelta
-from typing import Optional
+from typing import Any, Optional
+
+import permissions
 import bcrypt
 import jwt
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request
+from fastapi import Body, FastAPI, APIRouter, HTTPException, Depends, Request
 from starlette.middleware.cors import CORSMiddleware
 from supabase import create_client, Client
 from pydantic import BaseModel, EmailStr
@@ -130,6 +132,26 @@ async def require_admin(user: dict = Depends(get_current_user)) -> dict:
     return user
 
 
+def get_stored_role_permissions() -> dict:
+    try:
+        res = supabase.table("app_config").select("role_permissions").eq("id", "default").limit(1).execute()
+        if res.data and len(res.data) > 0:
+            raw = res.data[0].get("role_permissions")
+            if isinstance(raw, dict):
+                return raw
+    except Exception as e:
+        logger.warning("app_config read failed (add table via supabase/001_app_config.sql if using permissions): %s", e)
+    return {}
+
+
+def user_permissions_for(user: dict) -> dict:
+    return permissions.resolve_effective(user.get("role", "member"), get_stored_role_permissions())
+
+
+def _auth_user_out(user: dict) -> dict:
+    return {**user, "permissions": user_permissions_for(user)}
+
+
 # ---------- Google Calendar STUB ----------
 def gcal_push_event(calendar_google_id: Optional[str], booking: dict) -> Optional[str]:
     logger.info(f"[GCAL STUB] push event -> gcal={calendar_google_id} booking={booking.get('id')}")
@@ -188,6 +210,10 @@ class DisableIn(BaseModel):
     disabled: bool
 
 
+class RolePatchIn(BaseModel):
+    role: str
+
+
 # ---------- Startup ----------
 @app.on_event("startup")
 async def startup():
@@ -227,21 +253,23 @@ async def login(data: LoginIn):
     if user.get("is_disabled"):
         raise HTTPException(status_code=403, detail="This account has been disabled. Please contact the admin.")
     token = create_token(user["id"], user["email"], user["role"])
+    uout = {
+        "id": user["id"],
+        "email": user["email"],
+        "name": user["name"],
+        "role": user["role"],
+        "created_at": user.get("created_at"),
+        "is_disabled": bool(user.get("is_disabled")),
+    }
     return {
         "token": token,
-        "user": {
-            "id": user["id"],
-            "email": user["email"],
-            "name": user["name"],
-            "role": user["role"],
-            "created_at": user["created_at"],
-        },
+        "user": _auth_user_out(uout),
     }
 
 
 @api.get("/auth/me")
 async def me(user: dict = Depends(get_current_user)):
-    return user
+    return _auth_user_out(user)
 
 
 @api.post("/auth/register")
@@ -269,9 +297,10 @@ async def register(data: RegisterIn):
     }).execute()
     supabase.table("invites").update({"used": True, "used_at": now_iso()}).eq("invite_token", data.invite_token).execute()
     token = create_token(user_id, email, "member")
+    uout = {"id": user_id, "email": email, "name": data.name, "role": "member", "created_at": now_iso(), "is_disabled": False}
     return {
         "token": token,
-        "user": {"id": user_id, "email": email, "name": data.name, "role": "member", "created_at": now_iso()},
+        "user": _auth_user_out(uout),
     }
 
 
@@ -321,11 +350,72 @@ async def list_invites(admin: dict = Depends(require_admin)):
     return items
 
 
-# ---------- Users (admin) ----------
+# ---------- App config: role permissions (admin) & users directory ----------
+@api.get("/app-config/permissions")
+async def get_perms_config(_: dict = Depends(require_admin)):
+    stored = get_stored_role_permissions()
+    return {
+        "definitions": permissions.definitions_for_api(),
+        "effective": {
+            "member": permissions.merge_with_defaults("member", stored.get("member")),
+            "manager": permissions.merge_with_defaults("manager", stored.get("manager")),
+        },
+        "stored": stored,
+    }
+
+
+@api.patch("/app-config/permissions")
+async def patch_perms_config(data: dict = Body(...), _: dict = Depends(require_admin)):
+    clean = permissions.sanitize_stored(data)
+    if clean is None:
+        raise HTTPException(status_code=400, detail="Invalid body: expected member/manager permission keys")
+    current = get_stored_role_permissions() or {}
+    new_rp: dict = {
+        "member": {**(current.get("member") or {}), **(clean.get("member") or {})},
+        "manager": {**(current.get("manager") or {}), **(clean.get("manager") or {})},
+    }
+    try:
+        ex = supabase.table("app_config").select("id").eq("id", "default").limit(1).execute()
+        if ex.data and len(ex.data) > 0:
+            supabase.table("app_config").update({"role_permissions": new_rp}).eq("id", "default").execute()
+        else:
+            supabase.table("app_config").insert({"id": "default", "role_permissions": new_rp}).execute()
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Save failed. Run supabase/001_app_config.sql in Supabase SQL editor: {e}",
+        )
+    stored = get_stored_role_permissions()
+    return {
+        "definitions": permissions.definitions_for_api(),
+        "effective": {
+            "member": permissions.merge_with_defaults("member", (stored or {}).get("member")),
+            "manager": permissions.merge_with_defaults("manager", (stored or {}).get("manager")),
+        },
+        "stored": stored,
+    }
+
+
 @api.get("/users")
-async def list_users(admin: dict = Depends(require_admin)):
+async def list_users(user: dict = Depends(get_current_user)):
+    p = user_permissions_for(user)
+    if not permissions.has(p, "view_members_directory"):
+        raise HTTPException(status_code=403, detail="Not allowed")
     res = supabase.table("users").select("id,email,name,role,is_disabled,created_at").order("created_at", desc=True).execute()
     return res.data or []
+
+
+@api.patch("/users/{user_id}/role")
+async def set_user_role(user_id: str, data: RolePatchIn, admin: dict = Depends(require_admin)):
+    if data.role not in ("member", "manager", "admin"):
+        raise HTTPException(status_code=400, detail="Invalid role")
+    if user_id == admin["id"]:
+        raise HTTPException(status_code=400, detail="You cannot change your own role here.")
+    res = supabase.table("users").select("id,role").eq("id", user_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="User not found")
+    supabase.table("users").update({"role": data.role}).eq("id", user_id).execute()
+    return {"ok": True, "id": user_id, "role": data.role}
 
 
 @api.patch("/users/{user_id}/disable")
@@ -345,6 +435,9 @@ async def set_user_disabled(user_id: str, data: DisableIn, admin: dict = Depends
 # ---------- Calendars ----------
 @api.get("/calendars")
 async def list_calendars(user: dict = Depends(get_current_user)):
+    p = user_permissions_for(user)
+    if not permissions.has(p, "view_schedule"):
+        raise HTTPException(status_code=403, detail="Calendar is not available for this account")
     res = supabase.table("calendars").select("*").eq("is_active", True).order("created_at").execute()
     return [_calendar_enriched(c) for c in (res.data or [])]
 
@@ -392,10 +485,10 @@ async def delete_calendar(cal_id: str, admin: dict = Depends(require_admin)):
 
 
 # ---------- Bookings ----------
-def _serialize_booking(b: dict, viewer: dict, users_by_id: dict) -> dict:
-    is_admin = viewer.get("role") == "admin"
+def _serialize_booking(b: dict, viewer: dict, users_by_id: dict, viewer_perms: Optional[dict] = None) -> dict:
+    perms = viewer_perms if viewer_perms is not None else user_permissions_for(viewer)
     is_owner = str(b.get("member_id")) == str(viewer["id"])
-    can_see_detail = is_admin or is_owner
+    can_see_detail = is_owner or permissions.has(perms, "see_all_booking_details")
     base = {
         "id": b["id"],
         "calendar_id": b["calendar_id"],
@@ -422,6 +515,9 @@ def _serialize_booking(b: dict, viewer: dict, users_by_id: dict) -> dict:
 
 @api.get("/bookings")
 async def list_bookings(user: dict = Depends(get_current_user), status: Optional[str] = None):
+    p = user_permissions_for(user)
+    if not permissions.has(p, "view_schedule"):
+        raise HTTPException(status_code=403, detail="Calendar is not available for this account")
     query = supabase.table("bookings").select("*")
     if status:
         query = query.eq("status", status)
@@ -431,23 +527,29 @@ async def list_bookings(user: dict = Depends(get_current_user), status: Optional
     raw = res.data or []
     users_res = supabase.table("users").select("id,name,email").execute()
     users_by_id = {u["id"]: u for u in (users_res.data or [])}
-    return [_serialize_booking(b, user, users_by_id) for b in raw]
+    return [_serialize_booking(b, user, users_by_id, p) for b in raw]
 
 
 @api.get("/bookings/requests")
 async def list_requests(user: dict = Depends(get_current_user)):
-    if user["role"] == "admin":
+    p = user_permissions_for(user)
+    if not permissions.has(p, "view_schedule"):
+        raise HTTPException(status_code=403, detail="Not allowed")
+    if permissions.has(p, "approve_deny_requests"):
         res = supabase.table("bookings").select("*").eq("status", "pending").order("created_at", desc=True).execute()
     else:
         res = supabase.table("bookings").select("*").eq("member_id", user["id"]).order("created_at", desc=True).execute()
     raw = res.data or []
     users_res = supabase.table("users").select("id,name,email").execute()
     users_by_id = {u["id"]: u for u in (users_res.data or [])}
-    return [_serialize_booking(b, user, users_by_id) for b in raw]
+    return [_serialize_booking(b, user, users_by_id, p) for b in raw]
 
 
 @api.post("/bookings/request")
 async def create_request(data: BookingRequestIn, user: dict = Depends(get_current_user)):
+    p = user_permissions_for(user)
+    if not permissions.has(p, "create_request"):
+        raise HTTPException(status_code=403, detail="Requesting bookings is not allowed for this account")
     cal_res = supabase.table("calendars").select("*").eq("id", data.calendar_id).execute()
     if not cal_res.data:
         raise HTTPException(status_code=404, detail="Calendar not found")
@@ -465,11 +567,19 @@ async def create_request(data: BookingRequestIn, user: dict = Depends(get_curren
         "created_at": now_iso(),
     }
     supabase.table("bookings").insert(booking).execute()
-    admins_res = supabase.table("users").select("id").eq("role", "admin").execute()
-    for a in (admins_res.data or []):
+    stored = get_stored_role_permissions()
+    mgr_may_approve = permissions.has(permissions.resolve_effective("manager", stored), "approve_deny_requests")
+    target_ids: set = set()
+    for row in (supabase.table("users").select("id,role").eq("is_disabled", False).in_("role", ["admin", "manager"]).execute().data or []):
+        uid = row["id"]
+        if row.get("role") == "admin":
+            target_ids.add(uid)
+        elif row.get("role") == "manager" and mgr_may_approve:
+            target_ids.add(uid)
+    for a_id in target_ids:
         supabase.table("notifications").insert({
             "id": str(uuid.uuid4()),
-            "user_id": a["id"],
+            "user_id": a_id,
             "booking_id": booking["id"],
             "type": "request_submitted",
             "title": "New booking request",
@@ -491,12 +601,15 @@ async def create_request(data: BookingRequestIn, user: dict = Depends(get_curren
 
 
 @api.post("/bookings/manual")
-async def create_manual(data: ManualBookingIn, admin: dict = Depends(require_admin)):
+async def create_manual(data: ManualBookingIn, user: dict = Depends(get_current_user)):
+    p = user_permissions_for(user)
+    if not permissions.has(p, "create_manual_booking"):
+        raise HTTPException(status_code=403, detail="Manual bookings are not allowed for this account")
     cal_res = supabase.table("calendars").select("*").eq("id", data.calendar_id).execute()
     if not cal_res.data:
         raise HTTPException(status_code=404, detail="Calendar not found")
     cal = cal_res.data[0]
-    member_id = data.member_id or admin["id"]
+    member_id = data.member_id or user["id"]
     booking = {
         "id": str(uuid.uuid4()),
         "calendar_id": data.calendar_id,
@@ -516,7 +629,10 @@ async def create_manual(data: ManualBookingIn, admin: dict = Depends(require_adm
 
 
 @api.post("/bookings/{booking_id}/approve")
-async def approve_booking(booking_id: str, data: ApproveDenyIn, admin: dict = Depends(require_admin)):
+async def approve_booking(booking_id: str, data: ApproveDenyIn, admin: dict = Depends(get_current_user)):
+    p = user_permissions_for(admin)
+    if not permissions.has(p, "approve_deny_requests"):
+        raise HTTPException(status_code=403, detail="Not allowed to approve requests")
     res = supabase.table("bookings").select("*").eq("id", booking_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Booking not found")
@@ -547,7 +663,10 @@ async def approve_booking(booking_id: str, data: ApproveDenyIn, admin: dict = De
 
 
 @api.post("/bookings/{booking_id}/deny")
-async def deny_booking(booking_id: str, data: ApproveDenyIn, admin: dict = Depends(require_admin)):
+async def deny_booking(booking_id: str, data: ApproveDenyIn, mod: dict = Depends(get_current_user)):
+    p = user_permissions_for(mod)
+    if not permissions.has(p, "approve_deny_requests"):
+        raise HTTPException(status_code=403, detail="Not allowed to deny requests")
     res = supabase.table("bookings").select("*").eq("id", booking_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Booking not found")
@@ -558,7 +677,7 @@ async def deny_booking(booking_id: str, data: ApproveDenyIn, admin: dict = Depen
         "status": "denied",
         "approval_message": data.message or "",
         "denied_at": now_iso(),
-        "denied_by": admin["id"],
+        "denied_by": mod["id"],
     }).eq("id", booking_id).execute()
     supabase.table("notifications").insert({
         "id": str(uuid.uuid4()),
@@ -574,7 +693,10 @@ async def deny_booking(booking_id: str, data: ApproveDenyIn, admin: dict = Depen
 
 
 @api.delete("/bookings/{booking_id}")
-async def delete_booking(booking_id: str, admin: dict = Depends(require_admin)):
+async def delete_booking(booking_id: str, user: dict = Depends(get_current_user)):
+    p = user_permissions_for(user)
+    if not permissions.has(p, "delete_any_booking"):
+        raise HTTPException(status_code=403, detail="Not allowed to delete this booking")
     res = supabase.table("bookings").select("*").eq("id", booking_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Booking not found")
@@ -629,13 +751,13 @@ async def chat(data: ChatIn, user: dict = Depends(get_current_user)):
     raw = bookings_res.data or []
     users_res = supabase.table("users").select("id,name,email").execute()
     users_by_id = {u["id"]: u for u in (users_res.data or [])}
-    is_admin = user.get("role") == "admin"
+    up = user_permissions_for(user)
     lines = []
     for b in raw:
         cal = cal_by_id.get(b["calendar_id"], {})
         cal_name = cal.get("name", "Unknown")
         is_owner = str(b.get("member_id")) == str(user["id"])
-        if is_admin or is_owner:
+        if is_owner or permissions.has(up, "see_all_booking_details"):
             owner = users_by_id.get(str(b.get("member_id")), {})
             who = owner.get("name", "—")
             note = (b.get("notes") or "").replace("\n", " ")[:120]

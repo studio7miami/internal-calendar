@@ -53,8 +53,14 @@ class TestAuth:
     def test_me(self, admin_headers):
         r = requests.get(f"{API}/auth/me", headers=admin_headers)
         assert r.status_code == 200
-        assert r.json()["email"] == ADMIN_EMAIL
-        assert "password_hash" not in r.json()
+        data = r.json()
+        assert data["email"] == ADMIN_EMAIL
+        assert "password_hash" not in data
+        assert "permissions" in data
+        perms = data["permissions"]
+        assert perms.get("view_schedule") is True
+        assert perms.get("approve_deny_requests") is True
+        assert perms.get("see_all_booking_details") is True
 
     def test_me_no_token(self):
         assert requests.get(f"{API}/auth/me").status_code == 401
@@ -134,7 +140,13 @@ class TestInvitesRBAC:
         assert r.status_code == 403
 
     def test_member_registered(self, member):
-        assert member["user"]["role"] == "member"
+        u = member["user"]
+        assert u["role"] == "member"
+        assert "permissions" in u
+        p = u["permissions"]
+        assert p.get("view_schedule") is True
+        assert p.get("see_all_booking_details") in (None, False)
+        assert p.get("create_request") is True
 
 
 # ----- Bookings flow -----

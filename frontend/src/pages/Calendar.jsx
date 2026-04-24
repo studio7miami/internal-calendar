@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
@@ -51,10 +51,10 @@ function chipLabel(b, calendar) {
 }
 
 
-function BookingChip({ b, calendar, viewerIsAdmin, onClick }) {
+function BookingChip({ b, calendar, canSeeAllDetails, onClick }) {
   const isOwn = b.is_own;
   const isPending = b.status === "pending";
-  const canSeeDetail = viewerIsAdmin || isOwn;
+  const canSeeDetail = canSeeAllDetails || isOwn;
 
   if (canSeeDetail) {
     const color = calendar?.color || "#FAFAFA";
@@ -108,8 +108,12 @@ export default function CalendarPage() {
   const [formInit, setFormInit] = useState({});
 
   const isAdmin = user?.role === "admin";
+  const canSeeAllDetails = !!user?.permissions?.see_all_booking_details;
+  const canFetchMembers = isAdmin || !!user?.permissions?.view_members_directory;
+  const canManualBook = isAdmin || !!user?.permissions?.create_manual_booking;
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
+    if (!user) return;
     const [cals, bks] = await Promise.all([
       api.get("/calendars"),
       api.get("/bookings"),
@@ -119,17 +123,21 @@ export default function CalendarPage() {
     setEnabledCalIds((prev) =>
       prev.size === 0 ? new Set(cals.data.map((c) => c.id)) : prev
     );
-    if (isAdmin) {
+    if (canFetchMembers) {
       try {
-        const u = await api.get("/users");
-        setMembers(u.data);
-      } catch {}
+        const m = await api.get("/users");
+        setMembers(m.data);
+      } catch {
+        setMembers([]);
+      }
+    } else {
+      setMembers([]);
     }
-  };
+  }, [user, canFetchMembers]);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   const calendarMap = useMemo(
     () => Object.fromEntries(calendars.map((c) => [c.id, c])),
@@ -166,8 +174,8 @@ export default function CalendarPage() {
 
     return (
       <div className="w-full min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
-        <div className="w-full min-w-0 overflow-hidden rounded-[7px] border soft-divider bg-white/[0.15] dark:bg-white/[0.02]">
-          <div className="grid min-w-0 grid-cols-7 border-b soft-divider">
+        <div className="w-full min-w-0 overflow-hidden rounded-[7px] bg-white/[0.15] dark:bg-white/[0.02]">
+          <div className="grid min-w-0 grid-cols-7">
             {[
               { short: "Su", day: "Sun" },
               { short: "Mo", day: "Mon" },
@@ -201,7 +209,7 @@ export default function CalendarPage() {
             const tEase = "transition-[background-color,color,box-shadow] duration-200 ease-out";
             // In-month: same #222 hover + select for all days. Out-of-month: static, no hover/click.
             const cellShell = !inMonth
-              ? `border border-white/5 bg-white/[0.04] text-slate-500 shadow-none backdrop-blur-sm dark:border-white/[0.04] dark:bg-white/[0.02] dark:text-zinc-500 ${tEase} pointer-events-none select-none`
+              ? `border border-gray-200/95 bg-white/[0.04] text-slate-500 shadow-none backdrop-blur-sm dark:border-white/[0.08] dark:bg-white/[0.02] dark:text-zinc-500 ${tEase} pointer-events-none select-none`
               : isCellSelected
               ? `group bg-[#222222] text-zinc-100 ${tEase} motion-reduce:transition-none`
               : `group glass-tile text-slate-900 ${tEase} motion-reduce:transition-none hover:bg-[#222222] hover:text-zinc-100 dark:text-zinc-300 dark:hover:bg-[#222222] dark:hover:text-zinc-100`;
@@ -247,7 +255,7 @@ export default function CalendarPage() {
                         <BookingChip
                           b={b}
                           calendar={calendarMap[b.calendar_id]}
-                          viewerIsAdmin={isAdmin}
+                          canSeeAllDetails={canSeeAllDetails}
                           onClick={() => {}}
                         />
                       </div>
@@ -340,7 +348,7 @@ export default function CalendarPage() {
                         key={b.id}
                         b={b}
                         calendar={calendarMap[b.calendar_id]}
-                        viewerIsAdmin={isAdmin}
+                        canSeeAllDetails={canSeeAllDetails}
                         onClick={(e) => {
                           e?.stopPropagation?.();
                         }}
@@ -504,7 +512,7 @@ export default function CalendarPage() {
         defaultDate={formInit.date}
         defaultStart={formInit.start}
         defaultEnd={formInit.end}
-        isAdmin={isAdmin}
+        canManualBook={canManualBook}
         members={members}
       />
     </div>

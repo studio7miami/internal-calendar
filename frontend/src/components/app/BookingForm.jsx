@@ -49,7 +49,7 @@ export default function BookingForm({
   defaultDate,
   defaultStart,
   defaultEnd,
-  isAdmin,
+  canManualBook,
   members = [],
 }) {
   const { user } = useAuth();
@@ -60,7 +60,7 @@ export default function BookingForm({
   const [end, setEnd] = useState(defaultEnd || "11:00");
   const [notes, setNotes] = useState("");
   const [memberId, setMemberId] = useState("");
-  const [mode, setMode] = useState(isAdmin ? "manual" : "request");
+  const [mode, setMode] = useState(canManualBook ? "manual" : "request");
   const [err, setErr] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -73,9 +73,9 @@ export default function BookingForm({
       setNotes("");
       setMemberId("");
       setErr("");
-      setMode(isAdmin ? "manual" : "request");
+      setMode(canManualBook ? "manual" : "request");
     }
-  }, [open, defaultDate, defaultStart, defaultEnd, calendars, isAdmin]);
+  }, [open, defaultDate, defaultStart, defaultEnd, calendars, canManualBook]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -89,7 +89,7 @@ export default function BookingForm({
         end_time: end,
         notes,
       };
-      if (isAdmin && mode === "manual") {
+      if (canManualBook && mode === "manual") {
         if (memberId) payload.member_id = memberId;
         await api.post("/bookings/manual", payload);
       } else {
@@ -106,7 +106,7 @@ export default function BookingForm({
 
   const Form = (
     <form onSubmit={submit} className="space-y-4" data-testid="booking-form">
-      {isAdmin && (
+      {canManualBook && (
         <div className="flex gap-2">
           <button
             type="button"
@@ -144,7 +144,7 @@ export default function BookingForm({
         </select>
       </div>
 
-      {isAdmin && mode === "manual" && (
+      {canManualBook && mode === "manual" && (
         <div>
           <label className="label-tech block mb-1">Assign member (optional)</label>
           <select
@@ -290,7 +290,7 @@ export default function BookingForm({
             r7
           )}
         >
-          {submitting ? "Saving…" : isAdmin && mode === "manual" ? "Create booking" : "Send request"}
+          {submitting ? "Saving…" : canManualBook && mode === "manual" ? "Create booking" : "Send request"}
         </Button>
       </div>
     </form>

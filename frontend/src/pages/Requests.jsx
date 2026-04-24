@@ -54,16 +54,16 @@ export default function Requests() {
     }
   };
 
-  const isAdmin = user?.role === "admin";
+  const canModerate = !!user?.permissions?.approve_deny_requests;
 
   return (
     <div className="space-y-6" data-testid="requests-page">
       <div>
         <div className="label-tech">Queue</div>
-        <h1 className={pageTitleClass}>{isAdmin ? "Booking requests" : "My requests"}</h1>
+        <h1 className={pageTitleClass}>{canModerate ? "Booking requests" : "My requests"}</h1>
         <p className={pageSubtextClass}>
-          {isAdmin
-            ? "Approve or deny incoming member requests."
+          {canModerate
+            ? "Approve or deny pending requests from the team."
             : "Your recent booking requests and their status."}
         </p>
       </div>
@@ -90,7 +90,7 @@ export default function Requests() {
                 <div className="mt-2 text-xl font-semibold text-slate-900 dark:text-white">
                   {b.date} · {fmtTimeShort(b.start_time)}–{fmtTimeShort(b.end_time)}
                 </div>
-                {isAdmin && b.member_name && (
+                {canModerate && b.member_name && (
                   <div className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
                     {b.member_name} · <span className="text-slate-700 tabular-nums dark:text-zinc-400">{b.member_email}</span>
                   </div>
@@ -105,7 +105,7 @@ export default function Requests() {
                 )}
               </div>
 
-              {isAdmin && b.status === "pending" && (
+              {canModerate && b.status === "pending" && (
                 <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[240px]">
                   <Textarea
                     placeholder="Optional message to member…"
