@@ -81,6 +81,20 @@ body {
 .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
 .scrollbar-thin::-webkit-scrollbar-thumb { background: #27272A; border-radius: 3px; }
 
+.glass-card {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.35),
+    0 1px 0 rgba(255, 255, 255, 0.35) inset;
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+}
+
+.soft-divider {
+  border-color: rgba(15, 23, 42, 0.08); /* slate-900 @ ~8% */
+}
+
 @layer base {
   :root {
     --background: 240 6% 6%;
