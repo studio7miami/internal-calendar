@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
-import { Button } from "../components/ui/button";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import BookingForm from "../components/app/BookingForm";
 import { fmtTimeShort } from "../lib/time";
 
+const glassBarHoverClass =
+  "hover:bg-slate-900/10 hover:text-black dark:hover:bg-white/10 dark:hover:text-black";
 
 function ymd(d) {
   const y = d.getFullYear();
@@ -61,7 +62,7 @@ function BookingChip({ b, calendar, viewerIsAdmin, onClick }) {
         type="button"
         onClick={onClick}
         data-testid={`booking-chip-${b.id}`}
-        className="text-[10px] leading-tight px-2 py-1.5 w-full text-left border rounded-md truncate text-slate-900 dark:text-white transition-colors hover:brightness-110"
+        className="text-[10px] leading-tight px-2 py-1.5 w-full text-left border rounded-[7px] truncate text-slate-900 dark:text-white transition-colors hover:brightness-110"
         style={{
           background: isPending ? rgba(color, 0.16) : rgba(color, 0.22),
           borderColor: isPending ? rgba(color, 0.34) : rgba(color, 0.46),
@@ -80,7 +81,7 @@ function BookingChip({ b, calendar, viewerIsAdmin, onClick }) {
       type="button"
       onClick={onClick}
       data-testid={`booking-chip-${b.id}`}
-      className="text-[10px] leading-tight px-2 py-1.5 w-full text-left border rounded-md truncate booked-stripe-light dark:booked-stripe text-slate-600 dark:text-neutral-300 border-slate-900/15 dark:border-white/14"
+      className="text-[10px] leading-tight px-2 py-1.5 w-full text-left border rounded-[7px] truncate booked-stripe-light dark:booked-stripe text-slate-600 dark:text-neutral-300 border-slate-900/15 dark:border-white/14"
       style={{
         borderLeftColor: calendar?.color || "#333",
         borderLeftWidth: 3,
@@ -185,7 +186,7 @@ export default function CalendarPage() {
             return (
               <div
                 key={i}
-                className={`glass-tile group min-h-[96px] rounded-[18px] p-2.5 flex flex-col gap-2 ${
+                className={`glass-tile group min-h-[96px] rounded-[7px] p-2.5 flex flex-col gap-2 ${
                   inMonth ? "text-slate-900 dark:text-neutral-100" : "text-slate-400 dark:text-neutral-500"
                 }`}
                 data-testid={`month-cell-${key}`}
@@ -240,7 +241,7 @@ export default function CalendarPage() {
     const hours = Array.from({ length: 14 }, (_, i) => i + 7);
     const isLastHour = (h) => h === hours[hours.length - 1];
     return (
-      <div className="rounded-[28px] border soft-divider overflow-hidden bg-transparent">
+      <div className="rounded-[7px] border soft-divider overflow-hidden bg-transparent">
         <div
           className="grid"
           style={{ gridTemplateColumns: `60px repeat(${dayList.length}, minmax(0, 1fr))` }}
@@ -343,55 +344,59 @@ export default function CalendarPage() {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <div className="label-tech">Calendar</div>
-          <h1 className="font-display text-3xl sm:text-4xl mt-1">{title}</h1>
+          <h1 className="mt-1 text-3xl sm:text-4xl font-['Manrope',system-ui,sans-serif] font-semibold tracking-[-0.02em]">
+            {title}
+          </h1>
         </div>
         <div className="flex items-center gap-2">
-          {/* Today — matches New button style */}
-          <Button
-            variant="ghost"
+          <button
+            type="button"
             onClick={() => setCursor(new Date())}
             data-testid="today-button"
-            className="bg-white/80 backdrop-blur-md text-black hover:bg-white rounded-[14px] h-9 border border-white/30"
+            className={`min-h-8 box-border inline-flex items-center justify-center border border-white/30 bg-white/80 px-3 py-1.5 text-xs leading-none text-black backdrop-blur-md transition-colors ${glassBarHoverClass} rounded-[7px]`}
             style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.10)" }}
           >
             Today
-          </Button>
+          </button>
 
-          {/* Prev — matches New button style */}
           <button
+            type="button"
             onClick={() => navigate(-1)}
             data-testid="nav-prev-button"
-            className="p-2 bg-white/80 backdrop-blur-md text-black hover:bg-white rounded-[14px] h-9 flex items-center justify-center border border-white/30"
+            className={`min-h-8 w-8 p-0 inline-flex items-center justify-center border border-white/30 bg-white/80 text-black backdrop-blur-md transition-colors ${glassBarHoverClass} rounded-[7px]`}
             style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.10)" }}
           >
             <ChevronLeft className="w-4 h-4" strokeWidth={1.5} />
           </button>
 
-          {/* Next — matches New button style */}
           <button
+            type="button"
             onClick={() => navigate(1)}
             data-testid="nav-next-button"
-            className="p-2 bg-white/80 backdrop-blur-md text-black hover:bg-white rounded-[14px] h-9 flex items-center justify-center border border-white/30"
+            className={`min-h-8 w-8 p-0 inline-flex items-center justify-center border border-white/30 bg-white/80 text-black backdrop-blur-md transition-colors ${glassBarHoverClass} rounded-[7px]`}
             style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.10)" }}
           >
             <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
           </button>
 
-          {/* New — unchanged reference */}
-          <Button
+          <button
+            type="button"
             onClick={() => openForm(ymd(cursor))}
             data-testid="new-booking-button"
-            className="bg-white/80 backdrop-blur-md text-black hover:bg-white rounded-[14px] h-9 border border-white/30"
+            className={`min-h-8 box-border inline-flex items-center justify-center gap-1.5 border border-white/30 bg-white/80 px-3 py-1.5 text-xs leading-none text-black backdrop-blur-md transition-colors ${glassBarHoverClass} rounded-[7px]`}
+            style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.10)" }}
           >
-            <Plus className="w-4 h-4 mr-1" strokeWidth={1.5} /> New
-          </Button>
+            <Plus className="w-4 h-4 shrink-0" strokeWidth={1.5} />
+            New
+          </button>
         </div>
       </div>
 
       {/* ── View mode + calendar toggles (shared button style) ── */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div
-          className="inline-flex select-none items-center gap-2.5 sm:gap-3"
+          className="min-h-8 box-border inline-flex select-none items-center gap-2.5 sm:gap-3 border border-gray-200/95 px-2.5 sm:px-3 py-1.5 text-xs leading-none dark:border-white/70"
+          style={{ background: "#FCFCFC", borderRadius: "7px" }}
           role="tablist"
           aria-label="Calendar view"
         >
@@ -410,9 +415,9 @@ export default function CalendarPage() {
                 aria-selected={on}
                 data-testid={`view-${id}-tab`}
                 onClick={() => setView(id)}
-                className={`min-h-8 inline-flex items-center rounded-sm px-2.5 sm:px-3 py-1.5 text-xs leading-none border-0 bg-transparent transition-colors focus-visible:outline focus-visible:ring-2 focus-visible:ring-slate-400/30 focus-visible:ring-offset-2 ${
+                className={`-m-0.5 inline-flex items-center rounded-sm border-0 bg-transparent p-0.5 px-1.5 sm:px-2 text-xs font-normal leading-none transition-colors focus-visible:outline focus-visible:ring-2 focus-visible:ring-slate-500/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#FCFCFC] ${
                   on
-                    ? "text-slate-900 dark:text-white"
+                    ? "text-black dark:text-white"
                     : "text-neutral-400 dark:text-neutral-500 hover:text-neutral-500 dark:hover:text-neutral-400"
                 }`}
               >
@@ -430,10 +435,8 @@ export default function CalendarPage() {
                 key={c.id}
                 onClick={() => toggleCal(c.id)}
                 data-testid={`calendar-toggle-${c.id}`}
-                className={`min-h-8 box-border inline-flex items-center gap-2 px-3 py-1.5 text-xs leading-none border transition-colors ${
-                  on
-                    ? "border-neutral-300 text-black"
-                    : "border-neutral-200 text-neutral-400"
+                className={`min-h-8 box-border inline-flex items-center gap-2 border border-gray-200/95 px-3 py-1.5 text-xs leading-none transition-colors dark:border-white/70 ${
+                  on ? "text-black" : "text-neutral-400"
                 }`}
                 style={{
                   background: on ? "#FCFCFC" : "transparent",
