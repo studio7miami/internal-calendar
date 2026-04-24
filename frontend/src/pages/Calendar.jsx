@@ -7,6 +7,7 @@ import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import BookingForm from "../components/app/BookingForm";
 import { fmtTimeShort } from "../lib/time";
 
+
 function ymd(d) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -15,7 +16,7 @@ function ymd(d) {
 }
 function startOfWeek(d) {
   const x = new Date(d);
-  const wd = x.getDay(); // 0 Sun
+  const wd = x.getDay();
   x.setDate(x.getDate() - wd);
   x.setHours(0, 0, 0, 0);
   return x;
@@ -29,7 +30,7 @@ function sameMonth(a, b) {
   return a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear();
 }
 
-// Convert #RRGGBB -> rgba(r,g,b,alpha)
+
 function rgba(hex, alpha) {
   const h = (hex || "#888").replace("#", "");
   const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
@@ -39,20 +40,20 @@ function rgba(hex, alpha) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
+
 function chipLabel(b, calendar) {
-  // Special titling for Studio 7 Miami calendar (member @ Studio 7 Miami)
   const isStudio7 = (calendar?.name || "").trim().toLowerCase() === "studio 7 miami";
   const who = b.member_name ? b.member_name.split(" ")[0] : "Member";
   if (isStudio7) return `${who} @ Studio 7 Miami`;
   return b.notes?.trim() || calendar?.name || "Booking";
 }
 
+
 function BookingChip({ b, calendar, viewerIsAdmin, onClick }) {
   const isOwn = b.is_own;
   const isPending = b.status === "pending";
   const canSeeDetail = viewerIsAdmin || isOwn;
 
-  // Admin and owner: color-coded chip tinted with calendar color
   if (canSeeDetail) {
     const color = calendar?.color || "#FAFAFA";
     const label = `${fmtTimeShort(b.start_time)} · ${chipLabel(b, calendar)}`;
@@ -75,7 +76,6 @@ function BookingChip({ b, calendar, viewerIsAdmin, onClick }) {
     );
   }
 
-  // Other members' bookings (member view only): anonymous stripe
   return (
     <button
       type="button"
@@ -88,6 +88,7 @@ function BookingChip({ b, calendar, viewerIsAdmin, onClick }) {
     </button>
   );
 }
+
 
 export default function CalendarPage() {
   const { user } = useAuth();
@@ -148,6 +149,7 @@ export default function CalendarPage() {
     setFormOpen(true);
   };
 
+
   // ---- Month grid ----
   const renderMonth = () => {
     const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
@@ -156,10 +158,13 @@ export default function CalendarPage() {
     for (let i = 0; i < 42; i++) days.push(addDays(gridStart, i));
 
     return (
-      <div className="border border-[#E8E8E8] rounded">
+      <div className="border border-[#E8E8E8]" style={{ borderRadius: "7px", overflow: "hidden" }}>
         <div className="grid grid-cols-7 border-b border-[#E8E8E8]">
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d, idx) => (
-            <div key={d} className={`label-tech px-2 py-2 text-center border-[#E8E8E8] ${idx !== 6 ? "border-r" : ""}`}>
+            <div
+              key={d}
+              className={`label-tech px-2 py-2 text-center border-[#E8E8E8] ${idx !== 6 ? "border-r" : ""}`}
+            >
               {d}
             </div>
           ))}
@@ -209,12 +214,16 @@ export default function CalendarPage() {
     );
   };
 
+
   // ---- Week / Day views (hourly grid) ----
   const renderHourGrid = (dayList) => {
-    const hours = Array.from({ length: 14 }, (_, i) => i + 7); // 7am..8pm
+    const hours = Array.from({ length: 14 }, (_, i) => i + 7);
     return (
-      <div className="border border-[#E8E8E8] rounded overflow-hidden">
-        <div className="grid" style={{ gridTemplateColumns: `60px repeat(${dayList.length}, minmax(0, 1fr))` }}>
+      <div className="border border-[#E8E8E8]" style={{ borderRadius: "25px", overflow: "hidden" }}>
+        <div
+          className="grid"
+          style={{ gridTemplateColumns: `60px repeat(${dayList.length}, minmax(0, 1fr))` }}
+        >
           <div className="label-tech p-2 border-r border-b border-[#E8E8E8]"></div>
           {dayList.map((d) => (
             <div
@@ -228,7 +237,10 @@ export default function CalendarPage() {
             </div>
           ))}
         </div>
-        <div className="grid" style={{ gridTemplateColumns: `60px repeat(${dayList.length}, minmax(0, 1fr))` }}>
+        <div
+          className="grid"
+          style={{ gridTemplateColumns: `60px repeat(${dayList.length}, minmax(0, 1fr))` }}
+        >
           {hours.map((h) => (
             <React.Fragment key={h}>
               <div className="label-tech p-2 border-r border-b border-[#E8E8E8] text-right font-mono">
@@ -296,6 +308,7 @@ export default function CalendarPage() {
       ? `Week of ${startOfWeek(cursor).toLocaleDateString()}`
       : cursor.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
 
+
   return (
     <div className="space-y-6" data-testid="calendar-page">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -304,28 +317,38 @@ export default function CalendarPage() {
           <h1 className="font-display text-3xl sm:text-4xl mt-1">{title}</h1>
         </div>
         <div className="flex items-center gap-2">
+          {/* Today — matches New button style */}
           <Button
             variant="ghost"
             onClick={() => setCursor(new Date())}
             data-testid="today-button"
-            className="border border-neutral-800 hover:bg-neutral-900 rounded-sm h-9"
+            className="bg-white text-black hover:bg-neutral-200 rounded-sm h-9"
+            style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.10)" }}
           >
             Today
           </Button>
+
+          {/* Prev — matches New button style */}
           <button
             onClick={() => navigate(-1)}
             data-testid="nav-prev-button"
-            className="p-2 border border-neutral-800 hover:bg-neutral-900 rounded-sm"
+            className="p-2 bg-white text-black hover:bg-neutral-200 rounded-sm h-9 flex items-center justify-center"
+            style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.10)" }}
           >
             <ChevronLeft className="w-4 h-4" strokeWidth={1.5} />
           </button>
+
+          {/* Next — matches New button style */}
           <button
             onClick={() => navigate(1)}
             data-testid="nav-next-button"
-            className="p-2 border border-neutral-800 hover:bg-neutral-900 rounded-sm"
+            className="p-2 bg-white text-black hover:bg-neutral-200 rounded-sm h-9 flex items-center justify-center"
+            style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.10)" }}
           >
             <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
           </button>
+
+          {/* New — unchanged reference */}
           <Button
             onClick={() => openForm(ymd(cursor))}
             data-testid="new-booking-button"
@@ -336,16 +359,35 @@ export default function CalendarPage() {
         </div>
       </div>
 
+      {/* ── View tabs + Calendar toggles ── */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <Tabs value={view} onValueChange={setView}>
-          <TabsList className="bg-[#121214] border border-neutral-800">
-            <TabsTrigger value="month" data-testid="view-month-tab" className="data-[state=active]:bg-white data-[state=active]:text-black">
+          <TabsList
+            className="border border-neutral-200"
+            style={{ background: "#FCFCFC", borderRadius: "7px" }}
+          >
+            <TabsTrigger
+              value="month"
+              data-testid="view-month-tab"
+              className="text-black data-[state=active]:bg-white data-[state=active]:text-black"
+              style={{ borderRadius: "25px" }}
+            >
               Month
             </TabsTrigger>
-            <TabsTrigger value="week" data-testid="view-week-tab" className="data-[state=active]:bg-white data-[state=active]:text-black">
+            <TabsTrigger
+              value="week"
+              data-testid="view-week-tab"
+              className="text-black data-[state=active]:bg-white data-[state=active]:text-black"
+              style={{ borderRadius: "25px" }}
+            >
               Week
             </TabsTrigger>
-            <TabsTrigger value="day" data-testid="view-day-tab" className="data-[state=active]:bg-white data-[state=active]:text-black">
+            <TabsTrigger
+              value="day"
+              data-testid="view-day-tab"
+              className="text-black data-[state=active]:bg-white data-[state=active]:text-black"
+              style={{ borderRadius: "25px" }}
+            >
               Day
             </TabsTrigger>
           </TabsList>
@@ -359,15 +401,19 @@ export default function CalendarPage() {
                 key={c.id}
                 onClick={() => toggleCal(c.id)}
                 data-testid={`calendar-toggle-${c.id}`}
-                className={`flex items-center gap-2 px-3 py-1.5 text-xs border rounded-sm transition-colors ${
+                className={`flex items-center gap-2 px-3 py-1.5 text-xs border transition-colors ${
                   on
-                    ? "border-neutral-700 bg-neutral-900 text-white"
-                    : "border-neutral-900 text-neutral-500"
+                    ? "border-neutral-300 text-black"
+                    : "border-neutral-200 text-neutral-400"
                 }`}
+                style={{
+                  background: on ? "#FCFCFC" : "transparent",
+                  borderRadius: "7px",
+                }}
               >
                 <span
                   className="w-2.5 h-2.5 rounded-full"
-                  style={{ background: on ? c.color : "#333" }}
+                  style={{ background: on ? c.color : "#ccc" }}
                 />
                 {c.name}
               </button>
