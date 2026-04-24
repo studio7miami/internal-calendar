@@ -185,10 +185,11 @@ export default function CalendarPage() {
             const todaysBookings = visibleBookings.filter((b) => b.date === key);
             const isSelected = key === selectedYmd;
             const isToday = key === todayKey;
+            const isLastRow = i >= 35;
             return (
               <div
                 key={i}
-                className={`group min-h-[96px] border-b soft-divider p-2.5 flex flex-col gap-2 ${
+                className={`group min-h-[96px] ${isLastRow ? "" : "border-b"} soft-divider p-2.5 flex flex-col gap-2 ${
                   (i % 7) !== 6 ? "border-r soft-divider" : ""
                 } ${inMonth ? "text-slate-900" : "text-slate-400"}`}
                 data-testid={`month-cell-${key}`}
@@ -196,7 +197,7 @@ export default function CalendarPage() {
                 <button
                   type="button"
                   onClick={() => openForm(key)}
-                  className="relative flex items-center justify-center text-[12px] leading-none"
+                  className="relative flex items-center justify-between text-[12px] leading-none"
                 >
                   <span
                     className={`h-8 w-8 rounded-full grid place-items-center font-mono transition-colors ${
@@ -209,7 +210,7 @@ export default function CalendarPage() {
                   >
                     {d.getDate()}
                   </span>
-                  <span className="absolute right-0 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <span className="opacity-0 group-hover:opacity-100 transition-opacity">
                     <Plus className="w-3.5 h-3.5 text-slate-500 hover:text-slate-900" strokeWidth={1.5} />
                   </span>
                 </button>
