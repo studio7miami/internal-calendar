@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
-import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import BookingForm from "../components/app/BookingForm";
@@ -62,10 +61,10 @@ function BookingChip({ b, calendar, viewerIsAdmin, onClick }) {
         type="button"
         onClick={onClick}
         data-testid={`booking-chip-${b.id}`}
-        className="text-[10px] leading-tight px-2 py-1.5 w-full text-left border rounded-md truncate text-slate-900 transition-colors hover:brightness-105"
+        className="text-[10px] leading-tight px-2 py-1.5 w-full text-left border rounded-md truncate text-slate-900 dark:text-white transition-colors hover:brightness-110"
         style={{
-          background: isPending ? rgba(color, 0.14) : rgba(color, 0.20),
-          borderColor: isPending ? rgba(color, 0.28) : rgba(color, 0.38),
+          background: isPending ? rgba(color, 0.16) : rgba(color, 0.22),
+          borderColor: isPending ? rgba(color, 0.34) : rgba(color, 0.46),
           borderLeft: `3px solid ${color}`,
           opacity: isPending ? 0.9 : 1,
         }}
@@ -81,9 +80,8 @@ function BookingChip({ b, calendar, viewerIsAdmin, onClick }) {
       type="button"
       onClick={onClick}
       data-testid={`booking-chip-${b.id}`}
-      className="text-[10px] leading-tight px-2 py-1.5 w-full text-left border rounded-md truncate booked-stripe-light text-slate-600"
+      className="text-[10px] leading-tight px-2 py-1.5 w-full text-left border rounded-md truncate booked-stripe-light dark:booked-stripe text-slate-600 dark:text-neutral-300 border-slate-900/15 dark:border-white/14"
       style={{
-        borderColor: "rgba(15, 23, 42, 0.16)",
         borderLeftColor: calendar?.color || "#333",
         borderLeftWidth: 3,
       }}
@@ -165,33 +163,31 @@ export default function CalendarPage() {
     const todayKey = ymd(new Date());
 
     return (
-      <div className="glass-card rounded-[28px] overflow-hidden">
-        <div className="grid grid-cols-7 border-b soft-divider">
+      <div className="space-y-2">
+        <div className="grid grid-cols-7">
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d, idx) => (
             <div
               key={d}
-              className={`px-3 py-3 text-center text-[11px] tracking-[0.22em] uppercase font-mono text-slate-500 soft-divider ${
-                idx !== 6 ? "border-r" : ""
-              }`}
+              className="px-3 py-2 text-center text-[11px] tracking-[0.22em] uppercase text-slate-900 dark:text-white"
             >
               {d}
             </div>
           ))}
         </div>
-        <div className="grid grid-cols-7 auto-rows-fr">
+
+        <div className="grid grid-cols-7 auto-rows-fr gap-1">
           {days.map((d, i) => {
             const key = ymd(d);
             const inMonth = sameMonth(d, cursor);
             const todaysBookings = visibleBookings.filter((b) => b.date === key);
             const isSelected = key === selectedYmd;
             const isToday = key === todayKey;
-            const isLastRow = i >= 35;
             return (
               <div
                 key={i}
-                className={`group min-h-[96px] ${isLastRow ? "" : "border-b"} soft-divider p-2.5 flex flex-col gap-2 ${
-                  (i % 7) !== 6 ? "border-r soft-divider" : ""
-                } ${inMonth ? "text-slate-900" : "text-slate-400"}`}
+                className={`glass-tile group min-h-[96px] rounded-[18px] p-2.5 flex flex-col gap-2 ${
+                  inMonth ? "text-slate-900 dark:text-neutral-100" : "text-slate-400 dark:text-neutral-500"
+                }`}
                 data-testid={`month-cell-${key}`}
               >
                 <button
@@ -200,18 +196,18 @@ export default function CalendarPage() {
                   className="relative flex items-center justify-between text-[12px] leading-none"
                 >
                   <span
-                    className={`h-8 w-8 rounded-full grid place-items-center font-mono transition-colors ${
+                    className={`h-8 w-8 rounded-full grid place-items-center transition-colors ${
                       isSelected
-                        ? "bg-slate-900 text-white"
+                        ? "bg-slate-900 text-white dark:bg-white dark:text-black"
                         : isToday
-                        ? "bg-slate-900/10 text-slate-900"
+                        ? "bg-slate-900/10 text-slate-900 dark:bg-white/10 dark:text-white"
                         : "text-current"
                     } ${inMonth ? "" : "opacity-70"}`}
                   >
                     {d.getDate()}
                   </span>
                   <span className="opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Plus className="w-3.5 h-3.5 text-slate-500 hover:text-slate-900" strokeWidth={1.5} />
+                    <Plus className="w-3.5 h-3.5 text-slate-400 hover:text-slate-900 dark:text-neutral-400 dark:hover:text-white" strokeWidth={1.5} />
                   </span>
                 </button>
                 <div className="space-y-1 overflow-hidden">
@@ -225,7 +221,7 @@ export default function CalendarPage() {
                     />
                   ))}
                   {todaysBookings.length > 3 && (
-                    <div className="text-[10px] font-mono tracking-[0.18em] uppercase text-slate-500">
+                    <div className="text-[10px] tracking-[0.18em] uppercase text-slate-500 dark:text-neutral-400">
                       +{todaysBookings.length - 3} more
                     </div>
                   )}
@@ -242,22 +238,25 @@ export default function CalendarPage() {
   // ---- Week / Day views (hourly grid) ----
   const renderHourGrid = (dayList) => {
     const hours = Array.from({ length: 14 }, (_, i) => i + 7);
+    const isLastHour = (h) => h === hours[hours.length - 1];
     return (
-      <div className="glass-card rounded-[28px] overflow-hidden">
+      <div className="rounded-[28px] border soft-divider overflow-hidden bg-transparent">
         <div
           className="grid"
           style={{ gridTemplateColumns: `60px repeat(${dayList.length}, minmax(0, 1fr))` }}
         >
           <div className="p-3 border-r border-b soft-divider" />
-          {dayList.map((d) => (
+          {dayList.map((d, idx) => (
             <div
               key={ymd(d)}
-              className="p-3 border-r border-b soft-divider last:border-r-0 text-center"
+              className={`p-3 border-b soft-divider text-center ${
+                idx === dayList.length - 1 ? "" : "border-r soft-divider"
+              }`}
             >
-              <div className="text-[11px] tracking-[0.22em] uppercase font-mono text-slate-500">
+              <div className="text-[11px] tracking-[0.22em] uppercase text-slate-500 dark:text-neutral-400">
                 {d.toLocaleDateString(undefined, { weekday: "short" })}
               </div>
-              <div className="font-display text-[18px] text-slate-900 mt-0.5">{d.getDate()}</div>
+              <div className="font-display text-[18px] text-slate-900 dark:text-white mt-0.5">{d.getDate()}</div>
             </div>
           ))}
         </div>
@@ -267,10 +266,14 @@ export default function CalendarPage() {
         >
           {hours.map((h) => (
             <React.Fragment key={h}>
-              <div className="p-2 border-r border-b soft-divider text-right font-mono text-[11px] text-slate-500">
+              <div
+                className={`p-2 border-r soft-divider text-right text-[11px] text-slate-500 dark:text-neutral-400 ${
+                  isLastHour(h) ? "" : "border-b soft-divider"
+                }`}
+              >
                 {fmtTimeShort(`${String(h).padStart(2, "0")}:00`)}
               </div>
-              {dayList.map((d) => {
+              {dayList.map((d, idx) => {
                 const key = ymd(d);
                 const slotStart = `${String(h).padStart(2, "0")}:00`;
                 const slotEnd = `${String(h + 1).padStart(2, "0")}:00`;
@@ -285,7 +288,9 @@ export default function CalendarPage() {
                     type="button"
                     key={`${key}-${h}`}
                     onClick={() => openForm(key, slotStart, slotEnd)}
-                    className="relative min-h-[56px] border-r border-b soft-divider last:border-r-0 hover:bg-black/5 p-2 flex flex-col gap-1 text-left"
+                    className={`relative min-h-[56px] hover:bg-black/5 dark:hover:bg-white/5 p-2 flex flex-col gap-1 text-left bg-transparent ${
+                      idx === dayList.length - 1 ? "" : "border-r soft-divider"
+                    } ${isLastHour(h) ? "" : "border-b soft-divider"}`}
                     data-testid={`slot-${key}-${h}`}
                   >
                     {inSlot.map((b) => (
@@ -383,39 +388,39 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* ── View tabs + Calendar toggles ── */}
+      {/* ── View mode + calendar toggles (shared button style) ── */}
       <div className="flex items-center justify-between flex-wrap gap-4">
-        <Tabs value={view} onValueChange={setView}>
-          <TabsList
-            className="border border-neutral-200"
-            style={{ background: "#FCFCFC", borderRadius: "7px" }}
-          >
-            <TabsTrigger
-              value="month"
-              data-testid="view-month-tab"
-              className="text-black data-[state=active]:bg-white data-[state=active]:text-black"
-              style={{ borderRadius: "25px" }}
-            >
-              Month
-            </TabsTrigger>
-            <TabsTrigger
-              value="week"
-              data-testid="view-week-tab"
-              className="text-black data-[state=active]:bg-white data-[state=active]:text-black"
-              style={{ borderRadius: "25px" }}
-            >
-              Week
-            </TabsTrigger>
-            <TabsTrigger
-              value="day"
-              data-testid="view-day-tab"
-              className="text-black data-[state=active]:bg-white data-[state=active]:text-black"
-              style={{ borderRadius: "25px" }}
-            >
-              Day
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <div
+          className="inline-flex select-none items-center gap-2.5 sm:gap-3"
+          role="tablist"
+          aria-label="Calendar view"
+        >
+          {[
+            { id: "month", label: "Month" },
+            { id: "week", label: "Week" },
+            { id: "day", label: "Day" },
+          ].map(({ id, label }) => {
+            const on = view === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                id={`view-tab-${id}`}
+                aria-selected={on}
+                data-testid={`view-${id}-tab`}
+                onClick={() => setView(id)}
+                className={`min-h-8 inline-flex items-center rounded-sm px-2.5 sm:px-3 py-1.5 text-xs leading-none border-0 bg-transparent transition-colors focus-visible:outline focus-visible:ring-2 focus-visible:ring-slate-400/30 focus-visible:ring-offset-2 ${
+                  on
+                    ? "text-slate-900 dark:text-white"
+                    : "text-neutral-400 dark:text-neutral-500 hover:text-neutral-500 dark:hover:text-neutral-400"
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
 
         <div className="flex flex-wrap gap-2">
           {calendars.map((c) => {
@@ -425,7 +430,7 @@ export default function CalendarPage() {
                 key={c.id}
                 onClick={() => toggleCal(c.id)}
                 data-testid={`calendar-toggle-${c.id}`}
-                className={`flex items-center gap-2 px-3 py-1.5 text-xs border transition-colors ${
+                className={`min-h-8 box-border inline-flex items-center gap-2 px-3 py-1.5 text-xs leading-none border transition-colors ${
                   on
                     ? "border-neutral-300 text-black"
                     : "border-neutral-200 text-neutral-400"
