@@ -56,7 +56,7 @@ function NotificationBell() {
           <Bell className="w-4 h-4" strokeWidth={1.5} />
           {unread > 0 && (
             <span
-              className="absolute -top-1 -right-1 bg-black text-white dark:bg-white dark:text-black text-[10px] font-mono font-bold min-w-[16px] h-[16px] px-1 flex items-center justify-center rounded-[16px]"
+              className="absolute -right-1 -top-1 flex h-[16px] min-w-[16px] items-center justify-center rounded-[16px] bg-black px-1 text-[10px] font-bold text-white dark:bg-white dark:text-black"
               data-testid="notification-unread-count"
             >
               {unread}
@@ -126,7 +126,7 @@ export default function Layout() {
   const { user, logout } = useAuth();
   const items = navItems(user?.role);
   const navigate = useNavigate();
-  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
+  const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "light");
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -136,11 +136,13 @@ export default function Layout() {
   const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark');
 
   return (
-    <div className="min-h-screen bg-white dark:bg-[#09090B] text-black dark:text-white">
+    <div className="min-h-screen bg-white text-black dark:bg-[#0b0b0c] dark:text-zinc-200">
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex fixed top-0 left-0 bottom-0 w-60 border-r border-neutral-200 dark:border-neutral-900 flex-col p-6 z-30 bg-white dark:bg-[#09090B]">
+      <aside className="z-30 hidden w-60 flex-col border-r border-neutral-200 bg-white p-6 dark:border-white/[0.06] dark:bg-[#0b0b0c] md:fixed md:bottom-0 md:left-0 md:top-0 md:flex">
         <div className="mb-8">
-          <img src="/brand/favicon.png" alt="Studio 7" className="brand-logo h-8 w-8" />
+          <div className="brand-favicon-slot-8">
+            <img src="/brand/favicon.png" alt="Studio 7" className="brand-logo" />
+          </div>
         </div>
         <nav className="space-y-1 flex-1">
           {items.map((it) => (
@@ -152,8 +154,8 @@ export default function Layout() {
               className={({ isActive }) =>
                 `flex min-h-8 items-center gap-3 border px-3 py-1.5 text-sm transition-colors rounded-[7px] ${
                   isActive
-                    ? "border-gray-200/95 bg-[#FCFCFC] text-slate-900 dark:border-white/70 dark:bg-white/10 dark:text-white"
-                    : "border-gray-200/50 text-neutral-400 dark:border-white/20 dark:text-neutral-500 hover:border-gray-200/80 hover:text-slate-600 dark:hover:border-white/30 dark:hover:text-neutral-300"
+                    ? "border-gray-200/95 bg-[#FCFCFC] text-slate-900 dark:border-white/10 dark:bg-white/[0.05] dark:text-zinc-200"
+                    : "border-gray-200/50 text-neutral-400 hover:border-gray-200/80 hover:text-slate-600 dark:border-white/[0.06] dark:text-zinc-500 dark:hover:border-white/10 dark:hover:text-zinc-300"
                 }`
               }
             >
@@ -162,15 +164,15 @@ export default function Layout() {
             </NavLink>
           ))}
         </nav>
-        <div className="pt-4 border-t border-neutral-900 space-y-2">
+        <div className="space-y-2 border-t border-neutral-200 pt-4 dark:border-white/[0.06]">
           <div className="text-sm">
-            <div className="truncate">{user?.name}</div>
+            <div className="truncate text-slate-900 dark:text-zinc-200">{user?.name}</div>
             <div className="label-tech truncate">{user?.role}</div>
           </div>
           <button
             data-testid="logout-button"
             onClick={logout}
-            className="w-full flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white px-3 py-2 border border-neutral-300 dark:border-neutral-800 rounded-[16px]"
+            className="flex w-full items-center gap-2 rounded-[7px] border border-neutral-300 px-3 py-2 text-xs text-neutral-600 transition-colors hover:bg-slate-50 dark:border-white/10 dark:text-zinc-400 dark:hover:border-white/15 dark:hover:bg-white/[0.04] dark:hover:text-zinc-200"
           >
             <LogOut className="w-3.5 h-3.5" strokeWidth={1.5} /> Sign out
           </button>
@@ -178,9 +180,11 @@ export default function Layout() {
       </aside>
 
       {/* Top bar (mobile + desktop right-side actions) */}
-      <header className="fixed top-0 right-0 left-0 md:left-60 z-20 bg-white/80 dark:bg-[#09090B]/80 backdrop-blur-xl border-b border-neutral-200 dark:border-neutral-900 px-4 md:px-8 h-14 flex items-center justify-between">
+      <header className="fixed left-0 right-0 top-0 z-20 flex h-14 items-center justify-between border-b border-neutral-200 bg-white/80 px-4 backdrop-blur-xl dark:border-white/[0.06] dark:bg-[#0b0b0c]/80 md:left-60 md:px-8">
         <div className="md:hidden">
-          <img src="/brand/favicon.png" alt="Studio 7" className="brand-logo h-6 w-6" />
+          <div className="brand-favicon-slot-6">
+            <img src="/brand/favicon.png" alt="Studio 7" className="brand-logo" />
+          </div>
         </div>
         <div className="flex items-center gap-4">
           <div className="hidden md:block label-tech">
@@ -193,7 +197,7 @@ export default function Layout() {
           </div>
           <button
             onClick={toggleTheme}
-            className="p-2 border border-neutral-300 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-900 rounded-[16px]"
+            className="rounded-[7px] border border-neutral-300 p-2 transition-colors hover:bg-slate-50 dark:border-white/10 dark:hover:bg-white/[0.05]"
             data-testid="theme-toggle"
           >
             {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
@@ -210,7 +214,7 @@ export default function Layout() {
       </main>
 
       {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-[#0F0F11] border-t border-neutral-200 dark:border-neutral-900 z-30">
+      <nav className="fixed bottom-0 left-0 right-0 z-30 border-t border-neutral-200 bg-white dark:border-white/[0.06] dark:bg-[#0b0b0c] md:hidden">
         <div className="flex justify-around items-center h-16 px-1">
           {items.map((it) => (
             <NavLink
@@ -221,8 +225,8 @@ export default function Layout() {
               className={({ isActive }) =>
                 `flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-0.5 py-1.5 text-center text-[10px] uppercase leading-tight tracking-wider transition-colors rounded-[7px] ${
                   isActive
-                    ? "border border-gray-200/95 bg-[#FCFCFC] text-slate-900 dark:border-white/70 dark:bg-white/10 dark:text-white"
-                    : "border border-transparent text-neutral-400 dark:text-neutral-500"
+                    ? "border border-gray-200/95 bg-[#FCFCFC] text-slate-900 dark:border-white/10 dark:bg-white/[0.05] dark:text-zinc-200"
+                    : "border border-transparent text-neutral-400 dark:text-zinc-500"
                 }`
               }
             >

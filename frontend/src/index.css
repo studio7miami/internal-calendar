@@ -17,8 +17,6 @@
   font-display: swap;
 }
 
-@import url('https://api.fontshare.com/v2/css?f[]=jetbrains-mono@400,500&display=swap');
-
 html {
   color-scheme: light;
 }
@@ -34,18 +32,22 @@ html, body, #root {
   min-height: 100vh;
 }
 
-body {
-  font-family: 'Manrope', system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+html.dark #root {
+  background: #0b0b0c;
+  color: #d4d4d8;
+}
+html.dark .label-tech {
+  color: #71717a;
 }
 
 .font-display { font-family: 'Manrope', sans-serif; font-weight: 600; letter-spacing: -0.02em; }
-.font-mono, code, pre { font-family: 'JetBrains Mono', monospace; }
+/* UI copy uses Manrope; tabular numbers help IDs / codes without a second family */
+code, pre, .font-mono { font-family: 'Manrope', system-ui, sans-serif; font-variant-numeric: tabular-nums; }
 
 .label-tech {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Manrope', system-ui, sans-serif;
   font-size: 0.7rem;
+  font-weight: 500;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: #A1A1AA;
@@ -90,9 +92,36 @@ body {
   filter: none;
 }
 
+/* Fixed slot; graphic scales up and clips so layout size stays the same */
+.brand-favicon-slot-8,
+.brand-favicon-slot-6 {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.brand-favicon-slot-8 { width: 2rem; height: 2rem; }
+.brand-favicon-slot-6 { width: 1.5rem; height: 1.5rem; }
+.brand-favicon-slot-8 > img,
+.brand-favicon-slot-6 > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transform: scale(1.24);
+  transform-origin: center;
+}
+/* Black mark on light UI; invert on dark canvas */
+html.dark .brand-favicon-slot-8 > .brand-logo,
+html.dark .brand-favicon-slot-6 > .brand-logo {
+  filter: invert(1) brightness(1.08);
+}
+
 .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
 .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
 .scrollbar-thin::-webkit-scrollbar-thumb { background: #27272A; border-radius: 3px; }
+html.dark .scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); }
 
 .glass-card {
   /* Light mode: true “glass” (more transparent) */
@@ -110,15 +139,15 @@ body {
 }
 
 html.dark .glass-card {
-  background: rgba(9, 9, 11, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow:
-    0 10px 28px rgba(0, 0, 0, 0.30),
-    0 1px 0 rgba(255, 255, 255, 0.08) inset;
+    0 8px 24px rgba(0, 0, 0, 0.25),
+    0 1px 0 rgba(255, 255, 255, 0.04) inset;
 }
 
 html.dark .soft-divider {
-  border-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.06);
 }
 
 .glass-tile {
@@ -130,15 +159,21 @@ html.dark .soft-divider {
   backdrop-filter: blur(22px);
 }
 html.dark .glass-tile {
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.70);
-  box-shadow: none;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset;
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
 }
 
 @layer base {
+  html {
+    @apply font-sans antialiased;
+  }
   :root {
-    --background: 240 6% 6%;
-    --foreground: 0 0% 98%;
+    /* Light app canvas (shadcn defaults were dark-biased) */
+    --background: 0 0% 100%;
+    --foreground: 240 6% 10%;
     --card: 240 5% 8%;
     --card-foreground: 0 0% 98%;
     --popover: 240 6% 6%;
@@ -158,6 +193,16 @@ html.dark .glass-tile {
     --ring: 0 0% 85%;
     --radius: 0.375rem;
   }
+  html.dark {
+    --background: 240 4% 7%;
+    --foreground: 240 5% 84%;
+  }
   * { @apply border-border; }
-  body { @apply bg-background text-foreground; }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+  html.dark body {
+    background-color: #0b0b0c;
+    color: #d4d4d8;
+  }
 }

@@ -4,12 +4,10 @@ import { api, formatApiError } from "../lib/api";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
 import { Navigate } from "react-router-dom";
+import { pageTitleClass, pageSubtextClass, pageInputClass, pageBtnPrimaryClass } from "../lib/pageTheme";
+import { cn } from "@/lib/utils";
 
-const SLIDES = [
-  "/brand/slide-2.jpg",
-  "/brand/slide-3.jpg",
-  "/brand/slide-4.jpg",
-];
+const SLIDES = ["/brand/slide-2.jpg", "/brand/slide-3.jpg", "/brand/slide-4.jpg"];
 
 export default function Login() {
   const { user, loginWithToken, loading } = useAuth();
@@ -42,31 +40,33 @@ export default function Login() {
     }
   };
 
+  const fieldClass = cn(pageInputClass, "h-11 min-h-11 text-base md:text-sm");
+
   return (
-    <div className="min-h-screen grid md:grid-cols-2 bg-[#09090B] text-white">
+    <div className="grid min-h-screen bg-white text-slate-900 md:grid-cols-2">
       {/* Visual side */}
-      <div className="relative hidden md:block overflow-hidden bg-black">
+      <div className="relative hidden overflow-hidden bg-black md:block">
         {SLIDES.map((src, i) => (
           <img
             key={src}
             src={src}
             alt=""
-            className="absolute inset-0 w-full h-full object-cover transition-opacity duration-[900ms] ease-in-out"
+            className="absolute inset-0 h-full w-full object-cover transition-opacity duration-1000 ease-in-out"
             style={{ opacity: i === slide ? 1 : 0 }}
           />
         ))}
         <div className="absolute inset-0 bg-black/55" />
-        <div className="absolute inset-0 p-12 flex flex-col justify-between">
+        <div className="absolute inset-0 flex flex-col justify-between p-12 text-white">
           <div>
             <img src="/brand/logo.png" alt="Studio 7 Miami" className="brand-logo h-10 w-auto" />
           </div>
           <div>
-            <h1 className="font-display text-5xl lg:text-6xl leading-[1.05] text-white">
-              The studio<br />calendar.
+            <h1 className="text-5xl font-['Manrope',system-ui,sans-serif] font-semibold leading-[1.05] tracking-[-0.02em] lg:text-6xl">
+              The studio
+              <br />
+              calendar.
             </h1>
-            <p className="mt-4 text-neutral-300 max-w-sm">
-              An internal booking system for members only.
-            </p>
+            <p className="mt-4 max-w-sm text-slate-200/90">An internal booking system for members only.</p>
           </div>
           <div />
         </div>
@@ -76,17 +76,19 @@ export default function Login() {
       <div className="flex items-center justify-center p-6 sm:p-12">
         <form onSubmit={submit} className="w-full max-w-sm space-y-6" data-testid="login-form">
           <div>
-            <img src="/brand/logo.png" alt="Studio 7 Miami" className="brand-logo h-8 w-auto md:hidden mb-6" />
+            <img
+              src="/brand/logo.png"
+              alt="Studio 7 Miami"
+              className="brand-logo mb-6 h-8 w-auto md:hidden"
+            />
             <div className="label-tech">Authenticate</div>
-            <h2 className="font-display text-3xl mt-2">Sign in</h2>
-            <p className="text-sm text-neutral-400 mt-2">
-              Members only. Ask Seven for an invite link.
-            </p>
+            <h2 className={cn(pageTitleClass, "mt-2")}>Sign in</h2>
+            <p className={pageSubtextClass}>Members only. Ask Seven for an invite link.</p>
           </div>
 
           <div className="space-y-3">
             <div>
-              <label className="label-tech block mb-1">Email</label>
+              <label className="label-tech mb-1 block">Email</label>
               <Input
                 type="email"
                 value={email}
@@ -94,40 +96,42 @@ export default function Login() {
                 required
                 autoFocus
                 data-testid="login-email-input"
-                className="bg-[#121214] border-neutral-800 focus-visible:ring-white h-11"
+                className={fieldClass}
               />
             </div>
             <div>
-              <label className="label-tech block mb-1">Password</label>
+              <label className="label-tech mb-1 block">Password</label>
               <Input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 data-testid="login-password-input"
-                className="bg-[#121214] border-neutral-800 focus-visible:ring-white h-11"
+                className={fieldClass}
               />
             </div>
           </div>
 
           {error && (
-            <div className="text-sm text-red-400 border border-red-900 bg-red-950/30 px-3 py-2" data-testid="login-error">
+            <div
+              className="rounded-[7px] border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200"
+              data-testid="login-error"
+            >
               {error}
             </div>
           )}
 
           <Button
             type="submit"
+            variant="ghost"
             disabled={submitting}
             data-testid="login-submit-button"
-            className="w-full bg-white text-black hover:bg-neutral-200 h-11 rounded-sm font-medium"
+            className={cn("h-11 w-full font-medium", pageBtnPrimaryClass)}
           >
             {submitting ? "Signing in…" : "Sign in →"}
           </Button>
 
-          <div className="label-tech pt-4 border-t border-neutral-900">
-            Invite only
-          </div>
+          <div className="label-tech border-t border-gray-200/90 pt-4 text-slate-500 dark:text-neutral-500">Invite only</div>
         </form>
       </div>
     </div>

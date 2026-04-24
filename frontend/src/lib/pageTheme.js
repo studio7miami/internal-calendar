@@ -1,12 +1,12 @@
 /** Visual tokens aligned with the main Calendar page (chips, #FCFCFC, 7px radius) */
 
 export const pageTitleClass =
-  "mt-1 text-3xl sm:text-4xl font-['Manrope',system-ui,sans-serif] font-semibold tracking-[-0.02em] text-slate-900 dark:text-white";
+  "mt-1 text-3xl sm:text-4xl font-['Manrope',system-ui,sans-serif] font-semibold tracking-[-0.02em] text-slate-900 dark:text-zinc-200";
 
-export const pageSubtextClass = "text-sm text-slate-500 dark:text-neutral-400 mt-2";
+export const pageSubtextClass = "text-sm text-slate-500 dark:text-zinc-500 mt-2";
 
 export const pageCardClass =
-  "border border-gray-200/95 bg-[#FCFCFC] text-slate-900 dark:border-white/20 dark:bg-zinc-900/50 dark:text-white rounded-[7px]";
+  "border border-gray-200/95 bg-[#FCFCFC] text-slate-900 dark:border-white/10 dark:bg-white/[0.03] dark:text-zinc-200 rounded-[7px]";
 
 export const pageInputClass =
   "h-10 w-full rounded-[7px] border border-gray-200/95 bg-white px-3 text-sm text-slate-900 shadow-sm " +

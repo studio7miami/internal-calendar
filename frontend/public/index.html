@@ -3,7 +3,16 @@
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="theme-color" content="#000000" />
+        <meta name="theme-color" content="#ffffff" />
+        <script>
+            (function () {
+                try {
+                    if (localStorage.getItem("theme") === "dark")
+                        document.documentElement.classList.add("dark");
+                    else document.documentElement.classList.remove("dark");
+                } catch (e) {}
+            })();
+        </script>
         <meta name="description" content="Studio 7 Miami · Internal Calendar" />
         <link rel="icon" type="image/png" href="/brand/favicon.png" />
         <link rel="apple-touch-icon" href="/brand/favicon.png" />

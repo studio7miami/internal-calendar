@@ -17,15 +17,15 @@ export default function Profile() {
       <div className={cn("space-y-4 p-6", pageCardClass)}>
         <div>
           <div className="label-tech">Email</div>
-          <div className="font-mono text-slate-900 dark:text-white">{user.email}</div>
+          <div className="text-slate-900 tabular-nums dark:text-zinc-200">{user.email}</div>
         </div>
         <div>
           <div className="label-tech">Role</div>
-          <div className="font-mono capitalize text-slate-900 dark:text-white">{user.role}</div>
+          <div className="capitalize text-slate-900 dark:text-zinc-200">{user.role}</div>
         </div>
         <div>
           <div className="label-tech">Member since</div>
-          <div className="font-mono text-slate-900 dark:text-white">
+          <div className="text-slate-900 tabular-nums dark:text-zinc-200">
             {new Date(user.created_at).toLocaleDateString()}
           </div>
         </div>

@@ -127,7 +127,7 @@ export default function ColorWheel({ value, onChange, testId }) {
           />
           <span className="text-left">
             <span className="label-tech block">Color</span>
-            <span className="font-mono text-xs uppercase text-slate-500 dark:text-neutral-400">{value}</span>
+            <span className="text-xs uppercase tabular-nums text-slate-500 dark:text-zinc-400">{value}</span>
           </span>
         </button>
       </PopoverTrigger>
@@ -219,7 +219,7 @@ export default function ColorWheel({ value, onChange, testId }) {
             }}
             placeholder="#RRGGBB"
             spellCheck={false}
-            className="h-8 min-h-8 flex-1 rounded-[7px] border border-gray-200/95 bg-white px-2 font-mono text-xs uppercase text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400/30 dark:border-white/20 dark:bg-zinc-900/50 dark:text-white dark:focus:ring-white/20"
+            className="h-8 min-h-8 flex-1 rounded-[7px] border border-gray-200/95 bg-white px-2 text-xs uppercase tabular-nums text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400/30 dark:border-white/20 dark:bg-zinc-900/50 dark:text-white dark:focus:ring-white/20"
           />
         </div>
       </PopoverContent>

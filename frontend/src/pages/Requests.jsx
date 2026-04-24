@@ -92,7 +92,7 @@ export default function Requests() {
                 </div>
                 {isAdmin && b.member_name && (
                   <div className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
-                    {b.member_name} · <span className="font-mono text-slate-700 dark:text-neutral-300">{b.member_email}</span>
+                    {b.member_name} · <span className="text-slate-700 tabular-nums dark:text-zinc-400">{b.member_email}</span>
                   </div>
                 )}
                 {b.notes && (

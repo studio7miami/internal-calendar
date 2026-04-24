@@ -85,7 +85,7 @@ export default function Members() {
           >
             <div className="label-tech mb-1 text-emerald-800 dark:text-emerald-300">Invite link (stubbed email)</div>
             <div className="flex items-center gap-2">
-              <code className="truncate font-mono text-emerald-900 dark:text-emerald-200">{latestLink}</code>
+              <code className="truncate font-sans text-xs tabular-nums text-emerald-900 dark:text-emerald-200">{latestLink}</code>
               <button
                 onClick={() => copy(latestLink)}
                 className="ml-auto text-emerald-800 hover:text-emerald-950 dark:text-emerald-300 dark:hover:text-white"

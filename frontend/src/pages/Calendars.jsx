@@ -87,7 +87,7 @@ export default function CalendarsAdmin() {
             value={form.google_calendar_id}
             onChange={(e) => setForm({ ...form, google_calendar_id: e.target.value })}
             data-testid="new-calendar-gcal"
-            className={cn(pageInputClass, "font-mono")}
+            className={cn(pageInputClass, "tabular-nums")}
           />
           <ColorWheel
             value={form.color}
@@ -115,7 +115,7 @@ export default function CalendarsAdmin() {
                   value={c.google_calendar_id || ""}
                   onChange={(e) => setCals((prev) => prev.map((p) => (p.id === c.id ? { ...p, google_calendar_id: e.target.value } : p)))}
                   placeholder="Google Calendar ID"
-                  className={cn(pageInputClass, "font-mono")}
+                  className={cn(pageInputClass, "tabular-nums")}
                 />
                 <ColorWheel
                   value={c.color}

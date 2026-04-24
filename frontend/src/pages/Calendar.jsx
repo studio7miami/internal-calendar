@@ -7,7 +7,7 @@ import { fmtTimeShort } from "../lib/time";
 import { pageTitleClass } from "../lib/pageTheme";
 
 const glassBarHoverClass =
-  "hover:bg-slate-900/10 hover:text-black dark:hover:bg-white/10 dark:hover:text-black";
+  "hover:bg-slate-900/10 hover:text-black dark:hover:bg-white/[0.08] dark:hover:text-zinc-100";
 
 function ymd(d) {
   const y = d.getFullYear();
@@ -63,7 +63,7 @@ function BookingChip({ b, calendar, viewerIsAdmin, onClick }) {
         type="button"
         onClick={onClick}
         data-testid={`booking-chip-${b.id}`}
-        className="text-[10px] leading-tight px-2 py-1.5 w-full text-left border rounded-[7px] truncate text-slate-900 dark:text-white transition-colors hover:brightness-110"
+        className="text-[10px] leading-tight px-2 py-1.5 w-full text-left border rounded-[7px] truncate text-slate-900 transition-colors hover:brightness-110 dark:border-white/10 dark:text-zinc-200"
         style={{
           background: isPending ? rgba(color, 0.16) : rgba(color, 0.22),
           borderColor: isPending ? rgba(color, 0.34) : rgba(color, 0.46),
@@ -170,7 +170,7 @@ export default function CalendarPage() {
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d, idx) => (
             <div
               key={d}
-              className="px-3 py-2 text-center text-[11px] tracking-[0.22em] uppercase text-slate-900 dark:text-white"
+              className="px-3 py-2 text-center text-[11px] tracking-[0.22em] uppercase text-slate-600 dark:text-zinc-500"
             >
               {d}
             </div>
@@ -188,7 +188,7 @@ export default function CalendarPage() {
               <div
                 key={i}
                 className={`glass-tile group min-h-[96px] rounded-[7px] p-2.5 flex flex-col gap-2 ${
-                  inMonth ? "text-slate-900 dark:text-neutral-100" : "text-slate-400 dark:text-neutral-500"
+                  inMonth ? "text-slate-900 dark:text-zinc-300" : "text-slate-400 dark:text-zinc-600"
                 }`}
                 data-testid={`month-cell-${key}`}
               >
@@ -200,16 +200,16 @@ export default function CalendarPage() {
                   <span
                     className={`h-8 w-8 rounded-full grid place-items-center transition-colors ${
                       isSelected
-                        ? "bg-slate-900 text-white dark:bg-white dark:text-black"
+                        ? "bg-slate-900 text-white dark:bg-zinc-200 dark:text-zinc-900"
                         : isToday
-                        ? "bg-slate-900/10 text-slate-900 dark:bg-white/10 dark:text-white"
+                        ? "bg-slate-900/10 text-slate-900 dark:bg-white/[0.08] dark:text-zinc-200"
                         : "text-current"
                     } ${inMonth ? "" : "opacity-70"}`}
                   >
                     {d.getDate()}
                   </span>
                   <span className="opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Plus className="w-3.5 h-3.5 text-slate-400 hover:text-slate-900 dark:text-neutral-400 dark:hover:text-white" strokeWidth={1.5} />
+                    <Plus className="w-3.5 h-3.5 text-slate-400 hover:text-slate-900 dark:text-zinc-500 dark:hover:text-zinc-200" strokeWidth={1.5} />
                   </span>
                 </button>
                 <div className="space-y-1 overflow-hidden">
@@ -223,7 +223,7 @@ export default function CalendarPage() {
                     />
                   ))}
                   {todaysBookings.length > 3 && (
-                    <div className="text-[10px] tracking-[0.18em] uppercase text-slate-500 dark:text-neutral-400">
+                    <div className="text-[10px] tracking-[0.18em] uppercase text-slate-500 dark:text-zinc-600">
                       +{todaysBookings.length - 3} more
                     </div>
                   )}
@@ -255,10 +255,10 @@ export default function CalendarPage() {
                 idx === dayList.length - 1 ? "" : "border-r soft-divider"
               }`}
             >
-              <div className="text-[11px] tracking-[0.22em] uppercase text-slate-500 dark:text-neutral-400">
+              <div className="text-[11px] tracking-[0.22em] uppercase text-slate-500 dark:text-zinc-500">
                 {d.toLocaleDateString(undefined, { weekday: "short" })}
               </div>
-              <div className="font-display text-[18px] text-slate-900 dark:text-white mt-0.5">{d.getDate()}</div>
+              <div className="font-display mt-0.5 text-[18px] text-slate-900 dark:text-zinc-200">{d.getDate()}</div>
             </div>
           ))}
         </div>
@@ -269,7 +269,7 @@ export default function CalendarPage() {
           {hours.map((h) => (
             <React.Fragment key={h}>
               <div
-                className={`p-2 border-r soft-divider text-right text-[11px] text-slate-500 dark:text-neutral-400 ${
+                className={`p-2 border-r soft-divider text-right text-[11px] text-slate-500 dark:text-zinc-500 ${
                   isLastHour(h) ? "" : "border-b soft-divider"
                 }`}
               >
@@ -290,7 +290,7 @@ export default function CalendarPage() {
                     type="button"
                     key={`${key}-${h}`}
                     onClick={() => openForm(key, slotStart, slotEnd)}
-                    className={`relative min-h-[56px] hover:bg-black/5 dark:hover:bg-white/5 p-2 flex flex-col gap-1 text-left bg-transparent ${
+                    className={`relative min-h-[56px] hover:bg-black/5 dark:hover:bg-white/[0.03] p-2 flex flex-col gap-1 text-left bg-transparent ${
                       idx === dayList.length - 1 ? "" : "border-r soft-divider"
                     } ${isLastHour(h) ? "" : "border-b soft-divider"}`}
                     data-testid={`slot-${key}-${h}`}
@@ -352,8 +352,7 @@ export default function CalendarPage() {
             type="button"
             onClick={() => setCursor(new Date())}
             data-testid="today-button"
-            className={`min-h-8 box-border inline-flex items-center justify-center border border-white/30 bg-white/80 px-3 py-1.5 text-xs leading-none text-black backdrop-blur-md transition-colors ${glassBarHoverClass} rounded-[7px]`}
-            style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.10)" }}
+            className={`min-h-8 box-border inline-flex items-center justify-center border border-white/30 bg-white/80 px-3 py-1.5 text-xs leading-none text-black shadow-[0_1px_4px_rgba(0,0,0,0.1)] backdrop-blur-md transition-colors dark:border-white/10 dark:bg-white/[0.06] dark:text-zinc-200 dark:shadow-[0_1px_3px_rgba(0,0,0,0.45)] ${glassBarHoverClass} rounded-[7px]`}
           >
             Today
           </button>
@@ -362,28 +361,25 @@ export default function CalendarPage() {
             type="button"
             onClick={() => navigate(-1)}
             data-testid="nav-prev-button"
-            className={`min-h-8 w-8 p-0 inline-flex items-center justify-center border border-white/30 bg-white/80 text-black backdrop-blur-md transition-colors ${glassBarHoverClass} rounded-[7px]`}
-            style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.10)" }}
+            className={`min-h-8 w-8 p-0 inline-flex items-center justify-center border border-white/30 bg-white/80 text-black shadow-[0_1px_4px_rgba(0,0,0,0.1)] backdrop-blur-md transition-colors dark:border-white/10 dark:bg-white/[0.06] dark:text-zinc-200 dark:shadow-[0_1px_3px_rgba(0,0,0,0.45)] ${glassBarHoverClass} rounded-[7px]`}
           >
-            <ChevronLeft className="w-4 h-4" strokeWidth={1.5} />
+            <ChevronLeft className="h-4 w-4" strokeWidth={1.5} />
           </button>
 
           <button
             type="button"
             onClick={() => navigate(1)}
             data-testid="nav-next-button"
-            className={`min-h-8 w-8 p-0 inline-flex items-center justify-center border border-white/30 bg-white/80 text-black backdrop-blur-md transition-colors ${glassBarHoverClass} rounded-[7px]`}
-            style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.10)" }}
+            className={`min-h-8 w-8 p-0 inline-flex items-center justify-center border border-white/30 bg-white/80 text-black shadow-[0_1px_4px_rgba(0,0,0,0.1)] backdrop-blur-md transition-colors dark:border-white/10 dark:bg-white/[0.06] dark:text-zinc-200 dark:shadow-[0_1px_3px_rgba(0,0,0,0.45)] ${glassBarHoverClass} rounded-[7px]`}
           >
-            <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
+            <ChevronRight className="h-4 w-4" strokeWidth={1.5} />
           </button>
 
           <button
             type="button"
             onClick={() => openForm(ymd(cursor))}
             data-testid="new-booking-button"
-            className={`min-h-8 box-border inline-flex items-center justify-center gap-1.5 border border-white/30 bg-white/80 px-3 py-1.5 text-xs leading-none text-black backdrop-blur-md transition-colors ${glassBarHoverClass} rounded-[7px]`}
-            style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.10)" }}
+            className={`min-h-8 box-border inline-flex items-center justify-center gap-1.5 border border-white/30 bg-white/80 px-3 py-1.5 text-xs leading-none text-black shadow-[0_1px_4px_rgba(0,0,0,0.1)] backdrop-blur-md transition-colors dark:border-white/10 dark:bg-white/[0.06] dark:text-zinc-200 dark:shadow-[0_1px_3px_rgba(0,0,0,0.45)] ${glassBarHoverClass} rounded-[7px]`}
           >
             <Plus className="w-4 h-4 shrink-0" strokeWidth={1.5} />
             New
@@ -394,8 +390,7 @@ export default function CalendarPage() {
       {/* ── View mode + calendar toggles (shared button style) ── */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div
-          className="min-h-8 box-border inline-flex select-none items-center gap-2.5 sm:gap-3 border border-gray-200/95 px-2.5 sm:px-3 py-1.5 text-xs leading-none dark:border-white/70"
-          style={{ background: "#FCFCFC", borderRadius: "7px" }}
+          className="min-h-8 box-border inline-flex select-none items-center gap-2.5 rounded-[7px] border border-gray-200/95 bg-[#FCFCFC] px-2.5 py-1.5 text-xs leading-none dark:border-white/10 dark:bg-white/[0.04] sm:gap-3 sm:px-3"
           role="tablist"
           aria-label="Calendar view"
         >
@@ -414,10 +409,10 @@ export default function CalendarPage() {
                 aria-selected={on}
                 data-testid={`view-${id}-tab`}
                 onClick={() => setView(id)}
-                className={`-m-0.5 inline-flex items-center rounded-sm border-0 bg-transparent p-0.5 px-1.5 sm:px-2 text-xs font-normal leading-none transition-colors focus-visible:outline focus-visible:ring-2 focus-visible:ring-slate-500/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#FCFCFC] ${
+                className={`-m-0.5 inline-flex items-center rounded-sm border-0 bg-transparent p-0.5 px-1.5 text-xs font-normal leading-none transition-colors focus-visible:outline focus-visible:ring-2 focus-visible:ring-slate-500/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#FCFCFC] focus-visible:dark:ring-zinc-600/40 focus-visible:dark:ring-offset-[#0b0b0c] sm:px-2 ${
                   on
-                    ? "text-black dark:text-white"
-                    : "text-neutral-400 dark:text-neutral-500 hover:text-neutral-500 dark:hover:text-neutral-400"
+                    ? "text-black dark:text-zinc-200"
+                    : "text-neutral-400 dark:text-zinc-500 hover:text-neutral-500 dark:hover:text-zinc-400"
                 }`}
               >
                 {label}
@@ -434,13 +429,11 @@ export default function CalendarPage() {
                 key={c.id}
                 onClick={() => toggleCal(c.id)}
                 data-testid={`calendar-toggle-${c.id}`}
-                className={`min-h-8 box-border inline-flex items-center gap-2 border border-gray-200/95 px-3 py-1.5 text-xs leading-none transition-colors dark:border-white/70 ${
-                  on ? "text-black" : "text-neutral-400"
+                className={`min-h-8 box-border inline-flex items-center gap-2 rounded-[7px] border border-gray-200/95 px-3 py-1.5 text-xs leading-none transition-colors dark:border-white/10 ${
+                  on
+                    ? "bg-[#FCFCFC] text-black dark:bg-white/[0.05] dark:text-zinc-200"
+                    : "text-neutral-400 dark:bg-transparent dark:text-zinc-500"
                 }`}
-                style={{
-                  background: on ? "#FCFCFC" : "transparent",
-                  borderRadius: "7px",
-                }}
               >
                 <span
                   className="w-2.5 h-2.5 rounded-full"
