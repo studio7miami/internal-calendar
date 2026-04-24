@@ -3,6 +3,8 @@ import { api, formatApiError } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Copy, Mail, Ban, CircleCheck } from "lucide-react";
+import { pageTitleClass, pageSubtextClass, pageCardClass, pageInputClass, pageBtnPrimaryClass } from "../lib/pageTheme";
+import { cn } from "@/lib/utils";
 
 export default function Members() {
   const [users, setUsers] = useState([]);
@@ -55,15 +57,13 @@ export default function Members() {
     <div className="space-y-8" data-testid="members-page">
       <div>
         <div className="label-tech">Admin</div>
-        <h1 className="font-display text-3xl sm:text-4xl mt-1">Invite the team.</h1>
-        <p className="text-sm text-neutral-400 mt-2">
-          Note: Invites are single-use and expire in 7 days.
-        </p>
+        <h1 className={pageTitleClass}>Invite the team.</h1>
+        <p className={pageSubtextClass}>Note: Invites are single-use and expire in 7 days.</p>
       </div>
 
-      <form onSubmit={invite} className="border border-neutral-900 bg-[#0F0F11] p-4 rounded-sm space-y-3">
+      <form onSubmit={invite} className={cn("space-y-3 p-4", pageCardClass)}>
         <div className="label-tech">Send invite</div>
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
           <Input
             type="email"
             placeholder="member@studio7.miami"
@@ -71,20 +71,28 @@ export default function Members() {
             onChange={(e) => setEmail(e.target.value)}
             required
             data-testid="invite-email-input"
-            className="bg-[#121214] border-neutral-800 h-10"
+            className={pageInputClass}
           />
-          <Button type="submit" data-testid="send-invite-button" className="bg-white text-black hover:bg-neutral-200 rounded-sm">
-            <Mail className="w-4 h-4 mr-1" strokeWidth={1.5} /> Send invite
+          <Button type="submit" data-testid="send-invite-button" variant="ghost" className={cn("whitespace-nowrap", pageBtnPrimaryClass)}>
+            <Mail className="mr-1 h-4 w-4" strokeWidth={1.5} /> Send invite
           </Button>
         </div>
-        {err && <div className="text-sm text-red-400">{err}</div>}
+        {err && <div className="text-sm text-red-600 dark:text-red-400">{err}</div>}
         {latestLink && (
-          <div className="border border-emerald-900 bg-emerald-950/30 p-3 rounded-sm text-xs" data-testid="invite-link-display">
-            <div className="label-tech text-emerald-300 mb-1">Invite link (stubbed email)</div>
+          <div
+            className="rounded-[7px] border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200"
+            data-testid="invite-link-display"
+          >
+            <div className="label-tech mb-1 text-emerald-800 dark:text-emerald-300">Invite link (stubbed email)</div>
             <div className="flex items-center gap-2">
-              <code className="font-mono text-emerald-200 truncate">{latestLink}</code>
-              <button onClick={() => copy(latestLink)} className="ml-auto text-emerald-300 hover:text-white" data-testid="copy-invite-link">
-                <Copy className="w-4 h-4" strokeWidth={1.5} />
+              <code className="truncate font-mono text-emerald-900 dark:text-emerald-200">{latestLink}</code>
+              <button
+                onClick={() => copy(latestLink)}
+                className="ml-auto text-emerald-800 hover:text-emerald-950 dark:text-emerald-300 dark:hover:text-white"
+                data-testid="copy-invite-link"
+                type="button"
+              >
+                <Copy className="h-4 w-4" strokeWidth={1.5} />
               </button>
             </div>
           </div>
@@ -98,29 +106,32 @@ export default function Members() {
             {users.map((u) => (
               <div
                 key={u.id}
-                className={`border border-neutral-900 bg-[#0F0F11] px-4 py-3 rounded-sm flex items-center justify-between gap-3 ${
-                  u.is_disabled ? "opacity-50" : ""
-                }`}
+                className={cn(
+                  "flex items-center justify-between gap-3 px-4 py-3",
+                  pageCardClass,
+                  u.is_disabled && "opacity-50"
+                )}
                 data-testid={`user-row-${u.id}`}
               >
                 <div className="min-w-0">
-                  <div className="text-sm font-medium truncate flex items-center gap-2">
+                  <div className="flex items-center gap-2 truncate text-sm font-medium text-slate-900 dark:text-white">
                     {u.name}
                     {u.is_disabled && (
-                      <span className="label-tech px-1.5 py-0.5 border border-red-900 text-red-300 bg-red-950/40 rounded-sm">
+                      <span className="label-tech rounded-[7px] border border-red-200 bg-red-50 px-1.5 py-0.5 text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
                         Disabled
                       </span>
                     )}
                   </div>
-                  <div className="label-tech truncate">{u.email}</div>
+                  <div className="label-tech truncate text-slate-500 dark:text-neutral-400">{u.email}</div>
                 </div>
                 <div className="flex items-center gap-2">
                   <span
-                    className={`label-tech px-2 py-0.5 border rounded-sm ${
+                    className={cn(
+                      "label-tech rounded-[7px] border px-2 py-0.5",
                       u.role === "admin"
-                        ? "border-white text-white"
-                        : "border-neutral-700 text-neutral-400"
-                    }`}
+                        ? "border-slate-300 text-slate-900 dark:border-white dark:text-white"
+                        : "border-gray-200/80 text-slate-500 dark:border-white/20 dark:text-neutral-400"
+                    )}
                   >
                     {u.role}
                   </span>
@@ -130,16 +141,17 @@ export default function Members() {
                       onClick={() => toggleDisabled(u)}
                       data-testid={`toggle-disabled-${u.id}`}
                       title={u.is_disabled ? "Re-enable account" : "Disable account"}
-                      className={`px-4 py-3 border rounded-sm transition-colors ${
+                      className={cn(
+                        "rounded-[7px] border px-3 py-2 transition-colors",
                         u.is_disabled
-                          ? "border-emerald-900/70 text-emerald-300 hover:bg-emerald-950/40"
-                          : "border-red-900/70 text-red-300 hover:bg-red-950/40"
-                      }`}
+                          ? "border-emerald-200 text-emerald-800 hover:bg-emerald-50 dark:border-emerald-900/70 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+                          : "border-red-200 text-red-800 hover:bg-red-50 dark:border-red-900/70 dark:text-red-300 dark:hover:bg-red-950/40"
+                      )}
                     >
                       {u.is_disabled ? (
-                        <CircleCheck className="w-4 h-4" strokeWidth={1.5} />
+                        <CircleCheck className="h-4 w-4" strokeWidth={1.5} />
                       ) : (
-                        <Ban className="w-4 h-4" strokeWidth={1.5} />
+                        <Ban className="h-4 w-4" strokeWidth={1.5} />
                       )}
                     </button>
                   )}
@@ -152,24 +164,27 @@ export default function Members() {
         <div>
           <div className="label-tech mb-3">Invites</div>
           <div className="grid gap-2">
-            {invites.length === 0 && (
-              <div className="text-sm text-neutral-500">No invites yet.</div>
-            )}
+            {invites.length === 0 && <div className="text-sm text-slate-500 dark:text-neutral-500">No invites yet.</div>}
             {invites.map((i) => (
               <div
                 key={i.id}
-                className="border border-neutral-900 bg-[#0F0F11] px-4 py-3 rounded-sm flex items-center justify-between gap-3 text-sm"
+                className={cn("flex items-center justify-between gap-3 px-4 py-3 text-sm", pageCardClass)}
                 data-testid={`invite-row-${i.id}`}
               >
-                <div className="min-w-0">
+                <div className="min-w-0 text-slate-900 dark:text-white">
                   <div className="truncate">{i.email}</div>
-                  <div className="label-tech truncate">
+                  <div className="label-tech truncate text-slate-500 dark:text-neutral-400">
                     {i.used ? "used" : "pending"} · exp {new Date(i.expires_at).toLocaleDateString()}
                   </div>
                 </div>
                 {!i.used && (
-                  <button onClick={() => copy(i.invite_link)} className="text-neutral-300 hover:text-white text-xs border border-neutral-800 px-2 py-1 rounded-sm" data-testid={`copy-invite-${i.id}`}>
-                    <Copy className="w-3 h-3 inline mr-1" strokeWidth={1.5} /> Copy link
+                  <button
+                    onClick={() => copy(i.invite_link)}
+                    className="rounded-[7px] border border-gray-200/90 px-2 py-1 text-xs text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/20 dark:text-neutral-300 dark:hover:bg-zinc-800/50"
+                    data-testid={`copy-invite-${i.id}`}
+                    type="button"
+                  >
+                    <Copy className="mr-1 inline h-3 w-3" strokeWidth={1.5} /> Copy link
                   </button>
                 )}
               </div>

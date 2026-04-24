@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import BookingForm from "../components/app/BookingForm";
 import { fmtTimeShort } from "../lib/time";
+import { pageTitleClass } from "../lib/pageTheme";
 
 const glassBarHoverClass =
   "hover:bg-slate-900/10 hover:text-black dark:hover:bg-white/10 dark:hover:text-black";
@@ -344,9 +345,7 @@ export default function CalendarPage() {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <div className="label-tech">Calendar</div>
-          <h1 className="mt-1 text-3xl sm:text-4xl font-['Manrope',system-ui,sans-serif] font-semibold tracking-[-0.02em]">
-            {title}
-          </h1>
+          <h1 className={pageTitleClass}>{title}</h1>
         </div>
         <div className="flex items-center gap-2">
           <button

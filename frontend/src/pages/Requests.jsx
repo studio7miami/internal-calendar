@@ -5,15 +5,19 @@ import { Button } from "../components/ui/button";
 import { Textarea } from "../components/ui/textarea";
 import { Check, X, Clock } from "lucide-react";
 import { fmtTimeShort } from "../lib/time";
+import { pageTitleClass, pageSubtextClass, pageCardClass, pageTextareaClass, pageBtnPrimaryClass } from "../lib/pageTheme";
+import { cn } from "@/lib/utils";
 
 function StatusBadge({ status }) {
   const map = {
-    pending: "border-amber-800 text-amber-300 bg-amber-950/40",
-    approved: "border-emerald-800 text-emerald-300 bg-emerald-950/40",
-    denied: "border-red-900 text-red-300 bg-red-950/40",
+    pending:
+      "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800 dark:text-amber-300 dark:bg-amber-950/40",
+    approved:
+      "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:text-emerald-300 dark:bg-emerald-950/40",
+    denied: "border-red-200 bg-red-50 text-red-900 dark:border-red-900 dark:text-red-300 dark:bg-red-950/40",
   };
   return (
-    <span className={`label-tech px-2 py-0.5 border rounded-[16px] ${map[status]}`}>
+    <span className={cn("label-tech border px-2 py-0.5 rounded-[7px]", map[status] || map.pending)}>
       {status}
     </span>
   );
@@ -56,10 +60,8 @@ export default function Requests() {
     <div className="space-y-6" data-testid="requests-page">
       <div>
         <div className="label-tech">Queue</div>
-        <h1 className="font-display text-3xl sm:text-4xl mt-1">
-          {isAdmin ? "Booking requests" : "My requests"}
-        </h1>
-        <p className="text-sm text-neutral-400 mt-2">
+        <h1 className={pageTitleClass}>{isAdmin ? "Booking requests" : "My requests"}</h1>
+        <p className={pageSubtextClass}>
           {isAdmin
             ? "Approve or deny incoming member requests."
             : "Your recent booking requests and their status."}
@@ -67,73 +69,72 @@ export default function Requests() {
       </div>
 
       {items.length === 0 && (
-        <div className="border border-neutral-900 p-12 rounded-[16px] text-center text-neutral-500" data-testid="requests-empty">
-          <Clock className="w-6 h-6 mx-auto mb-2 opacity-50" strokeWidth={1.5} />
+        <div
+          className={cn("border border-dashed border-gray-200/90 bg-white/50 p-12 text-center text-slate-500 dark:border-white/20 dark:bg-zinc-900/30 dark:text-neutral-400", "rounded-[7px]")}
+          data-testid="requests-empty"
+        >
+          <Clock className="mx-auto mb-2 h-6 w-6 opacity-50" strokeWidth={1.5} />
           Nothing here yet.
         </div>
       )}
 
       <div className="grid gap-4">
         {items.map((b) => (
-          <div
-            key={b.id}
-            className="border border-neutral-900 bg-[#0F0F11] rounded-[16px] p-4"
-            data-testid={`request-card-${b.id}`}
-          >
-            <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div key={b.id} className={cn("p-4", pageCardClass)} data-testid={`request-card-${b.id}`}>
+            <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2">
                   <StatusBadge status={b.status} />
-                  <span className="label-tech">{calName(b.calendar_id)}</span>
+                  <span className="label-tech text-slate-600 dark:text-neutral-400">{calName(b.calendar_id)}</span>
                 </div>
-                <div className="font-display text-xl mt-2">
+                <div className="mt-2 text-xl font-semibold text-slate-900 dark:text-white">
                   {b.date} · {fmtTimeShort(b.start_time)}–{fmtTimeShort(b.end_time)}
                 </div>
                 {isAdmin && b.member_name && (
-                  <div className="text-sm text-neutral-400 mt-1">
-                    {b.member_name} · <span className="font-mono">{b.member_email}</span>
+                  <div className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
+                    {b.member_name} · <span className="font-mono text-slate-700 dark:text-neutral-300">{b.member_email}</span>
                   </div>
                 )}
                 {b.notes && (
-                  <div className="text-sm text-neutral-300 mt-2 border-l-2 border-neutral-800 pl-3">
+                  <div className="mt-2 border-l-2 border-slate-200 pl-3 text-sm text-slate-700 dark:border-white/20 dark:text-neutral-300">
                     {b.notes}
                   </div>
                 )}
                 {b.approval_message && (
-                  <div className="text-xs text-neutral-500 mt-2">
-                    Message: {b.approval_message}
-                  </div>
+                  <div className="mt-2 text-xs text-slate-500 dark:text-neutral-500">Message: {b.approval_message}</div>
                 )}
               </div>
 
               {isAdmin && b.status === "pending" && (
-                <div className="flex gap-2 w-full sm:w-auto">
-                  <div className="flex flex-col gap-2 w-full">
-                    <Textarea
-                      placeholder="Optional message to member…"
-                      value={msg[b.id] || ""}
-                      onChange={(e) => setMsg((m) => ({ ...m, [b.id]: e.target.value }))}
-                      rows={2}
-                      data-testid={`request-message-${b.id}`}
-                      className="bg-[#121214] border-neutral-800 focus-visible:ring-white min-w-[240px]"
-                    />
-                    <div className="flex gap-2">
-                      <Button
-                        onClick={() => act(b.id, "deny")}
-                        data-testid={`deny-${b.id}`}
-                        variant="ghost"
-                        className="border border-red-900/70 text-red-300 hover:bg-red-950/40 rounded-[16px]6px]"
-                      >
-                        <X className="w-4 h-4 mr-1" strokeWidth={1.5} /> Deny
-                      </Button>
-                      <Button
-                        onClick={() => act(b.id, "approve")}
-                        data-testid={`approve-${b.id}`}
-                        className="bg-white text-black hover:bg-neutral-200 rounded-[16px]"
-                      >
-                        <Check className="w-4 h-4 mr-1" strokeWidth={1.5} /> Approve
-                      </Button>
-                    </div>
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[240px]">
+                  <Textarea
+                    placeholder="Optional message to member…"
+                    value={msg[b.id] || ""}
+                    onChange={(e) => setMsg((m) => ({ ...m, [b.id]: e.target.value }))}
+                    rows={2}
+                    data-testid={`request-message-${b.id}`}
+                    className={pageTextareaClass}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => act(b.id, "deny")}
+                      data-testid={`deny-${b.id}`}
+                      variant="ghost"
+                      className={cn(
+                        "border border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900/70 dark:text-red-300 dark:hover:bg-red-950/40",
+                        "h-10 flex-1 rounded-[7px]"
+                      )}
+                    >
+                      <X className="mr-1 h-4 w-4" strokeWidth={1.5} /> Deny
+                    </Button>
+                    <Button
+                      onClick={() => act(b.id, "approve")}
+                      data-testid={`approve-${b.id}`}
+                      variant="ghost"
+                      className={cn("flex-1", pageBtnPrimaryClass)}
+                    >
+                      <Check className="mr-1 h-4 w-4" strokeWidth={1.5} /> Approve
+                    </Button>
                   </div>
                 </div>
               )}

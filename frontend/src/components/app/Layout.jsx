@@ -150,14 +150,14 @@ export default function Layout() {
               end={it.end}
               data-testid={it.testid}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 text-sm rounded-[16px] transition-colors ${
+                `flex min-h-8 items-center gap-3 border px-3 py-1.5 text-sm transition-colors rounded-[7px] ${
                   isActive
-                    ? "bg-black text-white dark:bg-white dark:text-black"
-                    : "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-900 hover:text-black dark:hover:text-white"
+                    ? "border-gray-200/95 bg-[#FCFCFC] text-slate-900 dark:border-white/70 dark:bg-white/10 dark:text-white"
+                    : "border-gray-200/50 text-neutral-400 dark:border-white/20 dark:text-neutral-500 hover:border-gray-200/80 hover:text-slate-600 dark:hover:border-white/30 dark:hover:text-neutral-300"
                 }`
               }
             >
-              <it.icon className="w-4 h-4" strokeWidth={1.5} />
+              <it.icon className="h-4 w-4 shrink-0" strokeWidth={1.5} />
               {it.label}
             </NavLink>
           ))}
@@ -211,7 +211,7 @@ export default function Layout() {
 
       {/* Mobile bottom nav */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-[#0F0F11] border-t border-neutral-200 dark:border-neutral-900 z-30">
-        <div className="flex justify-around items-center h-16">
+        <div className="flex justify-around items-center h-16 px-1">
           {items.map((it) => (
             <NavLink
               key={it.to}
@@ -219,12 +219,14 @@ export default function Layout() {
               end={it.end}
               data-testid={`${it.testid}-mobile`}
               className={({ isActive }) =>
-                `flex flex-col items-center gap-1 text-[10px] uppercase tracking-wider ${
-                  isActive ? "text-black dark:text-white" : "text-neutral-500"
+                `flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-0.5 py-1.5 text-center text-[10px] uppercase leading-tight tracking-wider transition-colors rounded-[7px] ${
+                  isActive
+                    ? "border border-gray-200/95 bg-[#FCFCFC] text-slate-900 dark:border-white/70 dark:bg-white/10 dark:text-white"
+                    : "border border-transparent text-neutral-400 dark:text-neutral-500"
                 }`
               }
             >
-              <it.icon className="w-5 h-5" strokeWidth={1.5} />
+              <it.icon className="h-5 w-5 shrink-0" strokeWidth={1.5} />
               {it.label}
             </NavLink>
           ))}

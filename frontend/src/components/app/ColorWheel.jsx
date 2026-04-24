@@ -122,19 +122,20 @@ export default function ColorWheel({ value, onChange, testId }) {
           className="flex items-center gap-3 group"
         >
           <span
-            className="block w-10 h-10 rounded-full border-2 border-neutral-800 transition-transform group-hover:scale-105"
+            className="block h-10 w-10 rounded-full border-2 border-gray-200/90 transition-transform group-hover:scale-105 dark:border-neutral-800"
             style={{ background: value }}
           />
           <span className="text-left">
             <span className="label-tech block">Color</span>
-            <span className="font-mono text-xs text-neutral-400 uppercase">{value}</span>
+            <span className="font-mono text-xs uppercase text-slate-500 dark:text-neutral-400">{value}</span>
           </span>
         </button>
       </PopoverTrigger>
       <PopoverContent
         side="bottom"
         align="start"
-        className="bg-[#0F0F11] border-neutral-800 text-white p-4 w-[260px]"
+        className="w-[260px] border border-gray-200/95 bg-white p-4 text-slate-900 shadow-md dark:border-white/20 dark:bg-zinc-900 dark:text-white"
+        style={{ borderRadius: 7 }}
       >
         {/* Wheel */}
         <div
@@ -197,7 +198,7 @@ export default function ColorWheel({ value, onChange, testId }) {
         <div className="mt-4 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <span
-              className="block w-6 h-6 rounded-sm border border-neutral-700"
+              className="block h-6 w-6 rounded-[4px] border border-gray-200/90 dark:border-neutral-700"
               style={{ background: currentHex }}
             />
           </div>
@@ -218,7 +219,7 @@ export default function ColorWheel({ value, onChange, testId }) {
             }}
             placeholder="#RRGGBB"
             spellCheck={false}
-            className="flex-1 bg-[#121214] border border-neutral-800 h-8 px-2 font-mono text-xs uppercase focus:outline-none focus:ring-1 focus:ring-white rounded-sm"
+            className="h-8 min-h-8 flex-1 rounded-[7px] border border-gray-200/95 bg-white px-2 font-mono text-xs uppercase text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400/30 dark:border-white/20 dark:bg-zinc-900/50 dark:text-white dark:focus:ring-white/20"
           />
         </div>
       </PopoverContent>
