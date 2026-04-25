@@ -15,6 +15,9 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [mfaToken, setMfaToken] = useState(null);
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaHint, setMfaHint] = useState(null);
   const [slide, setSlide] = useState(0);
 
   useEffect(() => {
@@ -32,12 +35,53 @@ export default function Login() {
     setSubmitting(true);
     try {
       const { data } = await api.post("/auth/login", { email, password });
-      loginWithToken(data.token, data.user);
+      if (data.mfa_required && data.mfa_token) {
+        setMfaToken(data.mfa_token);
+        setMfaCode("");
+        setMfaHint(
+          data.mfa_sent_hint
+            ? { via: data.mfa_sent_via || "email", hint: data.mfa_sent_hint }
+            : null
+        );
+        return;
+      }
+      if (data.token && data.user) {
+        loginWithToken(data.token, data.user);
+        return;
+      }
+      setError("Unexpected response from the server");
     } catch (err) {
       setError(formatApiError(err?.response?.data?.detail) || "Login failed");
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const submitMfa = async (e) => {
+    e.preventDefault();
+    setError("");
+    setSubmitting(true);
+    try {
+      const { data } = await api.post("/auth/login/mfa", { mfa_token: mfaToken, code: mfaCode });
+      if (data.token && data.user) {
+        setMfaToken(null);
+        setMfaHint(null);
+        loginWithToken(data.token, data.user);
+        return;
+      }
+      setError("Unexpected response");
+    } catch (err) {
+      setError(formatApiError(err?.response?.data?.detail) || "Verification failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const backToPassword = () => {
+    setMfaToken(null);
+    setMfaCode("");
+    setMfaHint(null);
+    setError("");
   };
 
   const fieldClass = cn(pageInputClass, "h-11 min-h-11 text-base md:text-sm");
@@ -58,7 +102,19 @@ export default function Login() {
         <div className="absolute inset-0 bg-black/55" />
         <div className="absolute inset-0 flex flex-col justify-between p-12 text-white">
           <div>
-            <img src="/brand/logo.png" alt="Studio 7 Miami" className="brand-logo h-10 w-auto" />
+            <a
+              href="https://studio7.miami"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block rounded-[7px] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+              aria-label="Studio 7 Miami (opens studio7.miami)"
+            >
+              <img
+                src="/brand/logo.png"
+                alt="Studio 7 Miami"
+                className="brand-logo brand-logo-white brand-logo-nav brand-logo-nav-sidebar"
+              />
+            </a>
           </div>
           <div>
             <h1 className="text-5xl font-['Manrope',system-ui,sans-serif] font-semibold leading-[1.05] tracking-[-0.02em] lg:text-6xl">
@@ -74,13 +130,80 @@ export default function Login() {
 
       {/* Form side */}
       <div className="flex items-center justify-center p-6 sm:p-12">
+        {mfaToken ? (
+          <form onSubmit={submitMfa} className="w-full max-w-sm space-y-6" data-testid="login-mfa-form">
+            <div>
+              <div className="label-tech">Two-step verification</div>
+              <h2 className={cn(pageTitleClass, "mt-2")}>Check your {mfaHint?.via === "phone" ? "phone" : "email"}</h2>
+              <p className={pageSubtextClass}>
+                {mfaHint?.hint
+                  ? `We sent a 6-digit code (${mfaHint.via === "phone" ? "SMS" : "email"}) to ${mfaHint.hint}.`
+                  : "We sent a 6-digit code to your email or phone on file. Enter it below."}
+              </p>
+            </div>
+            <div>
+              <label className="label-tech mb-1 block">6-digit code</label>
+              <Input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                value={mfaCode}
+                onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                required
+                autoFocus
+                maxLength={6}
+                placeholder="000000"
+                data-testid="login-mfa-input"
+                className={fieldClass + " text-center text-lg tracking-widest"}
+              />
+            </div>
+            {error && (
+              <div
+                className="rounded-[7px] border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200"
+                data-testid="login-mfa-error"
+              >
+                {error}
+              </div>
+            )}
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={backToPassword}
+                className="h-11 w-full sm:flex-1 border border-slate-200/90 dark:border-white/15"
+                data-testid="login-mfa-back"
+              >
+                Back
+              </Button>
+              <Button
+                type="submit"
+                variant="ghost"
+                disabled={submitting}
+                className={cn("h-11 w-full sm:flex-1", pageBtnPrimaryClass)}
+                data-testid="login-mfa-submit"
+              >
+                {submitting ? "Verifying…" : "Verify and sign in →"}
+              </Button>
+            </div>
+          </form>
+        ) : (
         <form onSubmit={submit} className="w-full max-w-sm space-y-6" data-testid="login-form">
           <div>
-            <img
-              src="/brand/logo.png"
-              alt="Studio 7 Miami"
-              className="brand-logo mb-6 h-8 w-auto md:hidden"
-            />
+            <div className="mb-6 self-start rounded-[7px] bg-[#0b0b0c] px-4 py-2.5 md:hidden">
+              <a
+                href="https://studio7.miami"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block rounded-[7px] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+                aria-label="Studio 7 Miami (opens studio7.miami)"
+              >
+                <img
+                  src="/brand/logo.png"
+                  alt="Studio 7 Miami"
+                  className="brand-logo brand-logo-white brand-logo-nav brand-logo-nav-header"
+                />
+              </a>
+            </div>
             <div className="label-tech">Authenticate</div>
             <h2 className={cn(pageTitleClass, "mt-2")}>Sign in</h2>
             <p className={pageSubtextClass}>Members only. Ask Seven for an invite link.</p>
@@ -133,6 +256,7 @@ export default function Login() {
 
           <div className="label-tech border-t border-gray-200/90 pt-4 text-slate-500 dark:text-neutral-500">Invite only</div>
         </form>
+        )}
       </div>
     </div>
   );

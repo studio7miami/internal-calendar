@@ -10,6 +10,7 @@ import { Calendar as CalendarIcon } from "lucide-react";
 import { api, formatApiError } from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
 import { cn } from "@/lib/utils";
+import { suggestedSlots, normHm } from "../../lib/availability";
 
 const r7 = "rounded-[7px]";
 
@@ -28,6 +29,12 @@ const chipToggle = (on) =>
       ? "border border-gray-200/95 bg-[#FCFCFC] text-black dark:border-white/70 dark:bg-white/10 dark:text-white"
       : "border border-gray-200/50 text-neutral-400 dark:border-white/20 dark:text-neutral-500"
   );
+
+function normTime(t) {
+  if (!t) return "10:00";
+  const s = String(t);
+  return s.length >= 5 ? s.slice(0, 5) : s;
+}
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = React.useState(
@@ -51,9 +58,12 @@ export default function BookingForm({
   defaultEnd,
   canManualBook,
   members = [],
+  editingBooking = null,
+  allBookings = [],
 }) {
   const { user } = useAuth();
   const isMobile = useIsMobile();
+  const editMode = Boolean(editingBooking?.id);
   const [calendarId, setCalendarId] = useState(calendars?.[0]?.id || "");
   const [date, setDate] = useState(defaultDate || "");
   const [start, setStart] = useState(defaultStart || "10:00");
@@ -63,37 +73,79 @@ export default function BookingForm({
   const [mode, setMode] = useState(canManualBook ? "manual" : "request");
   const [err, setErr] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const p = user?.permissions || {};
+  const canCancelBooking =
+    editMode &&
+    (editingBooking.is_own ||
+      p.delete_any_booking ||
+      (p.create_manual_booking && !editingBooking.is_own));
 
   React.useEffect(() => {
-    if (open) {
-      setCalendarId(calendars?.[0]?.id || "");
-      setDate(defaultDate || "");
-      setStart(defaultStart || "10:00");
-      setEnd(defaultEnd || "11:00");
-      setNotes("");
+    if (!open) return;
+    if (editMode) {
+      setCalendarId(editingBooking.calendar_id || calendars?.[0]?.id || "");
+      setDate(editingBooking.date || "");
+      setStart(normTime(editingBooking.start_time));
+      setEnd(normTime(editingBooking.end_time));
+      setNotes(editingBooking.notes ?? "");
       setMemberId("");
       setErr("");
-      setMode(canManualBook ? "manual" : "request");
+      return;
     }
-  }, [open, defaultDate, defaultStart, defaultEnd, calendars, canManualBook]);
+    setCalendarId(calendars?.[0]?.id || "");
+    setDate(defaultDate || "");
+    setStart(defaultStart || "10:00");
+    setEnd(defaultEnd || "11:00");
+    setNotes("");
+    setMemberId("");
+    setErr("");
+    setMode(canManualBook ? "manual" : "request");
+  }, [open, editMode, editingBooking, defaultDate, defaultStart, defaultEnd, calendars, canManualBook]);
+
+  const handleDeleteBooking = async () => {
+    if (!editingBooking?.id) return;
+    if (!window.confirm("Cancel this booking? It will be removed from the calendar.")) return;
+    setErr("");
+    setDeleting(true);
+    try {
+      await api.delete(`/bookings/${editingBooking.id}`);
+      onSuccess?.();
+      onClose();
+    } catch (e) {
+      setErr(formatApiError(e?.response?.data?.detail) || "Could not cancel");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const submit = async (e) => {
     e.preventDefault();
     setErr("");
     setSubmitting(true);
     try {
-      const payload = {
-        calendar_id: calendarId,
-        date,
-        start_time: start,
-        end_time: end,
-        notes,
-      };
-      if (canManualBook && mode === "manual") {
-        if (memberId) payload.member_id = memberId;
-        await api.post("/bookings/manual", payload);
+      if (editMode) {
+        await api.patch(`/bookings/${editingBooking.id}`, {
+          date,
+          start_time: start,
+          end_time: end,
+          notes,
+        });
       } else {
-        await api.post("/bookings/request", payload);
+        const payload = {
+          calendar_id: calendarId,
+          date,
+          start_time: start,
+          end_time: end,
+          notes,
+        };
+        if (canManualBook && mode === "manual") {
+          if (memberId) payload.member_id = memberId;
+          await api.post("/bookings/manual", payload);
+        } else {
+          await api.post("/bookings/request", payload);
+        }
       }
       onSuccess?.();
       onClose();
@@ -104,9 +156,28 @@ export default function BookingForm({
     }
   };
 
+  const selectedCal = calendars?.find((x) => x.id === calendarId);
+  const dayBookingsForCal = React.useMemo(() => {
+    if (!date || !calendarId) return [];
+    return (allBookings || []).filter((b) => b.calendar_id === calendarId && b.date === date && b.status !== "denied");
+  }, [allBookings, date, calendarId]);
+
+  const quickSlots = React.useMemo(() => {
+    if (editMode || !selectedCal || !date) return [];
+    return suggestedSlots(date, selectedCal, dayBookingsForCal, 30, 16);
+  }, [editMode, selectedCal, date, dayBookingsForCal]);
+
+  const formTitle = editMode ? "Your booking" : "New booking";
+  const statusLine =
+    editMode && editingBooking.status === "pending" ? (
+      <p className="text-sm text-slate-600 dark:text-zinc-400">Pending approval — you can still change the time or cancel.</p>
+    ) : null;
+
   const Form = (
     <form onSubmit={submit} className="space-y-4" data-testid="booking-form">
-      {canManualBook && (
+      {statusLine}
+
+      {canManualBook && !editMode && (
         <div className="flex gap-2">
           <button
             type="button"
@@ -133,8 +204,9 @@ export default function BookingForm({
           value={calendarId}
           onChange={(e) => setCalendarId(e.target.value)}
           required
+          disabled={editMode}
           data-testid="booking-calendar-select"
-          className={fieldClass}
+          className={cn(fieldClass, editMode && "cursor-not-allowed opacity-70")}
         >
           {calendars.map((c) => (
             <option key={c.id} value={c.id} className="text-slate-900 dark:bg-zinc-900">
@@ -144,7 +216,7 @@ export default function BookingForm({
         </select>
       </div>
 
-      {canManualBook && mode === "manual" && (
+      {canManualBook && mode === "manual" && !editMode && (
         <div>
           <label className="label-tech block mb-1">Assign member (optional)</label>
           <select
@@ -213,6 +285,32 @@ export default function BookingForm({
         </Popover>
       </div>
 
+      {!editMode && quickSlots.length > 0 && (
+        <div>
+          <label className="label-tech block mb-1.5">Open slots (this calendar and day)</label>
+          <div className="flex flex-wrap gap-1.5">
+            {quickSlots.map((slot) => (
+              <button
+                key={`${slot.start}-${slot.end}`}
+                type="button"
+                onClick={() => {
+                  setStart(slot.start);
+                  setEnd(slot.end);
+                }}
+                className={cn(
+                  "rounded-[7px] border px-2 py-1 text-[11px] transition-colors",
+                  normHm(start) === slot.start && normHm(end) === slot.end
+                    ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-zinc-900"
+                    : "border-gray-200/95 bg-white text-slate-700 hover:bg-slate-50 dark:border-white/15 dark:bg-zinc-900/50 dark:text-zinc-200 dark:hover:bg-zinc-800/60"
+                )}
+              >
+                {slot.start}–{slot.end}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="label-tech block mb-1">Start</label>
@@ -263,24 +361,40 @@ export default function BookingForm({
         </div>
       )}
 
+      {canCancelBooking && (
+        <div className="border-t border-slate-200/80 pt-3 dark:border-white/10">
+          <button
+            type="button"
+            onClick={handleDeleteBooking}
+            disabled={deleting || submitting}
+            data-testid="booking-delete-button"
+            className={cn(
+              "text-sm font-medium text-red-700 underline-offset-2 hover:underline disabled:opacity-50 dark:text-red-400"
+            )}
+          >
+            {deleting ? "Canceling…" : "Cancel booking"}
+          </button>
+        </div>
+      )}
+
       <div className="flex gap-2 pt-2">
         <Button
           type="button"
           variant="ghost"
           onClick={onClose}
-          data-testid="booking-cancel-button"
+          data-testid="booking-close-button"
           className={cn(
             "h-10 flex-1 min-h-8 box-border border border-gray-200/50 bg-transparent text-neutral-400",
             "hover:bg-slate-50/80 hover:text-neutral-500 dark:border-white/20 dark:text-neutral-500 dark:hover:bg-zinc-800/50 dark:hover:text-neutral-400",
             r7
           )}
         >
-          Cancel
+          Close
         </Button>
         <Button
           type="submit"
           variant="ghost"
-          disabled={submitting}
+          disabled={submitting || deleting}
           data-testid="booking-submit-button"
           className={cn(
             "h-10 flex-1 min-h-8 box-border",
@@ -290,7 +404,13 @@ export default function BookingForm({
             r7
           )}
         >
-          {submitting ? "Saving…" : canManualBook && mode === "manual" ? "Create booking" : "Send request"}
+          {submitting
+            ? "Saving…"
+            : editMode
+            ? "Save changes"
+            : canManualBook && mode === "manual"
+            ? "Create booking"
+            : "Send request"}
         </Button>
       </div>
     </form>
@@ -302,7 +422,7 @@ export default function BookingForm({
         <DrawerContent className={cn("p-0", calSurface)}>
           <DrawerHeader>
             <DrawerTitle className="text-left font-['Manrope',system-ui,sans-serif] text-2xl font-semibold text-slate-900 dark:text-white">
-              New booking
+              {formTitle}
             </DrawerTitle>
           </DrawerHeader>
           <div className="px-4 pb-6">{Form}</div>
@@ -317,7 +437,7 @@ export default function BookingForm({
         <div className="p-6">
           <DialogHeader>
             <DialogTitle className="font-['Manrope',system-ui,sans-serif] text-2xl font-semibold text-slate-900 dark:text-white">
-              New booking
+              {formTitle}
             </DialogTitle>
           </DialogHeader>
           <div className="pt-2">{Form}</div>

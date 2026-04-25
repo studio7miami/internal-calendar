@@ -2,8 +2,10 @@ import React, { useEffect, useState } from "react";
 import { useParams, Navigate } from "react-router-dom";
 import { api, formatApiError } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
-import { Input } from "../components/ui/input";
-import { Button } from "../components/ui/button";
+import InviteRegistrationForm from "../components/invite/InviteRegistrationForm";
+import { invitePageShellClass } from "../lib/inviteOnboardingTheme";
+import { pageCardClass } from "../lib/pageTheme";
+import { cn } from "@/lib/utils";
 
 export default function Invite() {
   const { token } = useParams();
@@ -50,78 +52,20 @@ export default function Invite() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-[#09090B] text-white">
-      <div className="w-full max-w-md" data-testid="invite-form">
-        <div className="label-tech">Studio 7 Miami · Invite</div>
-        <h1 className="font-display text-3xl mt-2">Create your account</h1>
-
-        {inviteStatus === "loading" && (
-          <p className="mt-6 text-neutral-400">Verifying invite…</p>
-        )}
-
-        {inviteStatus === "bad" && (
-          <div className="mt-6 border border-red-900 bg-red-950/30 p-4 text-red-300" data-testid="invite-error">
-            {error}
-          </div>
-        )}
-
-        {inviteStatus === "ok" && (
-          <form onSubmit={submit} className="mt-6 space-y-4">
-            <div>
-              <label className="label-tech block mb-1">Email</label>
-              <Input
-                value={email}
-                disabled
-                className="bg-[#121214] border-neutral-800 h-11 opacity-70"
-                data-testid="invite-email-input"
-              />
-            </div>
-            <div>
-              <label className="label-tech block mb-1">Full name</label>
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                data-testid="invite-name-input"
-                className="bg-[#121214] border-neutral-800 h-11 focus-visible:ring-white"
-              />
-            </div>
-            <div>
-              <label className="label-tech block mb-1">Password</label>
-              <Input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                data-testid="invite-password-input"
-                className="bg-[#121214] border-neutral-800 h-11 focus-visible:ring-white"
-              />
-            </div>
-            <div>
-              <label className="label-tech block mb-1">Confirm password</label>
-              <Input
-                type="password"
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-                required
-                data-testid="invite-confirm-input"
-                className="bg-[#121214] border-neutral-800 h-11 focus-visible:ring-white"
-              />
-            </div>
-            {error && (
-              <div className="text-sm text-red-400 border border-red-900 bg-red-950/30 px-3 py-2">
-                {error}
-              </div>
-            )}
-            <Button
-              type="submit"
-              data-testid="invite-submit-button"
-              className="w-full bg-white text-black hover:bg-neutral-200 h-11 rounded-sm"
-            >
-              Create account →
-            </Button>
-          </form>
-        )}
+    <div className={invitePageShellClass}>
+      <div className={cn("p-6 sm:p-8", pageCardClass)}>
+        <InviteRegistrationForm
+          inviteStatus={inviteStatus}
+          email={email}
+          name={name}
+          onNameChange={setName}
+          password={password}
+          onPasswordChange={setPassword}
+          confirm={confirm}
+          onConfirmChange={setConfirm}
+          error={error}
+          onSubmit={submit}
+        />
       </div>
     </div>
   );

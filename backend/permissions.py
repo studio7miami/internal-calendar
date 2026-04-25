@@ -10,10 +10,11 @@ from typing import Any, Dict, Optional, Tuple
 PERMISSION_DEFINITIONS: Tuple[Tuple[str, str], ...] = (
     ("view_schedule", "View calendar"),
     ("create_request", "Create booking requests"),
-    ("see_all_booking_details", "See all booking details (not anonymized)"),
-    ("create_manual_booking", "Add / edit on-calendar bookings (manual)"),
-    ("approve_deny_requests", "View & approve or deny the requests queue"),
-    ("view_members_directory", "View team list (for manual assignment)"),
+    ("see_all_booking_details", "See all booking details"),
+    ("create_manual_booking", "Add manual bookings"),
+    ("approve_deny_requests", "View and approve / deny requests"),
+    ("view_members_directory", "View team list"),
+    ("assign_member_calendars", "Assign calendars to members"),
     ("delete_any_booking", "Delete or cancel any booking"),
 )
 
@@ -26,6 +27,7 @@ DEFAULT_MEMBER: Dict[str, bool] = {
     "create_manual_booking": False,
     "approve_deny_requests": False,
     "view_members_directory": False,
+    "assign_member_calendars": False,
     "delete_any_booking": False,
 }
 
@@ -37,6 +39,7 @@ DEFAULT_MANAGER: Dict[str, bool] = {
     "create_manual_booking": True,
     "approve_deny_requests": True,
     "view_members_directory": True,
+    "assign_member_calendars": False,
     "delete_any_booking": False,
 }
 

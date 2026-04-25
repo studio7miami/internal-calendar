@@ -105,6 +105,9 @@ export default function ChatBot() {
                   Assistant
                 </p>
                 <p className="label-tech !mt-0.5">Studio 7</p>
+                <p className="mt-1 max-w-[220px] text-[10px] leading-snug text-slate-500 dark:text-zinc-500">
+                  Replies use live calendar data (bookings in your scope, last ~30 days through ~6 months out).
+                </p>
               </div>
             </div>
             <div className="flex flex-shrink-0 items-center gap-1.5">

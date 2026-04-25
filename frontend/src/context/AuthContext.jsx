@@ -17,7 +17,8 @@ export function AuthProvider({ children }) {
     api
       .get("/auth/me")
       .then((r) => setUser(r.data))
-      .catch(() => {
+      .catch((err) => {
+        if (err?._staleAuthFailure) return;
         localStorage.removeItem("s7_token");
         localStorage.removeItem("s7_user");
         setUser(false);
@@ -38,8 +39,19 @@ export function AuthProvider({ children }) {
     window.location.href = "/login";
   };
 
+  const refreshUser = () => {
+    return api
+      .get("/auth/me")
+      .then((r) => {
+        setUser(r.data);
+        localStorage.setItem("s7_user", JSON.stringify(r.data));
+        return r.data;
+      })
+      .catch(() => null);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, loginWithToken, logout }}>
+    <AuthContext.Provider value={{ user, loading, loginWithToken, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

@@ -16,6 +16,14 @@ api.interceptors.response.use(
   (r) => r,
   (err) => {
     if (err?.response?.status === 401) {
+      // If an older in-flight request got 401 after a new login set a new token, do not
+      // wipe the session (would look like "can't sign in" even when login returned 200).
+      const sent = (err?.config?.headers?.Authorization || "").replace(/^Bearer\s+/i, "");
+      const now = localStorage.getItem("s7_token");
+      if (now && sent && sent !== now) {
+        err._staleAuthFailure = true;
+        return Promise.reject(err);
+      }
       const path = window.location.pathname;
       if (!path.startsWith("/login") && !path.startsWith("/invite")) {
         localStorage.removeItem("s7_token");

@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { AnimatePresence, motion } from "framer-motion";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { pageEnterMotionProps } from "./PageEnterMotion";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../lib/api";
 import {
@@ -109,13 +111,17 @@ function NotificationBell() {
   );
 }
 
-const navItems = (role) => {
+const navItems = (user) => {
+  const role = user?.role;
+  const p = user?.permissions || {};
   const items = [
     { to: "/", label: "Calendar", icon: CalendarDays, testid: "nav-calendar", end: true },
     { to: "/requests", label: "Requests", icon: Inbox, testid: "nav-requests" },
   ];
   if (role === "admin") {
     items.push({ to: "/calendars", label: "Calendars", icon: Layers, testid: "nav-calendars" });
+    items.push({ to: "/members", label: "Members", icon: Users, testid: "nav-members" });
+  } else if (p.assign_member_calendars || p.view_members_directory) {
     items.push({ to: "/members", label: "Members", icon: Users, testid: "nav-members" });
   }
   items.push({ to: "/profile", label: "Profile", icon: User, testid: "nav-profile" });
@@ -124,8 +130,9 @@ const navItems = (role) => {
 
 export default function Layout() {
   const { user, logout } = useAuth();
-  const items = navItems(user?.role);
+  const items = navItems(user);
   const navigate = useNavigate();
+  const location = useLocation();
   const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "light");
 
   useEffect(() => {
@@ -136,13 +143,19 @@ export default function Layout() {
   const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark');
 
   return (
-    <div className="min-h-screen bg-white text-black dark:bg-[#0b0b0c] dark:text-zinc-200">
+    <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-white text-black dark:bg-[#0b0b0c] dark:text-zinc-200">
       {/* Desktop sidebar */}
       <aside className="z-30 hidden w-60 flex-col border-r border-neutral-200 bg-white p-6 dark:border-white/[0.06] dark:bg-[#0b0b0c] md:fixed md:bottom-0 md:left-0 md:top-0 md:flex">
         <div className="mb-8">
-          <div className="brand-favicon-slot-8">
-            <img src="/brand/favicon.png" alt="Studio 7" className="brand-logo" />
-          </div>
+          <a
+            href="https://studio7.miami"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block shrink-0 rounded-[7px] focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/80 dark:focus-visible:ring-zinc-500/60"
+            aria-label="Studio 7 Miami (opens studio7.miami)"
+          >
+            <img src="/brand/logo.png" alt="Studio 7 Miami" className="brand-logo brand-logo-nav brand-logo-nav-sidebar" />
+          </a>
         </div>
         <nav className="space-y-1 flex-1">
           {items.map((it) => (
@@ -181,10 +194,16 @@ export default function Layout() {
 
       {/* Top bar (mobile + desktop right-side actions) */}
       <header className="fixed left-0 right-0 top-0 z-20 flex h-14 items-center justify-between border-b border-neutral-200 bg-white/80 px-4 backdrop-blur-xl dark:border-white/[0.06] dark:bg-[#0b0b0c]/80 md:left-60 md:px-8">
-        <div className="md:hidden">
-          <div className="brand-favicon-slot-6">
-            <img src="/brand/favicon.png" alt="Studio 7" className="brand-logo" />
-          </div>
+        <div className="md:hidden min-w-0 pr-2">
+          <a
+            href="https://studio7.miami"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block max-w-[min(11rem,52vw)] shrink-0 rounded-[7px] focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/80 dark:focus-visible:ring-zinc-500/60"
+            aria-label="Studio 7 Miami (opens studio7.miami)"
+          >
+            <img src="/brand/logo.png" alt="Studio 7 Miami" className="brand-logo brand-logo-nav brand-logo-nav-header" />
+          </a>
         </div>
         <div className="flex items-center gap-4">
           <div className="hidden md:block label-tech">
@@ -206,10 +225,18 @@ export default function Layout() {
         </div>
       </header>
 
-      {/* Main */}
-      <main className="pt-14 md:pl-60 pb-24 md:pb-8">
-        <div className="p-4 md:p-8">
-          <Outlet />
+      {/* Main: flex-1 fills space below header; padding reserves bottom nav on small screens */}
+      <main className="flex min-h-0 flex-1 flex-col overflow-hidden pt-14 pb-16 md:pl-60 md:pb-8">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-smooth motion-reduce:scroll-auto p-4 md:p-8 [scrollbar-gutter:stable]">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={location.pathname}
+              {...pageEnterMotionProps}
+              className="flex min-h-0 flex-1 flex-col"
+            >
+              <Outlet />
+            </motion.div>
+          </AnimatePresence>
         </div>
       </main>
 

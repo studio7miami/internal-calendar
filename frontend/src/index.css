@@ -20,6 +20,13 @@
 html {
   color-scheme: light;
 }
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
 html.dark {
   color-scheme: dark;
 }
@@ -29,7 +36,8 @@ html, body, #root {
   color: #09090B;
   margin: 0;
   padding: 0;
-  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
 }
 
 html.dark #root {
@@ -92,29 +100,36 @@ code, pre, .font-mono { font-family: 'Manrope', system-ui, sans-serif; font-vari
   filter: none;
 }
 
-/* Fixed slot; graphic scales up and clips so layout size stays the same */
-.brand-favicon-slot-8,
-.brand-favicon-slot-6 {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
+/* Black / dark wordmarks → white (e.g. login on dark photography) */
+.brand-logo-white {
+  filter: brightness(0) invert(1);
 }
-.brand-favicon-slot-8 { width: 2rem; height: 2rem; }
-.brand-favicon-slot-6 { width: 1.5rem; height: 1.5rem; }
-.brand-favicon-slot-8 > img,
-.brand-favicon-slot-6 > img {
+
+/* Full wordmark in shell (sidebar / header); do not set filter here — pairs with .brand-logo or .brand-logo-white */
+.brand-logo-nav {
   display: block;
-  width: 100%;
-  height: 100%;
+  width: auto;
+  max-width: 100%;
+  height: auto;
   object-fit: contain;
-  transform: scale(1.24);
-  transform-origin: center;
+  object-position: left center;
 }
-/* Black mark on light UI; invert on dark canvas */
-html.dark .brand-favicon-slot-8 > .brand-logo,
-html.dark .brand-favicon-slot-6 > .brand-logo {
+.brand-logo-nav-sidebar {
+  max-height: 2.25rem;
+  max-width: 11rem;
+}
+@media (min-width: 768px) {
+  .brand-logo-nav-sidebar {
+    max-height: 2.375rem;
+    max-width: 12rem;
+  }
+}
+.brand-logo-nav-header {
+  max-height: 1.75rem;
+  max-width: min(11rem, 52vw);
+}
+/* Dark app chrome: light wordmark (not login hero, which uses .brand-logo-white) */
+html.dark .brand-logo-nav:not(.brand-logo-white) {
   filter: invert(1) brightness(1.08);
 }
 

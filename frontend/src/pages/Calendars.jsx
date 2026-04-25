@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api, formatApiError } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -7,25 +8,172 @@ import { Trash2 } from "lucide-react";
 import ColorWheel from "../components/app/ColorWheel";
 import { pageTitleClass, pageCardClass, pageInputClass, pageBtnPrimaryClass, pageBtnOutlineClass } from "../lib/pageTheme";
 import { cn } from "@/lib/utils";
-
-const isFixedCalendar = (c) => c.is_fixed === true;
+import { weekRowsFromSlots, slotsFromWeekRows } from "../lib/availability";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export default function CalendarsAdmin() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [cals, setCals] = useState([]);
   const [editing, setEditing] = useState(null);
   const [err, setErr] = useState("");
+  const [info, setInfo] = useState("");
+  const [gStatus, setGStatus] = useState(null); // null = loading
+  const [newCalName, setNewCalName] = useState("");
+  const [newCalColor, setNewCalColor] = useState("#222222");
+  const [creatingCal, setCreatingCal] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
+  const [gList, setGList] = useState([]);
+  const [mapDraft, setMapDraft] = useState({});
+  const [mapLoading, setMapLoading] = useState(false);
+  const [weekRowsState, setWeekRowsState] = useState(null);
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     const { data } = await api.get("/calendars");
     setCals(data);
-  };
+  }, []);
+
+  const loadGoogleStatus = useCallback(async () => {
+    try {
+      const { data } = await api.get("/integrations/google/status");
+      setGStatus(data);
+    } catch {
+      setGStatus({ client_configured: false, connected: false, email: null, needs_calendar_mapping: false });
+    }
+  }, []);
 
   useEffect(() => {
     refresh();
-  }, []);
+    loadGoogleStatus();
+  }, [refresh, loadGoogleStatus]);
+
+  useEffect(() => {
+    const g = searchParams.get("google");
+    if (!g) return;
+    if (g === "connected") {
+      setInfo("Google linked — pick calendars below.");
+      setMapOpen(true);
+      loadGoogleStatus();
+    } else if (g === "error") {
+      const reason = searchParams.get("reason") || "unknown";
+      setErr(`Google sign-in: ${reason.replace(/\+/g, " ")}`);
+    }
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev);
+        n.delete("google");
+        n.delete("reason");
+        return n;
+      },
+      { replace: true }
+    );
+  }, [searchParams, setSearchParams, loadGoogleStatus]);
+
+  const openMapDialog = async () => {
+    setErr("");
+    setMapLoading(true);
+    setMapOpen(true);
+    try {
+      const [calRes, listRes] = await Promise.all([api.get("/calendars"), api.get("/integrations/google/calendar-list")]);
+      const list = calRes.data || [];
+      setCals(list);
+      setGList(Array.isArray(listRes.data) ? listRes.data : []);
+      const draft = {};
+      list.forEach((c) => {
+        draft[c.id] = c.google_calendar_id || "";
+      });
+      setMapDraft(draft);
+    } catch (e) {
+      setErr(formatApiError(e?.response?.data?.detail) || "Could not load your Google calendars.");
+      setMapOpen(false);
+    } finally {
+      setMapLoading(false);
+    }
+  };
+
+  const saveMap = async () => {
+    setErr("");
+    try {
+      for (const c of cals) {
+        const gid = mapDraft[c.id] ?? "";
+        await api.patch(`/calendars/${c.id}`, {
+          name: c.name,
+          color: c.color,
+          google_calendar_id: gid,
+          is_active: c.is_active,
+          availability_weekly: Array.isArray(c.availability_weekly) ? c.availability_weekly : undefined,
+        });
+      }
+      setMapOpen(false);
+      setInfo("Calendar mapping saved.");
+      await refresh();
+      await loadGoogleStatus();
+    } catch (e) {
+      setErr(formatApiError(e?.response?.data?.detail) || "Save failed");
+    }
+  };
+
+  const startGoogleOAuth = async (reconnect = false) => {
+    setErr("");
+    try {
+      const { data } = await api.post("/integrations/google/start", { reconnect });
+      if (data?.authorization_url) {
+        window.location.href = data.authorization_url;
+      }
+    } catch (e) {
+      setErr(formatApiError(e?.response?.data?.detail) || "Could not start Google sign-in.");
+    }
+  };
+
+  const reconnectGoogle = async () => {
+    if (!window.confirm("Sign in with Google again? This replaces the current link.")) {
+      return;
+    }
+    await startGoogleOAuth(true);
+  };
+
+  const disconnectGoogle = async () => {
+    if (!window.confirm("Disconnect Google? Bookings will stop syncing until you connect again.")) return;
+    setErr("");
+    try {
+      await api.post("/integrations/google/disconnect");
+      setInfo("");
+      await loadGoogleStatus();
+      await refresh();
+    } catch (e) {
+      setErr(formatApiError(e?.response?.data?.detail) || "Disconnect failed");
+    }
+  };
+
+  const createCalendar = async () => {
+    const name = newCalName.trim();
+    if (!name) return;
+    setErr("");
+    setCreatingCal(true);
+    try {
+      await api.post("/calendars", {
+        name,
+        color: newCalColor,
+        google_calendar_id: "",
+        is_active: true,
+      });
+      setNewCalName("");
+      setNewCalColor("#222222");
+      await refresh();
+      await loadGoogleStatus();
+    } catch (e) {
+      setErr(formatApiError(e?.response?.data?.detail) || "Could not create calendar.");
+    } finally {
+      setCreatingCal(false);
+    }
+  };
 
   const toggleActive = async (c) => {
-    if (isFixedCalendar(c)) return;
     setErr("");
     try {
       await api.patch(`/calendars/${c.id}`, {
@@ -42,22 +190,29 @@ export default function CalendarsAdmin() {
 
   const saveEdit = async (c) => {
     setErr("");
+    const slots = slotsFromWeekRows(weekRowsState || weekRowsFromSlots(c.availability_weekly));
+    if (slots.length === 0) {
+      setErr("Turn on at least one day with open hours so members can request times.");
+      return;
+    }
     try {
       await api.patch(`/calendars/${c.id}`, {
         name: c.name,
         color: c.color,
         google_calendar_id: c.google_calendar_id || "",
         is_active: c.is_active,
+        availability_weekly: slots,
       });
       setEditing(null);
-      refresh();
+      setWeekRowsState(null);
+      await refresh();
+      await loadGoogleStatus();
     } catch (e) {
       setErr(formatApiError(e?.response?.data?.detail) || "Failed");
     }
   };
 
   const remove = async (c) => {
-    if (isFixedCalendar(c)) return;
     if (!window.confirm("Delete this calendar?")) return;
     setErr("");
     try {
@@ -69,38 +224,223 @@ export default function CalendarsAdmin() {
   };
 
   return (
-    <div className="space-y-6" data-testid="calendars-admin-page">
-      <div>
-        <div className="label-tech">Admin</div>
-        <h1 className={pageTitleClass}>Calendars</h1>
-        <p className="mt-2 text-sm text-slate-500 dark:text-zinc-500">
-          This workspace uses two calendars: Studio 7 Miami and Studio 7 Photobooth. You can link a Google Calendar ID
-          and adjust color for each.
-        </p>
-        {err && <div className="mt-2 text-sm text-red-600 dark:text-red-400">{err}</div>}
+    <div className="space-y-4" data-testid="calendars-admin-page">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
+        <div className="min-w-0">
+          <div className="label-tech">Admin</div>
+          <h1 className={pageTitleClass}>Calendars</h1>
+        </div>
+        {(info || err) && (
+          <div className="flex shrink-0 flex-col items-start gap-1 sm:items-end">
+            {info && (
+              <div className="max-w-full truncate text-xs font-medium text-emerald-700 dark:text-emerald-400">{info}</div>
+            )}
+            {err && <div className="max-w-full text-right text-xs text-red-600 dark:text-red-400">{err}</div>}
+          </div>
+        )}
       </div>
 
-      <div className="grid gap-3">
+      <div className={cn("p-3 sm:p-4", pageCardClass)}>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="flex shrink-0 items-center">
+            <span className="label-tech">Sync</span>
+          </div>
+          <div className="min-w-0 flex-1">
+            {gStatus == null ? (
+              <p className="text-xs text-slate-500 dark:text-zinc-500">Loading…</p>
+            ) : null}
+            {gStatus?.connected && gStatus?.needs_calendar_mapping && (
+              <div
+                className="rounded-[7px] border border-amber-200/90 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-950 dark:border-amber-800/60 dark:bg-amber-950/35 dark:text-amber-100"
+                data-testid="google-needs-mapping-banner"
+              >
+                Link each calendar to Google (Map calendars).
+              </div>
+            )}
+            {gStatus != null && !gStatus?.client_configured ? (
+              <p className="text-xs text-slate-600 dark:text-zinc-400">
+                OAuth off — server <code className="rounded bg-slate-100 px-1 font-mono text-[11px] dark:bg-zinc-800">GOOGLE_OAUTH_*</code> (
+                <code className="rounded bg-slate-100 px-1 font-mono text-[11px] dark:bg-zinc-800">.env.example</code>).
+              </p>
+            ) : gStatus?.connected ? (
+              <p className="text-xs text-slate-600 dark:text-zinc-400">
+                <span className="font-medium text-slate-800 dark:text-zinc-200">{gStatus.email || "Linked"}</span>
+                <span className="text-slate-500 dark:text-zinc-500"> · until disconnect</span>
+              </p>
+            ) : null}
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {gStatus != null && gStatus.client_configured && gStatus.connected ? (
+              <>
+                <Button type="button" variant="ghost" onClick={openMapDialog} className={cn("h-9", pageBtnPrimaryClass)} data-testid="google-map-calendars">
+                  Map calendars
+                </Button>
+                <Button type="button" variant="ghost" onClick={() => disconnectGoogle()} className={cn("h-9", pageBtnOutlineClass)} data-testid="google-disconnect">
+                  Disconnect
+                </Button>
+                <button
+                  type="button"
+                  onClick={reconnectGoogle}
+                  className="px-1 text-xs text-slate-500 underline-offset-2 hover:text-slate-800 hover:underline dark:text-zinc-500 dark:hover:text-zinc-300"
+                  data-testid="google-reconnect"
+                >
+                  Different account
+                </button>
+              </>
+            ) : gStatus != null && gStatus.client_configured ? (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => startGoogleOAuth(false)}
+                className={cn("h-9", pageBtnPrimaryClass)}
+                data-testid="google-connect-open"
+              >
+                Connect Google
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      <Dialog open={mapOpen} onOpenChange={setMapOpen}>
+        <DialogContent className="max-w-md gap-0 border border-gray-200/95 bg-[#FAFAFA] p-5 text-slate-900 dark:border-white/20 dark:bg-zinc-950 dark:text-white sm:rounded-[7px]">
+          <DialogHeader className="space-y-1 pb-3">
+            <DialogTitle className="font-['Manrope',system-ui,sans-serif] text-lg font-semibold">Map to Google</DialogTitle>
+            <DialogDescription className="text-left text-xs text-slate-600 dark:text-zinc-400">
+              One Google calendar per row — bookings sync there only.
+            </DialogDescription>
+          </DialogHeader>
+          {mapLoading ? (
+            <p className="py-4 text-xs text-slate-500">Loading…</p>
+          ) : cals.length === 0 ? (
+            <p className="py-2 text-xs text-slate-600 dark:text-zinc-400">Add at least one calendar under Resources first.</p>
+          ) : (
+            <div className="space-y-3">
+              {cals.map((c) => (
+                <div key={c.id} className="space-y-1">
+                  <label className="label-tech text-slate-700 dark:text-zinc-300">{c.name}</label>
+                  <select
+                    className={cn(pageInputClass, "h-9 w-full text-sm")}
+                    value={mapDraft[c.id] ?? ""}
+                    onChange={(e) => setMapDraft((d) => ({ ...d, [c.id]: e.target.value }))}
+                    data-testid={`google-map-select-${c.id}`}
+                  >
+                    <option value="">— Select —</option>
+                    {gList.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.summary}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+              <div className="flex justify-end gap-2 pt-1">
+                <Button type="button" variant="ghost" onClick={() => setMapOpen(false)} className={cn("h-9", pageBtnOutlineClass)}>
+                  Cancel
+                </Button>
+                <Button type="button" variant="ghost" onClick={saveMap} className={cn("h-9", pageBtnPrimaryClass)} data-testid="google-map-save">
+                  Save
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <div className="label-tech">Resources</div>
+      <div className={cn("mb-3 flex flex-col gap-3 p-3 sm:flex-row sm:items-end sm:gap-4 sm:p-4", pageCardClass)}>
+        <Input
+          value={newCalName}
+          onChange={(e) => setNewCalName(e.target.value)}
+          placeholder="New calendar name"
+          className={cn(pageInputClass, "sm:max-w-xs")}
+          data-testid="new-calendar-name"
+        />
+        <div className="flex shrink-0 items-center gap-3">
+          <ColorWheel value={newCalColor} onChange={setNewCalColor} />
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={createCalendar}
+            disabled={creatingCal || !newCalName.trim()}
+            className={cn("h-10 shrink-0", pageBtnPrimaryClass)}
+            data-testid="new-calendar-add"
+          >
+            {creatingCal ? "Adding…" : "Add calendar"}
+          </Button>
+        </div>
+      </div>
+      <div className="grid gap-2">
         {cals.map((c) =>
           editing === c.id ? (
-            <div key={c.id} className={cn("space-y-3 p-4", pageCardClass)}>
-              <div className="grid gap-3 sm:grid-cols-3">
+            <div key={c.id} className={cn("space-y-3 p-3 sm:p-4", pageCardClass)}>
+              <div className="grid gap-2 sm:grid-cols-3 sm:gap-3">
                 <Input
                   value={c.name}
-                  readOnly={isFixedCalendar(c)}
                   onChange={(e) => setCals((prev) => prev.map((p) => (p.id === c.id ? { ...p, name: e.target.value } : p)))}
-                  className={cn(pageInputClass, isFixedCalendar(c) && "cursor-default opacity-90")}
+                  className={pageInputClass}
                 />
                 <Input
                   value={c.google_calendar_id || ""}
                   onChange={(e) => setCals((prev) => prev.map((p) => (p.id === c.id ? { ...p, google_calendar_id: e.target.value } : p)))}
-                  placeholder="Google Calendar ID"
+                  placeholder="Google calendar ID"
                   className={cn(pageInputClass, "tabular-nums")}
                 />
                 <ColorWheel
                   value={c.color}
                   onChange={(nc) => setCals((prev) => prev.map((p) => (p.id === c.id ? { ...p, color: nc } : p)))}
                 />
+              </div>
+              <div className="rounded-[7px] border border-slate-200/80 bg-white/60 p-3 dark:border-white/10 dark:bg-zinc-900/30">
+                <div className="label-tech mb-2 text-slate-700 dark:text-zinc-300">STUDIO SCHEDULE</div>
+                <div className="grid max-h-[220px] gap-2 overflow-y-auto sm:max-h-none">
+                  {(weekRowsState || weekRowsFromSlots(c.availability_weekly)).map((row) => (
+                    <div
+                      key={row.weekday}
+                      className="flex flex-wrap items-center gap-2 border-b border-slate-100 pb-2 last:border-0 last:pb-0 dark:border-white/5"
+                    >
+                      <label className="flex min-w-[7rem] cursor-pointer items-center gap-2 text-xs text-slate-800 dark:text-zinc-200">
+                        <input
+                          type="checkbox"
+                          checked={row.enabled}
+                          onChange={(e) =>
+                            setWeekRowsState((prev) => {
+                              const base = prev || weekRowsFromSlots(c.availability_weekly);
+                              return base.map((r) => (r.weekday === row.weekday ? { ...r, enabled: e.target.checked } : r));
+                            })
+                          }
+                          className="rounded border-slate-300"
+                        />
+                        {row.label}
+                      </label>
+                      <Input
+                        type="time"
+                        disabled={!row.enabled}
+                        value={row.start}
+                        onChange={(e) =>
+                          setWeekRowsState((prev) => {
+                            const base = prev || weekRowsFromSlots(c.availability_weekly);
+                            return base.map((r) => (r.weekday === row.weekday ? { ...r, start: e.target.value } : r));
+                          })
+                        }
+                        className={cn(pageInputClass, "h-9 w-[7.5rem] text-xs", !row.enabled && "opacity-50")}
+                      />
+                      <span className="text-[10px] text-slate-400">to</span>
+                      <Input
+                        type="time"
+                        disabled={!row.enabled}
+                        value={row.end}
+                        onChange={(e) =>
+                          setWeekRowsState((prev) => {
+                            const base = prev || weekRowsFromSlots(c.availability_weekly);
+                            return base.map((r) => (r.weekday === row.weekday ? { ...r, end: e.target.value } : r));
+                          })
+                        }
+                        className={cn(pageInputClass, "h-9 w-[7.5rem] text-xs", !row.enabled && "opacity-50")}
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
               <div className="flex gap-2">
                 <Button onClick={() => saveEdit(c)} variant="ghost" className={pageBtnPrimaryClass}>
@@ -110,6 +450,7 @@ export default function CalendarsAdmin() {
                   variant="ghost"
                   onClick={() => {
                     setEditing(null);
+                    setWeekRowsState(null);
                     refresh();
                   }}
                   className={pageBtnOutlineClass}
@@ -121,49 +462,49 @@ export default function CalendarsAdmin() {
           ) : (
             <div
               key={c.id}
-              className={cn("flex flex-wrap items-center justify-between gap-4 p-4", pageCardClass)}
+              className={cn("flex flex-wrap items-center justify-between gap-3 p-3 sm:gap-4 sm:p-4", pageCardClass)}
               data-testid={`calendar-row-${c.id}`}
             >
-              <div className="flex min-w-0 items-center gap-3">
-                <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: c.color }} />
+              <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full sm:h-3 sm:w-3" style={{ background: c.color }} />
                 <div className="min-w-0">
-                  <div className="truncate text-lg font-semibold text-slate-900 dark:text-white">{c.name}</div>
+                  <div className="truncate text-base font-semibold text-slate-900 dark:text-white sm:text-lg">{c.name}</div>
                   <div className="label-tech truncate text-slate-500 dark:text-neutral-400">
-                    {c.google_calendar_id ? `gcal: ${c.google_calendar_id}` : "no gcal linked"}
+                    {c.google_calendar_id ? c.google_calendar_id : "No Google ID"}
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 sm:gap-3">
                 <div className="flex items-center gap-2">
                   <span className="label-tech text-slate-600 dark:text-neutral-400">Active</span>
                   <Switch
                     checked={c.is_active}
-                    disabled={isFixedCalendar(c)}
                     onCheckedChange={() => toggleActive(c)}
                     data-testid={`calendar-active-${c.id}`}
                   />
                 </div>
                 <Button
                   variant="ghost"
-                  onClick={() => setEditing(c.id)}
+                  onClick={() => {
+                    setWeekRowsState(weekRowsFromSlots(c.availability_weekly));
+                    setEditing(c.id);
+                  }}
                   data-testid={`calendar-edit-${c.id}`}
                   className={pageBtnPrimaryClass}
                 >
                   Edit
                 </Button>
-                {!isFixedCalendar(c) && (
-                  <Button
-                    variant="ghost"
-                    onClick={() => remove(c)}
-                    data-testid={`calendar-delete-${c.id}`}
-                    className={cn(
-                      "h-10 border border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900/70 dark:text-red-300 dark:hover:bg-red-950/40",
-                      "min-h-8 rounded-[7px] px-3"
-                    )}
-                  >
-                    <Trash2 className="h-4 w-4" strokeWidth={1.5} />
-                  </Button>
-                )}
+                <Button
+                  variant="ghost"
+                  onClick={() => remove(c)}
+                  data-testid={`calendar-delete-${c.id}`}
+                  className={cn(
+                    "h-10 border border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900/70 dark:text-red-300 dark:hover:bg-red-950/40",
+                    "min-h-8 rounded-[7px] px-3"
+                  )}
+                >
+                  <Trash2 className="h-4 w-4" strokeWidth={1.5} />
+                </Button>
               </div>
             </div>
           )
