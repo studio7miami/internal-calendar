@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { api } from "../lib/api";
+import { api, formatApiError } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import BookingForm from "../components/app/BookingForm";
@@ -15,6 +15,7 @@ import { fmtTimeShort } from "../lib/time";
 import { pageTitleClass, glassBarHoverClass, pageBtnPrimaryClass, pageBtnOutlineClass } from "../lib/pageTheme";
 import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
+import MemberSummaryDialog from "../components/members/MemberSummaryDialog";
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(typeof window !== "undefined" ? window.innerWidth < 768 : false);
@@ -124,19 +125,49 @@ function MonthDayEventPills({ entries }) {
 }
 
 
-function chipLabel(b, calendar) {
-  const who = b.member_name ? b.member_name.split(" ")[0] : "Member";
-  const n = (calendar?.name || "").trim().toLowerCase();
-  if (n === "studio 7 miami") return `${who} @ Studio 7 Miami`;
-  if (n === "studio 7 photobooth") return `${who} @ Studio 7 Photobooth`;
-  return b.notes?.trim() || calendar?.name || "Booking";
+/** Strip redundant venue from titles/notes in booking detail lines (popover, day panel, chips). */
+function stripVenueFromBookingDetail(s) {
+  if (!s) return "";
+  let t = s.trim();
+  t = t.replace(/^Google Calendar ·\s*/i, "").trim();
+  t = t.replace(/^studio\s+7\s+miami\s*[·\-–—@|:]\s*/i, "").trim();
+  t = t.replace(/\s*\(\s*studio\s+7\s+miami\s*\)/gi, "").trim();
+  t = t.replace(/\s+at\s+studio\s+7\s+miami\b/gi, "").trim();
+  t = t.replace(/\s*[@·,;|]\s*studio\s+7\s+miami\b/gi, "").trim();
+  let prev;
+  do {
+    prev = t;
+    t = t.replace(/\s*(?:@|·|\||—|-)\s*studio\s+7\s+miami\s*$/i, "").trim();
+  } while (t !== prev);
+  if (/^studio\s+7\s+miami$/i.test(t)) return "";
+  t = t.replace(/\s{2,}/g, " ").trim();
+  return t;
 }
 
-function BookingChip({ b, calendar, canSeeAllDetails, onManageOwn }) {
+function chipLabel(b, calendar) {
+  if (b.source === "google_external") {
+    const t = stripVenueFromBookingDetail(b.external_title || b.notes || "");
+    return t ? `Booked · ${t}` : "Booked";
+  }
+  const who = b.member_name ? b.member_name.split(" ")[0] : "Member";
+  const n = (calendar?.name || "").trim().toLowerCase();
+  const calName = calendar?.name || "";
+  if (n === "studio 7 miami") return who;
+  if (/photobooth/i.test(calName)) {
+    const note = stripVenueFromBookingDetail(b.notes?.trim() || "");
+    return note ? `${who} · Photobooth · ${note}` : `${who} · Photobooth`;
+  }
+  const note = stripVenueFromBookingDetail(b.notes?.trim() || "");
+  if (note) return note;
+  return calendar?.name || "Booking";
+}
+
+function BookingChip({ b, calendar, showBookingDetails, onManageOwn, onMemberProfile }) {
   const isOwn = b.is_own;
   const isPending = b.status === "pending";
-  const canSeeDetail = canSeeAllDetails || isOwn;
+  const canSeeDetail = showBookingDetails;
   const canManageOwn = isOwn && (b.status === "pending" || b.status === "approved");
+  const canNameProfile = Boolean(canSeeDetail && b.member_id && onMemberProfile && !canManageOwn);
 
   const onClick = (e) => {
     if (!canManageOwn || !onManageOwn) return;
@@ -146,32 +177,75 @@ function BookingChip({ b, calendar, canSeeAllDetails, onManageOwn }) {
 
   if (canSeeDetail) {
     const color = calendar?.color || "#FAFAFA";
-    const label = `${fmtTimeShort(b.start_time)} · ${chipLabel(b, calendar)}`;
+    const sub = chipLabel(b, calendar);
+    const timeBit = `${fmtTimeShort(b.start_time)} · `;
+    const chipStyle = {
+      background: isPending ? rgba(color, 0.16) : rgba(color, 0.22),
+      borderColor: isPending ? rgba(color, 0.34) : rgba(color, 0.46),
+      borderLeft: `3px solid ${color}`,
+      opacity: isPending ? 0.9 : 1,
+    };
+    const label = `${timeBit}${sub}`;
+
+    if (canManageOwn) {
+      return (
+        <button
+          type="button"
+          onClick={onClick}
+          data-testid={`booking-chip-${b.id}`}
+          className={cn(
+            "w-full cursor-pointer touch-manipulation truncate rounded-[7px] border px-2 py-1.5 text-left text-[10px] leading-tight text-slate-900 transition-colors dark:border-white/10 dark:text-zinc-200",
+            "md:hover:brightness-110"
+          )}
+          style={chipStyle}
+          title="Click to reschedule or cancel"
+        >
+          {isPending ? "⏳ " : ""}
+          {label}
+        </button>
+      );
+    }
+
+    if (canNameProfile) {
+      return (
+        <div
+          data-testid={`booking-chip-${b.id}`}
+          className="w-full truncate rounded-[7px] border px-2 py-1.5 text-left text-[10px] leading-tight text-slate-900 dark:border-white/10 dark:text-zinc-200"
+          style={chipStyle}
+        >
+          <span className="pointer-events-none">{isPending ? "⏳ " : ""}{timeBit}</span>
+          <span
+            role="button"
+            tabIndex={0}
+            className="cursor-pointer text-left md:hover:underline"
+            onClick={(e) => {
+              e.stopPropagation();
+              onMemberProfile(b);
+            }}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" && e.key !== " ") return;
+              e.preventDefault();
+              e.stopPropagation();
+              onMemberProfile(b);
+            }}
+            title="View member"
+          >
+            {sub}
+          </span>
+        </div>
+      );
+    }
+
     return (
-      <button
-        type="button"
-        onClick={onClick}
+      <div
         data-testid={`booking-chip-${b.id}`}
-        className={cn(
-          "text-[10px] leading-tight px-2 py-1.5 w-full text-left border rounded-[7px] truncate text-slate-900 transition-colors dark:border-white/10 dark:text-zinc-200",
-          canManageOwn ? "cursor-pointer touch-manipulation hover:brightness-110" : "pointer-events-none"
-        )}
-        style={{
-          background: isPending ? rgba(color, 0.16) : rgba(color, 0.22),
-          borderColor: isPending ? rgba(color, 0.34) : rgba(color, 0.46),
-          borderLeft: `3px solid ${color}`,
-          opacity: isPending ? 0.9 : 1,
-        }}
-        title={
-          canManageOwn
-            ? "Click to reschedule or cancel"
-            : isPending
-            ? `Pending · ${label}`
-            : label
-        }
+        className="pointer-events-none w-full truncate rounded-[7px] border px-2 py-1.5 text-left text-[10px] leading-tight text-slate-900 dark:border-white/10 dark:text-zinc-200"
+        style={chipStyle}
+        title={isPending ? `Pending · ${label}` : label}
       >
-        {isPending ? "⏳ " : ""}{label}
-      </button>
+        {isPending ? "⏳ " : ""}
+        {label}
+      </div>
     );
   }
 
@@ -181,8 +255,8 @@ function BookingChip({ b, calendar, canSeeAllDetails, onManageOwn }) {
       onClick={onClick}
       data-testid={`booking-chip-${b.id}`}
       className={cn(
-        "text-[10px] leading-tight px-2 py-1.5 w-full text-left border rounded-[7px] truncate booked-stripe-light dark:booked-stripe text-slate-600 dark:text-neutral-300 border-slate-900/15 dark:border-white/14",
-        canManageOwn && "cursor-pointer touch-manipulation hover:brightness-110 dark:hover:brightness-110"
+        "truncate rounded-[7px] border border-slate-900/15 px-2 py-1.5 text-left text-[10px] leading-tight booked-stripe-light text-slate-600 dark:border-white/14 dark:text-neutral-300 dark:booked-stripe",
+        canManageOwn && "cursor-pointer touch-manipulation md:hover:brightness-110 md:dark:hover:brightness-110"
       )}
       style={{
         borderLeftColor: calendar?.color || "#333",
@@ -197,7 +271,7 @@ function BookingChip({ b, calendar, canSeeAllDetails, onManageOwn }) {
 
 
 export default function CalendarPage() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [view, setView] = useState("month");
   const [cursor, setCursor] = useState(new Date());
   const [selectedYmd, setSelectedYmd] = useState(() => ymd(new Date()));
@@ -213,41 +287,100 @@ export default function CalendarPage() {
   const [adminAllOpen, setAdminAllOpen] = useState(false);
   const [adminAllGranularity, setAdminAllGranularity] = useState("week");
   const [adminAllCursor, setAdminAllCursor] = useState(() => new Date());
+  const [profileMember, setProfileMember] = useState(null);
 
   const isMobile = useIsMobile();
   const isAdmin = user?.role === "admin";
   const isMember = user?.role === "member";
-  const canSeeAllDetails = !!user?.permissions?.see_all_booking_details;
+  /** Only admin + manager see booking labels / names on the calendar; members see time + "Booked" only. */
+  const showBookingDetails = user?.role === "admin" || user?.role === "manager";
   const canFetchMembers = isAdmin || !!user?.permissions?.view_members_directory;
   const canManualBook = isAdmin || !!user?.permissions?.create_manual_booking;
   const canRequestBooking = !!user?.permissions?.create_request;
+  const calendarTodayYmd = ymd(new Date());
+  const dayPanelAllowRequest = Boolean(
+    canRequestBooking && dayPanelYmd && dayPanelYmd >= calendarTodayYmd
+  );
+
+  const openProfileFromBooking = useCallback((b) => {
+    const row = members.find((m) => String(m.id) === String(b.member_id));
+    setProfileMember({
+      id: b.member_id,
+      name: b.member_name,
+      email: b.member_email,
+      phone_e164: b.member_phone_e164 ?? row?.phone_e164,
+      sauce: b.member_sauce ?? row?.sauce,
+      role: row?.role ?? "member",
+    });
+  }, [members]);
+
+  const fetchBookingsOnly = useCallback(async () => {
+    if (!user) return;
+    try {
+      const { data } = await api.get("/bookings");
+      setBookings(Array.isArray(data) ? data : []);
+    } catch {
+      setBookings([]);
+    }
+  }, [user]);
 
   const fetchData = useCallback(async () => {
     if (!user) return;
-    const [cals, bks] = await Promise.all([
-      api.get("/calendars"),
-      api.get("/bookings"),
-    ]);
-    setCalendars(cals.data);
-    setBookings(bks.data);
-    setEnabledCalIds((prev) =>
-      prev.size === 0 ? new Set(cals.data.map((c) => c.id)) : prev
-    );
-    if (canFetchMembers) {
-      try {
-        const m = await api.get("/users");
-        setMembers(m.data);
-      } catch {
+    try {
+      const calRes = await api.get("/calendars");
+      const rows = Array.isArray(calRes.data) ? calRes.data : [];
+      const activeOnly = rows.filter((c) => c.is_active);
+      setCalendars(activeOnly);
+      setEnabledCalIds((prev) =>
+        prev.size === 0 ? new Set(activeOnly.map((c) => c.id)) : prev
+      );
+    } catch {
+      setCalendars([]);
+    }
+
+    try {
+      const secondaries = [api.get("/bookings")];
+      if (canFetchMembers) secondaries.push(api.get("/users"));
+      const results = await Promise.all(secondaries);
+      setBookings(Array.isArray(results[0].data) ? results[0].data : []);
+      if (canFetchMembers && results[1]) {
+        setMembers(Array.isArray(results[1].data) ? results[1].data : []);
+      } else if (!canFetchMembers) {
         setMembers([]);
       }
-    } else {
+    } catch {
+      setBookings([]);
       setMembers([]);
     }
   }, [user, canFetchMembers]);
 
+  const handleCalendarMemberRoleChange = useCallback(
+    async (u, role) => {
+      if (!user || user.role !== "admin") return false;
+      try {
+        await api.patch(`/users/${u.id}/role`, { role });
+        await fetchData();
+        setProfileMember((prev) => (prev && String(prev.id) === String(u.id) ? { ...prev, role } : prev));
+        return true;
+      } catch (e) {
+        alert(formatApiError(e?.response?.data?.detail) || "Could not change role");
+        return false;
+      }
+    },
+    [user, fetchData]
+  );
+
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    if (!user) return undefined;
+    const id = window.setInterval(() => {
+      void fetchBookingsOnly();
+    }, 60000);
+    return () => window.clearInterval(id);
+  }, [user, fetchBookingsOnly]);
 
   const calendarMap = useMemo(
     () => Object.fromEntries(calendars.map((c) => [c.id, c])),
@@ -313,7 +446,7 @@ export default function CalendarPage() {
 
   const openForm = (date, start = "10:00", end = "11:00") => {
     const today = ymd(new Date());
-    if (isMember && date < today) return;
+    if (date < today) return;
     setEditingBooking(null);
     setSelectedYmd(date);
     setFormInit({ date, start, end });
@@ -411,8 +544,8 @@ export default function CalendarPage() {
               : showCellSelected
               ? `group bg-[#222222] text-zinc-100 ${tEase} motion-reduce:transition-none`
               : inMonth
-              ? `group glass-tile text-slate-900 ${tEase} motion-reduce:transition-none hover:bg-[#222222] hover:text-zinc-100 dark:text-zinc-300 dark:hover:bg-[#222222] dark:hover:text-zinc-100`
-              : `group border border-gray-200/95 bg-white/[0.04] text-slate-500 shadow-none backdrop-blur-sm dark:border-white/[0.08] dark:bg-white/[0.02] dark:text-zinc-500 ${tEase} hover:bg-[#222222] hover:text-zinc-100 dark:hover:bg-[#222222] dark:hover:text-zinc-100`;
+              ? `group glass-tile text-slate-900 ${tEase} motion-reduce:transition-none md:hover:bg-[#222222] md:hover:text-zinc-100 dark:text-zinc-300 md:dark:hover:bg-[#222222] md:dark:hover:text-zinc-100`
+              : `group border border-gray-200/95 bg-white/[0.04] text-slate-500 shadow-none backdrop-blur-sm dark:border-white/[0.08] dark:bg-white/[0.02] dark:text-zinc-500 ${tEase} md:hover:bg-[#222222] md:hover:text-zinc-100 md:dark:hover:bg-[#222222] md:dark:hover:text-zinc-100`;
             return (
               <div
                 key={i}
@@ -438,16 +571,16 @@ export default function CalendarPage() {
                       <span
                         className={`w-fit min-w-0 text-left tabular-nums align-middle transition-all duration-200 ease-out motion-reduce:transition-none ${
                           showTodayRing
-                            ? "inline-flex h-6 w-6 max-h-6 max-w-6 shrink-0 items-center justify-center rounded-full bg-red-500 text-[11px] font-semibold text-white shadow-sm group-hover:brightness-110 sm:h-7 sm:w-7 sm:max-h-7 sm:max-w-7 sm:text-xs dark:bg-red-600"
+                            ? "inline-flex aspect-square min-w-[1.125rem] w-[min(1.75rem,100%)] max-w-[1.75rem] shrink-0 items-center justify-center rounded-full bg-red-500 text-[11px] font-semibold leading-none text-white shadow-sm [box-sizing:border-box] md:group-hover:brightness-110 min-[380px]:text-xs dark:bg-red-600"
                             : showCellSelected
                             ? "inline-block max-w-full text-zinc-100"
                             : inMonth && isWeekend
-                            ? "inline-block max-w-full font-medium text-slate-400 group-hover:text-zinc-100 dark:text-zinc-500 dark:group-hover:text-zinc-100"
+                            ? "inline-block max-w-full font-medium text-slate-400 md:group-hover:text-zinc-100 dark:text-zinc-500 md:dark:group-hover:text-zinc-100"
                             : inMonth
-                            ? "inline-block max-w-full font-semibold text-slate-900 group-hover:text-zinc-100 dark:text-zinc-100 dark:group-hover:text-zinc-100"
+                            ? "inline-block max-w-full font-semibold text-slate-900 md:group-hover:text-zinc-100 dark:text-zinc-100 md:dark:group-hover:text-zinc-100"
                             : isWeekend
-                            ? "inline-block max-w-full font-medium text-slate-400/90 group-hover:text-zinc-100 dark:text-zinc-600 dark:group-hover:text-zinc-100"
-                            : "inline-block max-w-full font-medium text-slate-500 group-hover:text-zinc-100 dark:text-zinc-500 dark:group-hover:text-zinc-100"
+                            ? "inline-block max-w-full font-medium text-slate-400/90 md:group-hover:text-zinc-100 dark:text-zinc-600 md:dark:group-hover:text-zinc-100"
+                            : "inline-block max-w-full font-medium text-slate-500 md:group-hover:text-zinc-100 dark:text-zinc-500 md:dark:group-hover:text-zinc-100"
                         }`}
                       >
                         {d.getDate()}
@@ -465,7 +598,7 @@ export default function CalendarPage() {
                             aria-label={`Calendars and bookings on ${key}`}
                             className={cn(
                               "flex w-full max-w-full min-w-0 items-center justify-center rounded-md py-0.5 outline-none transition-opacity sm:py-1",
-                              "opacity-95 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-slate-400/45 dark:focus-visible:ring-zinc-500/45"
+                              "opacity-95 md:hover:opacity-100 focus-visible:ring-2 focus-visible:ring-slate-400/45 dark:focus-visible:ring-zinc-500/45"
                             )}
                           >
                             <MonthDayEventPills entries={calStripEntries} />
@@ -510,7 +643,7 @@ export default function CalendarPage() {
                                     </div>
                                     <ul className="mt-1.5 space-y-1 border-l border-slate-200/80 pl-3 dark:border-white/10">
                                       {list.map((b) => {
-                                        const show = canSeeAllDetails || b.is_own;
+                                        const show = showBookingDetails;
                                         const line = show
                                           ? `${fmtTimeShort(b.start_time)}–${fmtTimeShort(b.end_time)} · ${chipLabel(b, cal)}`
                                           : `${fmtTimeShort(b.start_time)}–${fmtTimeShort(b.end_time)} · Booked`;
@@ -526,11 +659,6 @@ export default function CalendarPage() {
                               });
                             })()}
                           </div>
-                          <p className="mt-3 border-t border-slate-200/80 pt-2 text-[10px] text-slate-500 dark:border-white/10 dark:text-zinc-500">
-                            {canRequestBooking
-                              ? "Tap the rest of this day for the full panel and to request a time."
-                              : "Tap the rest of this day for the full panel."}
-                          </p>
                         </PopoverContent>
                       </Popover>
                     </div>
@@ -579,7 +707,7 @@ export default function CalendarPage() {
                   <button
                     type="button"
                     onClick={() => openDayPanel(dKey)}
-                    className="mx-auto w-full max-w-[5rem] rounded-md border-0 bg-transparent p-1 text-center transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+                    className="mx-auto w-full max-w-[5rem] rounded-md border-0 bg-transparent p-1 text-center transition-colors md:hover:bg-black/[0.04] md:dark:hover:bg-white/[0.05]"
                   >
                     <div className="text-[11px] tracking-[0.22em] uppercase text-slate-500 dark:text-zinc-500">
                       {d.toLocaleDateString(undefined, { weekday: "short" })}
@@ -632,8 +760,9 @@ export default function CalendarPage() {
                               key={b.id}
                               b={b}
                               calendar={calendarMap[b.calendar_id]}
-                              canSeeAllDetails={canSeeAllDetails}
+                              showBookingDetails={showBookingDetails}
                               onManageOwn={() => openEditBooking(b)}
+                              onMemberProfile={openProfileFromBooking}
                             />
                           ))}
                         </div>
@@ -647,7 +776,7 @@ export default function CalendarPage() {
                       onClick={() => openForm(key, slotStart, slotEnd)}
                       className={cn(
                         slotClass,
-                        "bg-transparent hover:bg-black/5 dark:hover:bg-white/[0.03]"
+                        "bg-transparent md:hover:bg-black/5 md:dark:hover:bg-white/[0.03]"
                       )}
                       data-testid={`slot-${key}-${h}`}
                     >
@@ -656,8 +785,9 @@ export default function CalendarPage() {
                           key={b.id}
                           b={b}
                           calendar={calendarMap[b.calendar_id]}
-                          canSeeAllDetails={canSeeAllDetails}
+                          showBookingDetails={showBookingDetails}
                           onManageOwn={() => openEditBooking(b)}
+                          onMemberProfile={openProfileFromBooking}
                         />
                       ))}
                     </button>
@@ -738,7 +868,7 @@ export default function CalendarPage() {
                 "-m-0.5 inline-flex items-center rounded-sm border-0 bg-transparent p-0.5 px-1.5 text-xs font-normal leading-none transition-colors focus-visible:outline focus-visible:ring-2 focus-visible:ring-slate-500/30 sm:px-2",
                 on
                   ? "text-black dark:text-zinc-200"
-                  : "text-neutral-400 dark:text-zinc-500 hover:text-neutral-500 dark:hover:text-zinc-400"
+                  : "text-neutral-400 dark:text-zinc-500 md:hover:text-neutral-500 md:dark:hover:text-zinc-400"
               )}
             >
               {label}
@@ -814,7 +944,7 @@ export default function CalendarPage() {
                     <div className="font-medium text-slate-900 dark:text-zinc-100">{cal?.name || "Calendar"}</div>
                     <div className="mt-0.5 text-slate-600 dark:text-zinc-400">
                       {fmtTimeShort(b.start_time)}–{fmtTimeShort(b.end_time)}
-                      {canSeeAllDetails || b.is_own ? ` · ${chipLabel(b, cal)}` : " · Booked"}{" "}
+                      {showBookingDetails ? ` · ${chipLabel(b, cal)}` : " · Booked"}{" "}
                       <span className="text-slate-400 dark:text-zinc-500">({b.status})</span>
                     </div>
                   </div>
@@ -918,7 +1048,7 @@ export default function CalendarPage() {
                 className={`-m-0.5 inline-flex items-center rounded-sm border-0 bg-transparent p-0.5 px-1.5 text-xs font-normal leading-none transition-colors focus-visible:outline focus-visible:ring-2 focus-visible:ring-slate-500/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#FCFCFC] focus-visible:dark:ring-zinc-600/40 focus-visible:dark:ring-offset-[#0b0b0c] sm:px-2 ${
                   on
                     ? "text-black dark:text-zinc-200"
-                    : "text-neutral-400 dark:text-zinc-500 hover:text-neutral-500 dark:hover:text-zinc-400"
+                    : "text-neutral-400 dark:text-zinc-500 md:hover:text-neutral-500 md:dark:hover:text-zinc-400"
                 }`}
               >
                 {label}
@@ -985,7 +1115,7 @@ export default function CalendarPage() {
                     const cal = calendarMap[b.calendar_id];
                     const label = chipLabel(b, cal);
                     const detailLine = `${fmtTimeShort(b.start_time)}–${fmtTimeShort(b.end_time)}`;
-                    const showText = canSeeAllDetails || b.is_own;
+                    const showText = showBookingDetails;
                     const canManageOwn = b.is_own && (b.status === "pending" || b.status === "approved");
                     return (
                       <li
@@ -995,7 +1125,21 @@ export default function CalendarPage() {
                         <span className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: cal?.color || "#999" }} />
                         <div className="min-w-0 flex-1">
                           <div className="text-xs font-medium text-slate-900 dark:text-zinc-100">{detailLine}</div>
-                          <div className="text-xs text-slate-600 dark:text-zinc-400">{showText ? label : "Booked"}</div>
+                          {showText ? (
+                            b.member_id ? (
+                              <button
+                                type="button"
+                                className="mt-0.5 block w-full text-left text-xs text-slate-600 md:hover:underline dark:text-zinc-400"
+                                onClick={() => openProfileFromBooking(b)}
+                              >
+                                {label}
+                              </button>
+                            ) : (
+                              <div className="mt-0.5 text-xs text-slate-600 dark:text-zinc-400">{label}</div>
+                            )
+                          ) : (
+                            <div className="mt-0.5 text-xs text-slate-600 dark:text-zinc-400">Booked</div>
+                          )}
                         </div>
                         {canManageOwn && (
                           <Button
@@ -1016,7 +1160,7 @@ export default function CalendarPage() {
                 </ul>
               )}
               <div className="flex flex-col gap-2 border-t border-slate-200/80 pt-3 dark:border-white/10 sm:flex-row">
-                {canRequestBooking && (
+                {dayPanelAllowRequest && (
                   <Button
                     type="button"
                     className={cn("h-10 w-full sm:flex-1", pageBtnPrimaryClass)}
@@ -1054,7 +1198,7 @@ export default function CalendarPage() {
                     const cal = calendarMap[b.calendar_id];
                     const label = chipLabel(b, cal);
                     const detailLine = `${fmtTimeShort(b.start_time)}–${fmtTimeShort(b.end_time)}`;
-                    const showText = canSeeAllDetails || b.is_own;
+                    const showText = showBookingDetails;
                     const canManageOwn = b.is_own && (b.status === "pending" || b.status === "approved");
                     return (
                       <li
@@ -1064,7 +1208,21 @@ export default function CalendarPage() {
                         <span className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: cal?.color || "#999" }} />
                         <div className="min-w-0 flex-1">
                           <div className="text-xs font-medium text-slate-900 dark:text-zinc-100">{detailLine}</div>
-                          <div className="text-xs text-slate-600 dark:text-zinc-400">{showText ? label : "Booked"}</div>
+                          {showText ? (
+                            b.member_id ? (
+                              <button
+                                type="button"
+                                className="mt-0.5 block w-full text-left text-xs text-slate-600 md:hover:underline dark:text-zinc-400"
+                                onClick={() => openProfileFromBooking(b)}
+                              >
+                                {label}
+                              </button>
+                            ) : (
+                              <div className="mt-0.5 text-xs text-slate-600 dark:text-zinc-400">{label}</div>
+                            )
+                          ) : (
+                            <div className="mt-0.5 text-xs text-slate-600 dark:text-zinc-400">Booked</div>
+                          )}
                         </div>
                         {canManageOwn && (
                           <Button
@@ -1085,7 +1243,7 @@ export default function CalendarPage() {
                 </ul>
               )}
               <div className="flex flex-col gap-2 border-t border-slate-200/80 pt-3 dark:border-white/10 sm:flex-row">
-                {canRequestBooking && (
+                {dayPanelAllowRequest && (
                   <Button
                     type="button"
                     className={cn("h-10 w-full sm:flex-1", pageBtnPrimaryClass)}
@@ -1127,13 +1285,28 @@ export default function CalendarPage() {
                     All bookings
                   </DialogTitle>
                 </DialogHeader>
-                <p className="mt-1 text-xs text-slate-500 dark:text-zinc-500">Approved and pending across every calendar.</p>
               </div>
               <div className="px-6 py-4">{adminAllBody}</div>
             </DialogContent>
           </Dialog>
         )
       )}
+
+      <MemberSummaryDialog
+        open={!!profileMember}
+        onOpenChange={(v) => !v && setProfileMember(null)}
+        member={profileMember}
+        viewer={user}
+        onRoleChange={isAdmin ? handleCalendarMemberRoleChange : undefined}
+        onProfileSaved={async () => {
+          await fetchData();
+        }}
+        refreshUser={refreshUser}
+        onRemoved={() => {
+          setProfileMember(null);
+          fetchData();
+        }}
+      />
 
       <BookingForm
         open={formOpen}

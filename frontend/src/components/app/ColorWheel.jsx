@@ -34,11 +34,16 @@ function hexToHsl(hex) {
   return { h: Math.round(h), s: Math.round(s * 100), l: Math.round(l * 100) };
 }
 
-const normalizeHex = (v) => {
+/**
+ * @param {{ shorthand?: boolean }} opts shorthand: expand #RGB → #RRGGBB (blur/Enter only). Off while typing
+ *   so partial 6-digit values like `#212…` are not misread as 3-digit shorthand.
+ */
+const normalizeHex = (v, opts = {}) => {
+  const allowShort = opts.shorthand === true;
   if (!v) return null;
   const t = v.trim().replace(/^#/, "");
   if (/^[0-9a-f]{6}$/i.test(t)) return `#${t.toUpperCase()}`;
-  if (/^[0-9a-f]{3}$/i.test(t))
+  if (allowShort && /^[0-9a-f]{3}$/i.test(t))
     return `#${t.split("").map((c) => c + c).join("").toUpperCase()}`;
   return null;
 };
@@ -48,17 +53,27 @@ export default function ColorWheel({ value, onChange, testId }) {
   const [hexDraft, setHexDraft] = useState(value?.toUpperCase() || "");
   const wheelRef = useRef(null);
   const draggingRef = useRef(false);
+  /** When true, do not reset hexDraft from `value` (wheel/slider would overwrite in-progress typing). */
+  const hexInputFocusedRef = useRef(false);
 
   useEffect(() => {
+    if (hexInputFocusedRef.current) return;
     setHsl(hexToHsl(value));
     setHexDraft((value || "").toUpperCase());
   }, [value]);
 
-  const commit = (next) => {
+  const commitHsl = (next) => {
     setHsl(next);
     const hex = hslToHex(next.h, next.s, next.l);
     setHexDraft(hex);
     onChange?.(hex);
+  };
+
+  /** Keep the exact #RRGGBB the user entered (avoid HSL round-trip changing the string). */
+  const commitExactHex = (hexNormalized) => {
+    setHsl(hexToHsl(hexNormalized));
+    setHexDraft(hexNormalized);
+    onChange?.(hexNormalized);
   };
 
   // Pointer → hue/sat. Align 0° = TOP (12 o'clock), clockwise, matching conic-gradient from 0deg.
@@ -78,7 +93,7 @@ export default function ColorWheel({ value, onChange, testId }) {
     if (angle < 0) angle += 360;
     const h = Math.round(angle);
     const s = Math.round((dist / r) * 100);
-    commit({ ...hsl, h, s });
+    commitHsl({ ...hsl, h, s });
   };
 
   const onPointerDown = (e) => {
@@ -105,12 +120,9 @@ export default function ColorWheel({ value, onChange, testId }) {
   const grayAtL = `hsl(0, 0%, ${hsl.l}%)`;
 
   const applyHexDraft = () => {
-    const normalized = normalizeHex(hexDraft);
-    if (normalized) {
-      commit(hexToHsl(normalized));
-    } else {
-      setHexDraft(currentHex);
-    }
+    const normalized = normalizeHex(hexDraft, { shorthand: true });
+    if (normalized) commitExactHex(normalized);
+    else setHexDraft(currentHex);
   };
 
   return (
@@ -186,7 +198,7 @@ export default function ColorWheel({ value, onChange, testId }) {
             min="5"
             max="95"
             value={hsl.l}
-            onChange={(e) => commit({ ...hsl, l: Number(e.target.value) })}
+            onChange={(e) => commitHsl({ ...hsl, l: Number(e.target.value) })}
             className="w-full h-3 appearance-none rounded-full cursor-pointer"
             style={{
               background: `linear-gradient(to right, hsl(${hsl.h},${hsl.s}%,5%), hsl(${hsl.h},${hsl.s}%,50%), hsl(${hsl.h},${hsl.s}%,95%))`,
@@ -205,12 +217,19 @@ export default function ColorWheel({ value, onChange, testId }) {
           <input
             type="text"
             value={hexDraft}
-            onChange={(e) => {
-              setHexDraft(e.target.value);
-              const normalized = normalizeHex(e.target.value);
-              if (normalized) commit(hexToHsl(normalized));
+            onFocus={() => {
+              hexInputFocusedRef.current = true;
             }}
-            onBlur={applyHexDraft}
+            onChange={(e) => {
+              const raw = e.target.value;
+              setHexDraft(raw);
+              const normalized = normalizeHex(raw, { shorthand: false });
+              if (normalized) commitExactHex(normalized);
+            }}
+            onBlur={() => {
+              hexInputFocusedRef.current = false;
+              applyHexDraft();
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();

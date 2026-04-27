@@ -21,7 +21,17 @@ logger = logging.getLogger(__name__)
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
-CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar"
+# Full Calendar access (read/write calendar list + events). Google does not let users pick
+# specific calendars on the consent screen — that happens here after OAuth via calendarList.
+# openid + email help the consent screen list account + API access clearly.
+GOOGLE_OAUTH_SCOPES = " ".join(
+    [
+        "openid",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile",
+        "https://www.googleapis.com/auth/calendar",
+    ]
+)
 
 def oauth_client_configured() -> bool:
     cid = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "").strip()
@@ -46,9 +56,10 @@ def build_google_authorization_url(state: str, login_hint: Optional[str] = None)
         "client_id": cid,
         "redirect_uri": oauth_redirect_uri(),
         "response_type": "code",
-        "scope": CALENDAR_SCOPE,
+        "scope": GOOGLE_OAUTH_SCOPES,
         "access_type": "offline",
-        "prompt": "consent",
+        # Account picker + consent so Calendar scope is visible (and refresh_token when possible).
+        "prompt": "select_account consent",
         "include_granted_scopes": "true",
         "state": state,
     }
@@ -197,7 +208,12 @@ async def get_access_token_for_owner(supabase: Client, token_owner_id: str) -> O
     return await _refresh_access_token_for_owner(supabase, str(token_owner_id), row)
 
 
-async def list_calendars_for_viewer(supabase: Client, viewer_user_id: str) -> List[Dict[str, str]]:
+def _writable_google_calendar(access_role: Optional[str]) -> bool:
+    r = (access_role or "").lower()
+    return r in ("owner", "writer")
+
+
+async def list_calendars_for_viewer(supabase: Client, viewer_user_id: str) -> List[Dict[str, Any]]:
     token = await get_access_token_for_owner(supabase, str(viewer_user_id))
     if not token:
         return []
@@ -211,14 +227,26 @@ async def list_calendars_for_viewer(supabase: Client, viewer_user_id: str) -> Li
         logger.warning("calendarList failed: %s %s", r.status_code, r.text[:400])
         return []
     items = (r.json() or {}).get("items") or []
-    out: List[Dict[str, str]] = []
+    out: List[Dict[str, Any]] = []
     for it in items:
         cid = it.get("id")
         if not cid:
             continue
         summary = it.get("summary") or it.get("summaryOverride") or cid
-        out.append({"id": cid, "summary": summary})
-    return sorted(out, key=lambda x: (x["summary"] or "").lower())
+        bg = (it.get("backgroundColor") or "").strip()
+        fg = (it.get("foregroundColor") or "").strip()
+        role = (it.get("accessRole") or "").strip()
+        out.append(
+            {
+                "id": cid,
+                "summary": summary,
+                "backgroundColor": bg,
+                "foregroundColor": fg,
+                "accessRole": role,
+                "writable": _writable_google_calendar(role),
+            }
+        )
+    return sorted(out, key=lambda x: str(x.get("summary") or "").lower())
 
 
 def _calendar_mapping_incomplete(supabase: Client) -> bool:

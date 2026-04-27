@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
+import asyncio
 import os
 import re
 import uuid
@@ -15,10 +16,13 @@ from datetime import datetime, timezone, timedelta
 from typing import Any, List, Optional, Set
 
 import permissions
+import invite_email
 import bcrypt
 import jwt
 import google_calendar_client
+import google_inbound_sync
 from fastapi import Body, FastAPI, APIRouter, HTTPException, Depends, Request
+from fastapi.responses import FileResponse
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import RedirectResponse
 from urllib.parse import quote_plus
@@ -36,6 +40,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALG = "HS256"
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+BRAND_LOGO_PATH = ROOT_DIR.parent / "frontend" / "public" / "brand" / "logo.png"
 
 app = FastAPI(title="Studio 7 Miami Calendar API")
 api = APIRouter(prefix="/api")
@@ -93,6 +98,24 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+PRIMARY_ADMIN_EMAIL = (
+    os.environ.get("PRIMARY_ADMIN_EMAIL") or os.environ.get("SUPER_ADMIN_EMAIL") or "seven@studio7.miami"
+).strip().lower()
+
+
+def _is_primary_admin(user: Optional[dict]) -> bool:
+    if not user:
+        return False
+    return str(user.get("email") or "").strip().lower() == PRIMARY_ADMIN_EMAIL
+
+
+def _is_integration_test_account_email(email: Optional[str]) -> bool:
+    """Emails used by backend/tests/test_api.py — omit from directory-style APIs."""
+    if not email or not isinstance(email, str):
+        return False
+    return email.lower().endswith("@studio7test.com")
+
+
 MFA_OTP_TTL_LOGIN = timedelta(minutes=10)
 MFA_OTP_TTL_SETUP = timedelta(minutes=10)
 MFA_OTP_TTL_DISABLE = timedelta(minutes=10)
@@ -130,7 +153,7 @@ def _gen_mfa_code() -> str:
 
 def _normalize_phone_e164(raw: Optional[str]) -> str:
     if not raw or not str(raw).strip():
-        raise ValueError("Phone number is required for SMS codes")
+        raise ValueError("Phone number is required")
     s = re.sub(r"[^\d+]", "", str(raw).strip())
     if s.startswith("+"):
         digits = re.sub(r"\D", "", s[1:])
@@ -233,7 +256,7 @@ def _assert_calendar_in_scope(user: dict, perms: dict, calendar_id: str) -> None
 
 
 def can_access_members_page(u: dict, p: dict) -> bool:
-    if u.get("role") == "admin":
+    if u.get("role") in ("admin", "manager"):
         return True
     return bool(
         permissions.has(p, "view_members_directory")
@@ -261,6 +284,7 @@ def _auth_user_out(user: dict) -> dict:
         "mfa_channel": user.get("mfa_channel"),
         "mfa_pending_channel": user.get("mfa_pending_channel"),
         "phone_e164": user.get("phone_e164"),
+        "sauce": user.get("sauce"),
     }
     out["permissions"] = user_permissions_for(out)
     raw_vc = user.get("visible_calendar_ids")
@@ -294,11 +318,18 @@ async def gcal_delete_event(
     )
 
 
+ALLOWED_SAUCES = frozenset(
+    {"photography", "videography", "artist", "filmmaker", "model"}
+)
+
+
 # ---------- Models ----------
 class RegisterIn(BaseModel):
     invite_token: str
     name: str
     password: str
+    phone_e164: str
+    sauce: str
 
 
 class LoginIn(BaseModel):
@@ -341,6 +372,16 @@ class CalendarIn(BaseModel):
     availability_weekly: Optional[List[AvailabilitySlot]] = None
 
 
+class GoogleCalendarImportItem(BaseModel):
+    google_calendar_id: str
+    name: Optional[str] = None
+    color: Optional[str] = None
+
+
+class GoogleCalendarImportIn(BaseModel):
+    items: List[GoogleCalendarImportItem]
+
+
 class BookingRequestIn(BaseModel):
     calendar_id: str
     date: str
@@ -376,6 +417,17 @@ class DisableIn(BaseModel):
 
 class RolePatchIn(BaseModel):
     role: str
+
+
+class AdminUserProfilePatchIn(BaseModel):
+    phone_e164: Optional[str] = None
+    sauce: Optional[str] = None
+
+
+class MePhonePatchIn(BaseModel):
+    phone_e164: str
+    password: str
+    mfa_code: Optional[str] = None
 
 
 class VisibleCalendarsIn(BaseModel):
@@ -433,6 +485,23 @@ async def startup():
         if not verify_pw(admin_password, existing_user.get("password_hash", "")):
             supabase.table("users").update({"password_hash": hash_pw(admin_password)}).eq("email", admin_email).execute()
             logger.info(f"Admin password updated for {admin_email}")
+
+    try:
+        app.state.google_inbound_task = asyncio.create_task(google_inbound_sync.google_inbound_background_loop(supabase))
+    except Exception as e:
+        logger.warning("Google inbound background sync task not started: %s", e)
+
+
+# ---------- Public assets (no auth; used by invite email <img> — must be a public https URL) ----------
+@api.get("/public/brand-logo.png")
+async def public_brand_logo_png():
+    if not BRAND_LOGO_PATH.is_file():
+        raise HTTPException(status_code=404, detail="Brand logo file missing on server")
+    return FileResponse(
+        BRAND_LOGO_PATH,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=604800"},
+    )
 
 
 # ---------- Auth ----------
@@ -694,6 +763,84 @@ async def me(user: dict = Depends(get_current_user)):
     return _auth_user_out(user)
 
 
+@api.post("/auth/me/phone/send-code")
+async def me_phone_send_code(data: MfaDisableSendIn, user: dict = Depends(get_current_user)):
+    """When 2FA is on, send a 6-digit code to email/SMS before PATCH /auth/me/phone."""
+    res = supabase.table("users").select(
+        "password_hash,totp_enabled,mfa_channel,email,phone_e164"
+    ).eq("id", user["id"]).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="User not found")
+    row = res.data[0]
+    if not row.get("totp_enabled") or row.get("mfa_channel") not in ("email", "phone"):
+        raise HTTPException(
+            status_code=400,
+            detail="Two-factor is off — save your new phone with your password only (no code needed).",
+        )
+    if not verify_pw(data.password, row.get("password_hash", "")):
+        raise HTTPException(status_code=400, detail="Incorrect password")
+    uid = user["id"]
+    channel = str(row.get("mfa_channel"))
+    if channel == "phone" and not (row.get("phone_e164") or "").strip():
+        raise HTTPException(status_code=400, detail="No phone number on file for this account")
+    code = _gen_mfa_code()
+    exp = datetime.now(timezone.utc) + MFA_OTP_TTL_DISABLE
+    supabase.table("users").update({
+        "mfa_otp_hash": _hash_mfa_otp(uid, "phone_change", code),
+        "mfa_otp_expires": exp.isoformat(),
+        "mfa_otp_purpose": "phone_change",
+    }).eq("id", uid).execute()
+    _deliver_mfa_stub(
+        uid,
+        channel,
+        str(row.get("email") or ""),
+        row.get("phone_e164") if channel == "phone" else None,
+        code,
+    )
+    hint = _mask_email(str(row.get("email") or "")) if channel == "email" else _mask_phone(row.get("phone_e164"))
+    return {"ok": True, "mfa_sent_via": channel, "mfa_sent_hint": hint}
+
+
+@api.patch("/auth/me/phone")
+async def me_phone_patch(data: MePhonePatchIn, user: dict = Depends(get_current_user)):
+    try:
+        phone_norm = _normalize_phone_e164(data.phone_e164)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    res = supabase.table("users").select(
+        "password_hash,totp_enabled,mfa_channel,mfa_otp_hash,mfa_otp_expires,mfa_otp_purpose"
+    ).eq("id", user["id"]).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="User not found")
+    row = res.data[0]
+    uid = str(user["id"])
+    mfa_on = bool(row.get("totp_enabled")) and row.get("mfa_channel") in ("email", "phone")
+    if mfa_on:
+        code = (data.mfa_code or "").strip().replace(" ", "")
+        if len(code) < 6:
+            raise HTTPException(status_code=400, detail="Enter the 6-digit code sent to your email or phone")
+        if row.get("mfa_otp_purpose") != "phone_change" or not row.get("mfa_otp_hash") or _mfa_otp_expired(row):
+            raise HTTPException(status_code=400, detail='Request a new code with "Send verification code" first.')
+        if _hash_mfa_otp(uid, "phone_change", code) != row.get("mfa_otp_hash"):
+            raise HTTPException(status_code=400, detail="Invalid code")
+        if not verify_pw(data.password, row.get("password_hash", "")):
+            raise HTTPException(status_code=400, detail="Incorrect password")
+    else:
+        if not verify_pw(data.password, row.get("password_hash", "")):
+            raise HTTPException(status_code=400, detail="Incorrect password")
+    supabase.table("users").update({
+        "phone_e164": phone_norm,
+        "mfa_otp_hash": None,
+        "mfa_otp_expires": None,
+        "mfa_otp_purpose": None,
+    }).eq("id", uid).execute()
+    fr = supabase.table("users").select("*").eq("id", uid).limit(1).execute()
+    rows = fr.data or []
+    if not rows:
+        raise HTTPException(status_code=500, detail="User not found after update")
+    return {"ok": True, "user": _auth_user_out(rows[0])}
+
+
 @api.post("/auth/register")
 async def register(data: RegisterIn):
     res = supabase.table("invites").select("*").eq("invite_token", data.invite_token).execute()
@@ -708,6 +855,13 @@ async def register(data: RegisterIn):
     existing = supabase.table("users").select("id").eq("email", email).execute()
     if existing.data:
         raise HTTPException(status_code=400, detail="User already exists")
+    sauce_key = (data.sauce or "").strip().lower()
+    if sauce_key not in ALLOWED_SAUCES:
+        raise HTTPException(status_code=400, detail="Pick a valid option for what's your sauce")
+    try:
+        phone_norm = _normalize_phone_e164(data.phone_e164)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     user_id = str(uuid.uuid4())
     supabase.table("users").insert({
         "id": user_id,
@@ -716,10 +870,21 @@ async def register(data: RegisterIn):
         "role": "member",
         "password_hash": hash_pw(data.password),
         "created_at": now_iso(),
+        "phone_e164": phone_norm,
+        "sauce": sauce_key,
     }).execute()
     supabase.table("invites").update({"used": True, "used_at": now_iso()}).eq("invite_token", data.invite_token).execute()
     token = create_token(user_id, email, "member")
-    uout = {"id": user_id, "email": email, "name": data.name, "role": "member", "created_at": now_iso(), "is_disabled": False}
+    uout = {
+        "id": user_id,
+        "email": email,
+        "name": data.name,
+        "role": "member",
+        "created_at": now_iso(),
+        "is_disabled": False,
+        "phone_e164": phone_norm,
+        "sauce": sauce_key,
+    }
     return {
         "token": token,
         "user": _auth_user_out(uout),
@@ -759,14 +924,42 @@ async def create_invite(data: InviteIn, admin: dict = Depends(require_admin)):
     }
     supabase.table("invites").insert(doc).execute()
     link = f"{FRONTEND_URL}/invite/{token}"
-    logger.info(f"[EMAIL STUB] Magic link for {email}: {link}")
-    return {"id": doc["id"], "email": email, "invite_link": link, "expires_at": doc["expires_at"]}
+    email_sent = False
+    email_error: Optional[str] = None
+    if invite_email.invite_email_delivery_configured():
+        inviter_name = (str(admin.get("name") or "").strip() or None)
+        sent, err_detail = await invite_email.send_invite_magic_link(
+            to_email=email,
+            invite_link=link,
+            inviter_name=inviter_name,
+        )
+        email_sent = sent
+        if sent:
+            logger.info("Invite email sent to %s", email)
+        else:
+            email_error = err_detail
+            logger.warning("Invite created but email not delivered to %s: %s", email, err_detail)
+    else:
+        email_error = (
+            "Email not configured on the server: set RESEND_API_KEY + INVITE_FROM_EMAIL "
+            "(or SMTP_*) in backend/.env, then restart the API."
+        )
+        logger.info("[INVITE] No email transport configured. Magic link for %s: %s", email, link)
+
+    return {
+        "id": doc["id"],
+        "email": email,
+        "invite_link": link,
+        "expires_at": doc["expires_at"],
+        "email_sent": email_sent,
+        "email_error": email_error,
+    }
 
 
 @api.get("/invites")
 async def list_invites(admin: dict = Depends(require_admin)):
     res = supabase.table("invites").select("*").order("created_at", desc=True).execute()
-    items = res.data or []
+    items = [it for it in (res.data or []) if not _is_integration_test_account_email(it.get("email"))]
     for it in items:
         it["invite_link"] = f"{FRONTEND_URL}/invite/{it['invite_token']}"
     return items
@@ -824,9 +1017,60 @@ async def list_users(user: dict = Depends(get_current_user)):
     if not can_access_members_page(user, p):
         raise HTTPException(status_code=403, detail="Not allowed")
     res = supabase.table("users").select(
-        "id,email,name,role,is_disabled,created_at,visible_calendar_ids"
+        "id,email,name,role,is_disabled,created_at,visible_calendar_ids,phone_e164,sauce"
     ).order("created_at", desc=True).execute()
-    return res.data or []
+    rows = res.data or []
+    return [u for u in rows if not _is_integration_test_account_email(u.get("email"))]
+
+
+@api.get("/members/bootstrap")
+async def members_bootstrap(user: dict = Depends(get_current_user)):
+    """Single response for the Members page (replaces 3–4 sequential client calls)."""
+    p = user_permissions_for(user)
+    if not can_access_members_page(user, p):
+        raise HTTPException(status_code=403, detail="Not allowed")
+    res = supabase.table("users").select(
+        "id,email,name,role,is_disabled,created_at,visible_calendar_ids,phone_e164,sauce"
+    ).order("created_at", desc=True).execute()
+    rows = res.data or []
+    users_out = [u for u in rows if not _is_integration_test_account_email(u.get("email"))]
+
+    is_admin = user.get("role") == "admin"
+    can_cal_dir = is_admin or permissions.has(p, "assign_member_calendars")
+
+    invites_out: List[dict] = []
+    if is_admin:
+        inv_res = supabase.table("invites").select("*").order("created_at", desc=True).execute()
+        for it in inv_res.data or []:
+            if _is_integration_test_account_email(it.get("email")):
+                continue
+            row = dict(it)
+            row["invite_link"] = f"{FRONTEND_URL}/invite/{row['invite_token']}"
+            invites_out.append(row)
+
+    perm_out: Optional[dict] = None
+    if is_admin:
+        stored = get_stored_role_permissions()
+        perm_out = {
+            "definitions": permissions.definitions_for_api(),
+            "effective": {
+                "member": permissions.merge_with_defaults("member", stored.get("member")),
+                "manager": permissions.merge_with_defaults("manager", stored.get("manager")),
+            },
+            "stored": stored,
+        }
+
+    calendars_out: Optional[List[dict]] = None
+    if can_cal_dir:
+        c_res = supabase.table("calendars").select("*").eq("is_active", True).order("created_at").execute()
+        calendars_out = [_calendar_enriched(c) for c in (c_res.data or [])]
+
+    return {
+        "users": users_out,
+        "invites": invites_out,
+        "permissions": perm_out,
+        "calendars": calendars_out,
+    }
 
 
 @api.patch("/users/{user_id}/visible-calendars")
@@ -870,11 +1114,53 @@ async def set_user_role(user_id: str, data: RolePatchIn, admin: dict = Depends(r
         raise HTTPException(status_code=400, detail="Invalid role")
     if user_id == admin["id"]:
         raise HTTPException(status_code=400, detail="You cannot change your own role here.")
-    res = supabase.table("users").select("id,role").eq("id", user_id).execute()
+    res = supabase.table("users").select("id,role,email").eq("id", user_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="User not found")
+    target = res.data[0]
+    target_email = str(target.get("email") or "").strip().lower()
+    if data.role == "admin" and target_email != PRIMARY_ADMIN_EMAIL:
+        raise HTTPException(
+            status_code=400,
+            detail="Only the designated administrator account can have the admin role.",
+        )
+    if target_email == PRIMARY_ADMIN_EMAIL and data.role != "admin":
+        raise HTTPException(
+            status_code=400,
+            detail="The administrator account cannot be assigned a different role.",
+        )
     supabase.table("users").update({"role": data.role}).eq("id", user_id).execute()
     return {"ok": True, "id": user_id, "role": data.role}
+
+
+@api.patch("/users/{user_id}/profile")
+async def patch_user_profile(user_id: str, data: AdminUserProfilePatchIn, admin: dict = Depends(require_admin)):
+    if data.phone_e164 is None and data.sauce is None:
+        raise HTTPException(status_code=400, detail="Provide phone_e164 and/or sauce")
+    res = supabase.table("users").select("id,email").eq("id", user_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="User not found")
+    target = res.data[0]
+    if _is_primary_admin(target) and not _is_primary_admin(admin):
+        raise HTTPException(status_code=403, detail="Not allowed")
+    upd: dict[str, Any] = {}
+    if data.phone_e164 is not None:
+        try:
+            upd["phone_e164"] = _normalize_phone_e164(data.phone_e164)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    if data.sauce is not None:
+        sk = (data.sauce or "").strip().lower()
+        if sk not in ALLOWED_SAUCES:
+            raise HTTPException(status_code=400, detail="Pick a valid option for what's your sauce")
+        upd["sauce"] = sk
+    if not upd:
+        raise HTTPException(status_code=400, detail="No changes")
+    supabase.table("users").update(upd).eq("id", user_id).execute()
+    row = supabase.table("users").select("*").eq("id", user_id).single().execute()
+    u = dict(row.data)
+    u.pop("password_hash", None)
+    return {"ok": True, "user": _auth_user_out(u)}
 
 
 @api.patch("/users/{user_id}/disable")
@@ -889,6 +1175,38 @@ async def set_user_disabled(user_id: str, data: DisableIn, admin: dict = Depends
         raise HTTPException(status_code=400, detail="Admin accounts cannot be disabled.")
     supabase.table("users").update({"is_disabled": bool(data.disabled)}).eq("id", user_id).execute()
     return {"ok": True, "id": user_id, "is_disabled": bool(data.disabled)}
+
+
+@api.delete("/users/{user_id}")
+async def delete_user(user_id: str, admin: dict = Depends(require_admin)):
+    if user_id == admin["id"]:
+        raise HTTPException(status_code=400, detail="You cannot delete your own account.")
+    t_res = supabase.table("users").select("id,role,email").eq("id", user_id).execute()
+    if not t_res.data:
+        raise HTTPException(status_code=404, detail="User not found")
+    target = t_res.data[0]
+    if _is_primary_admin(target):
+        raise HTTPException(status_code=400, detail="The administrator account cannot be removed.")
+    if target.get("role") == "admin" and not _is_primary_admin(admin):
+        raise HTTPException(status_code=400, detail="Admin accounts cannot be deleted.")
+    b_res = supabase.table("bookings").select("id").eq("member_id", user_id).execute()
+    b_ids = [str(b["id"]) for b in (b_res.data or [])]
+    if b_ids:
+        supabase.table("notifications").delete().in_("booking_id", b_ids).execute()
+    supabase.table("notifications").delete().eq("user_id", user_id).execute()
+    supabase.table("bookings").delete().eq("member_id", user_id).execute()
+    supabase.table("google_tokens").delete().eq("user_id", str(user_id)).execute()
+    supabase.table("users").delete().eq("id", user_id).execute()
+    return {"ok": True, "id": user_id}
+
+
+@api.delete("/invites/{invite_id}")
+async def delete_invite(invite_id: str, admin: dict = Depends(require_admin)):
+    check = supabase.table("invites").select("id").eq("id", invite_id).limit(1).execute()
+    if not check.data:
+        raise HTTPException(status_code=404, detail="Invite not found")
+    supabase.table("invites").delete().eq("id", invite_id).execute()
+    return {"ok": True, "id": invite_id}
 
 
 # ---------- Google Calendar OAuth (admin) ----------
@@ -996,6 +1314,73 @@ async def google_oauth_disconnect(_admin: dict = Depends(require_admin)):
     return {"ok": True}
 
 
+@api.post("/integrations/google/sync-inbound")
+async def google_sync_inbound_now(_admin: dict = Depends(require_admin)):
+    """Pull timed events from mapped Google calendars into bookings (Acuity, Cal.com, etc.)."""
+    stats = await google_inbound_sync.run_google_inbound_sync(supabase)
+    return stats
+
+
+def _normalize_hex_color(value: Optional[str], fallback: str) -> str:
+    s = (value or "").strip()
+    if re.match(r"^#[0-9A-Fa-f]{6}$", s):
+        return s
+    if re.match(r"^[0-9A-Fa-f]{6}$", s):
+        return "#" + s
+    fb = (fallback or "").strip()
+    if re.match(r"^#[0-9A-Fa-f]{6}$", fb):
+        return fb
+    if re.match(r"^[0-9A-Fa-f]{6}$", fb):
+        return "#" + fb
+    return "#3788d8"
+
+
+@api.post("/integrations/google/import-calendars")
+async def google_import_calendars(data: GoogleCalendarImportIn, admin: dict = Depends(require_admin)):
+    """Create Studio resources from Google calendars (writable only); uses DB default availability."""
+    summ = google_calendar_client.user_google_connection_summary(supabase, str(admin["id"]))
+    if not summ.get("connected"):
+        raise HTTPException(status_code=400, detail="Connect Google first.")
+    items_in = data.items or []
+    if not items_in:
+        raise HTTPException(status_code=400, detail="Select at least one Google calendar.")
+    remote = await google_calendar_client.list_calendars_for_viewer(supabase, str(admin["id"]))
+    by_id = {str(r["id"]): r for r in remote}
+    created: List[dict] = []
+    skipped = 0
+    for it in items_in:
+        gid = (it.google_calendar_id or "").strip()
+        if not gid or gid not in by_id:
+            raise HTTPException(status_code=400, detail=f"Unknown Google calendar: {gid}")
+        meta = by_id[gid]
+        role = str(meta.get("accessRole") or "").lower()
+        if role not in ("owner", "writer"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Calendar “{meta.get('summary', gid)}” is read-only in Google. Choose a calendar you can edit.",
+            )
+        dup = supabase.table("calendars").select("id").eq("google_calendar_id", gid).limit(1).execute()
+        if dup.data:
+            skipped += 1
+            continue
+        name = (it.name or "").strip() or str(meta.get("summary") or "Calendar")
+        fb = str(meta.get("backgroundColor") or "").strip()
+        color = _normalize_hex_color(it.color, fb)
+        cid = str(uuid.uuid4())
+        row: dict[str, Any] = {
+            "id": cid,
+            "name": name[:200],
+            "color": color,
+            "google_calendar_id": gid,
+            "is_active": True,
+            "created_at": now_iso(),
+        }
+        res = supabase.table("calendars").insert(row).execute()
+        if res.data:
+            created.append(_calendar_enriched(res.data[0]))
+    return {"imported": created, "skipped_duplicates": skipped}
+
+
 # ---------- Calendars ----------
 @api.get("/calendars/directory")
 async def list_calendars_directory(user: dict = Depends(get_current_user)):
@@ -1012,7 +1397,10 @@ async def list_calendars(user: dict = Depends(get_current_user)):
     p = user_permissions_for(user)
     if not permissions.has(p, "view_schedule"):
         raise HTTPException(status_code=403, detail="Calendar is not available for this account")
-    res = supabase.table("calendars").select("*").eq("is_active", True).order("created_at").execute()
+    q = supabase.table("calendars").select("*")
+    if user.get("role") != "admin":
+        q = q.eq("is_active", True)
+    res = q.order("created_at").execute()
     cals = [_calendar_enriched(c) for c in (res.data or [])]
     scope = calendar_id_scope_for_user(user, p)
     if scope is not None:
@@ -1154,6 +1542,8 @@ def _calendar_has_booking_conflict(
 def _can_user_modify_booking(user: dict, perms: dict, b: dict) -> bool:
     if b.get("status") not in ("pending", "approved"):
         return False
+    if str(b.get("source") or "") == "google_external":
+        return permissions.has(perms, "delete_any_booking") or permissions.has(perms, "create_manual_booking")
     if str(b.get("member_id")) == str(user["id"]):
         return True
     if permissions.has(perms, "delete_any_booking"):
@@ -1165,7 +1555,8 @@ def _can_user_modify_booking(user: dict, perms: dict, b: dict) -> bool:
 
 def _serialize_booking(b: dict, viewer: dict, users_by_id: dict, viewer_perms: Optional[dict] = None) -> dict:
     perms = viewer_perms if viewer_perms is not None else user_permissions_for(viewer)
-    is_owner = str(b.get("member_id")) == str(viewer["id"])
+    mid = b.get("member_id")
+    is_owner = mid is not None and str(mid) == str(viewer["id"])
     can_see_detail = is_owner or permissions.has(perms, "see_all_booking_details")
     base = {
         "id": b["id"],
@@ -1177,13 +1568,21 @@ def _serialize_booking(b: dict, viewer: dict, users_by_id: dict, viewer_perms: O
         "source": b.get("source", "manual"),
         "is_own": is_owner,
     }
+    if str(b.get("source") or "") == "google_external":
+        base["external_title"] = b.get("external_title")
     if can_see_detail:
-        owner = users_by_id.get(str(b.get("member_id")))
+        mid_raw = b.get("member_id")
+        owner = users_by_id.get(str(mid_raw)) if mid_raw is not None else None
+        disp_name = owner["name"] if owner else None
+        if not disp_name and str(b.get("source") or "") == "google_external":
+            disp_name = b.get("external_title") or "Booked (external)"
         base.update({
             "notes": b.get("notes", ""),
             "member_id": b.get("member_id"),
-            "member_name": owner["name"] if owner else None,
+            "member_name": disp_name,
             "member_email": owner["email"] if owner else None,
+            "member_phone_e164": owner.get("phone_e164") if owner else None,
+            "member_sauce": owner.get("sauce") if owner else None,
             "google_event_id": b.get("google_event_id"),
             "created_at": b.get("created_at"),
             "approval_message": b.get("approval_message", ""),
@@ -1206,8 +1605,11 @@ async def list_bookings(user: dict = Depends(get_current_user), status: Optional
     scope = calendar_id_scope_for_user(user, p)
     if scope is not None:
         raw = [b for b in raw if b.get("calendar_id") in scope]
-    users_res = supabase.table("users").select("id,name,email").execute()
-    users_by_id = {u["id"]: u for u in (users_res.data or [])}
+    member_ids = list({str(b["member_id"]) for b in raw if b.get("member_id")})
+    users_by_id: dict[str, Any] = {}
+    if member_ids:
+        users_res = supabase.table("users").select("id,name,email,phone_e164,sauce").in_("id", member_ids).execute()
+        users_by_id = {str(u["id"]): u for u in (users_res.data or [])}
     return [_serialize_booking(b, user, users_by_id, p) for b in raw]
 
 
@@ -1216,17 +1618,26 @@ async def list_requests(user: dict = Depends(get_current_user)):
     p = user_permissions_for(user)
     if not permissions.has(p, "view_schedule"):
         raise HTTPException(status_code=403, detail="Not allowed")
-    if permissions.has(p, "approve_deny_requests"):
-        res = supabase.table("bookings").select("*").eq("status", "pending").order("created_at", desc=True).execute()
+    mod = permissions.has(p, "approve_deny_requests")
+    q = supabase.table("bookings").select("*")
+    if mod:
+        q = q.in_("status", ["pending", "approved", "denied"]).order("created_at", desc=True)
     else:
-        res = supabase.table("bookings").select("*").eq("member_id", user["id"]).order("created_at", desc=True).execute()
+        q = q.eq("member_id", user["id"]).in_("status", ["pending", "approved"]).order("created_at", desc=True)
+    res = q.execute()
     raw = res.data or []
-    if permissions.has(p, "approve_deny_requests"):
+    if not mod:
+        uid = str(user.get("id") or "")
+        raw = [b for b in raw if str(b.get("member_id") or "") == uid]
+    if mod:
         sc = calendar_id_scope_for_user(user, p)
         if sc is not None:
             raw = [b for b in raw if b.get("calendar_id") in sc]
-    users_res = supabase.table("users").select("id,name,email").execute()
-    users_by_id = {u["id"]: u for u in (users_res.data or [])}
+    member_ids = list({str(b["member_id"]) for b in raw if b.get("member_id")})
+    users_by_id: dict[str, Any] = {}
+    if member_ids:
+        users_res = supabase.table("users").select("id,name,email,phone_e164,sauce").in_("id", member_ids).execute()
+        users_by_id = {str(u["id"]): u for u in (users_res.data or [])}
     return [_serialize_booking(b, user, users_by_id, p) for b in raw]
 
 
@@ -1319,6 +1730,11 @@ async def patch_booking(booking_id: str, data: BookingUpdateIn, user: dict = Dep
     if not _can_user_modify_booking(user, p, b):
         raise HTTPException(status_code=403, detail="Not allowed to update this booking")
     _assert_calendar_in_scope(user, p, b.get("calendar_id", ""))
+    if str(b.get("source") or "") == "google_external":
+        raise HTTPException(
+            status_code=400,
+            detail="This slot is synced from Google Calendar (e.g. Acuity/Cal.com). Edit the event in Google, or ask an admin to remove the mirror in Studio 7.",
+        )
 
     raw = data.model_dump(exclude_unset=True)
     updates: dict[str, Any] = {}
@@ -1340,7 +1756,7 @@ async def patch_booking(booking_id: str, data: BookingUpdateIn, user: dict = Dep
         updates["calendar_id"] = str(raw["calendar_id"])
 
     if not updates:
-        users_res = supabase.table("users").select("id,name,email").execute()
+        users_res = supabase.table("users").select("id,name,email,phone_e164,sauce").execute()
         users_by_id = {u["id"]: u for u in (users_res.data or [])}
         return _serialize_booking(b, user, users_by_id, p)
 
@@ -1385,7 +1801,7 @@ async def patch_booking(booking_id: str, data: BookingUpdateIn, user: dict = Dep
         supabase.table("bookings").update({"google_event_id": gid}).eq("id", booking_id).execute()
         row = {**row, "google_event_id": gid}
 
-    users_res = supabase.table("users").select("id,name,email").execute()
+    users_res = supabase.table("users").select("id,name,email,phone_e164,sauce").execute()
     users_by_id = {u["id"]: u for u in (users_res.data or [])}
     return _serialize_booking(row, user, users_by_id, p)
 
@@ -1455,6 +1871,26 @@ async def approve_booking(booking_id: str, data: ApproveDenyIn, admin: dict = De
         "is_read": False,
         "created_at": now_iso(),
     }).execute()
+    if invite_email.invite_email_delivery_configured():
+        try:
+            mem = supabase.table("users").select("email").eq("id", b["member_id"]).single().execute()
+            to_em = (mem.data or {}).get("email")
+            if to_em:
+                base = str(FRONTEND_URL or "").rstrip("/") or "http://localhost:3000"
+                sent, err = await invite_email.send_booking_decision_email(
+                    to_email=to_em,
+                    decision="approved",
+                    calendar_name=str(cal.get("name") or "Calendar"),
+                    date_str=str(b["date"]),
+                    start_time=str(b["start_time"]),
+                    end_time=str(b["end_time"]),
+                    optional_message=data.message or "",
+                    calendar_app_url=f"{base}/requests",
+                )
+                if not sent:
+                    logger.warning("Booking approved email not sent to %s: %s", to_em, err)
+        except Exception as e:
+            logger.warning("Booking approved email error: %s", e)
     return {"ok": True}
 
 
@@ -1486,6 +1922,28 @@ async def deny_booking(booking_id: str, data: ApproveDenyIn, mod: dict = Depends
         "is_read": False,
         "created_at": now_iso(),
     }).execute()
+    cal_res = supabase.table("calendars").select("name").eq("id", b["calendar_id"]).execute()
+    cal_name = str((cal_res.data or [{}])[0].get("name") or "Calendar") if cal_res.data else "Calendar"
+    if invite_email.invite_email_delivery_configured():
+        try:
+            mem = supabase.table("users").select("email").eq("id", b["member_id"]).single().execute()
+            to_em = (mem.data or {}).get("email")
+            if to_em:
+                base = str(FRONTEND_URL or "").rstrip("/") or "http://localhost:3000"
+                sent, err = await invite_email.send_booking_decision_email(
+                    to_email=to_em,
+                    decision="denied",
+                    calendar_name=cal_name,
+                    date_str=str(b["date"]),
+                    start_time=str(b["start_time"]),
+                    end_time=str(b["end_time"]),
+                    optional_message=data.message or "",
+                    calendar_app_url=f"{base}/requests",
+                )
+                if not sent:
+                    logger.warning("Booking denied email not sent to %s: %s", to_em, err)
+        except Exception as e:
+            logger.warning("Booking denied email error: %s", e)
     return {"ok": True}
 
 
@@ -1506,11 +1964,12 @@ async def delete_booking(booking_id: str, user: dict = Depends(get_current_user)
     _assert_calendar_in_scope(user, p, b.get("calendar_id", ""))
     cal_res = supabase.table("calendars").select("*").eq("id", b["calendar_id"]).execute()
     cal = cal_res.data[0] if cal_res.data else {}
-    await gcal_delete_event(
-        cal.get("google_calendar_id"),
-        b.get("google_event_id"),
-        str(user["id"]),
-    )
+    if str(b.get("source") or "") != "google_external":
+        await gcal_delete_event(
+            cal.get("google_calendar_id"),
+            b.get("google_event_id"),
+            str(user["id"]),
+        )
     supabase.table("bookings").delete().eq("id", booking_id).execute()
     return {"ok": True}
 
@@ -1556,7 +2015,7 @@ async def chat(data: ChatIn, user: dict = Depends(get_current_user)):
     horizon = (datetime.now(timezone.utc).date() + timedelta(days=180)).isoformat()
     bookings_res = supabase.table("bookings").select("*").in_("status", ["approved", "pending"]).gte("date", lookback).lte("date", horizon).order("date").execute()
     raw = bookings_res.data or []
-    users_res = supabase.table("users").select("id,name,email").execute()
+    users_res = supabase.table("users").select("id,name,email,phone_e164,sauce").execute()
     users_by_id = {u["id"]: u for u in (users_res.data or [])}
     up = user_permissions_for(user)
     vscope = calendar_id_scope_for_user(user, up)

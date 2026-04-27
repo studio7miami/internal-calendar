@@ -8,13 +8,26 @@ import {
 } from "@/lib/inviteOnboardingTheme";
 
 /**
- * Shown when an admin has a fresh invite URL to copy (stubbed email).
- * Appearance is controlled from `inviteOnboardingTheme.js`.
+ * Shown when an admin has a fresh invite URL to copy.
+ * When `emailSent` is true, transactional email was delivered; link remains for backup / sharing.
  */
-export default function InviteLinkCallout({ link, onCopy, copyTestId = "copy-invite-link", label = "Invite link (stubbed email)" }) {
+export default function InviteLinkCallout({
+  link,
+  onCopy,
+  copyTestId = "copy-invite-link",
+  label,
+  emailSent,
+}) {
+  const resolvedLabel =
+    label ||
+    (emailSent === true
+      ? "Invite link (also sent to their email)"
+      : emailSent === false
+      ? "Invite link (copy to share — email not configured or send failed)"
+      : "Invite link (copy to share)");
   return (
     <div className={inviteLinkCalloutClass} data-testid="invite-link-display">
-      <div className={inviteLinkCalloutLabelClass}>{label}</div>
+      <div className={inviteLinkCalloutLabelClass}>{resolvedLabel}</div>
       <div className="flex items-center gap-2">
         <code className={inviteLinkCodeClass}>{link}</code>
         <button

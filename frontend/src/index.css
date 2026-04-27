@@ -132,6 +132,10 @@ code, pre, .font-mono { font-family: 'Manrope', system-ui, sans-serif; font-vari
 html.dark .brand-logo-nav:not(.brand-logo-white) {
   filter: invert(1) brightness(1.08);
 }
+/* After chrome rule: wordmark on explicit light surface (e.g. login mobile) */
+html.dark .brand-logo-nav.brand-logo-on-light-canvas {
+  filter: none;
+}
 
 .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
 .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }

@@ -189,18 +189,18 @@ export default function Login() {
         ) : (
         <form onSubmit={submit} className="w-full max-w-sm space-y-6" data-testid="login-form">
           <div>
-            <div className="mb-6 self-start rounded-[7px] bg-[#0b0b0c] px-4 py-2.5 md:hidden">
+            <div className="mb-6 md:hidden">
               <a
                 href="https://studio7.miami"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-block rounded-[7px] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+                className="inline-block rounded-[7px] focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/25 dark:focus-visible:ring-slate-600/40"
                 aria-label="Studio 7 Miami (opens studio7.miami)"
               >
                 <img
                   src="/brand/logo.png"
                   alt="Studio 7 Miami"
-                  className="brand-logo brand-logo-white brand-logo-nav brand-logo-nav-header"
+                  className="brand-logo brand-logo-nav brand-logo-nav-header brand-logo-on-light-canvas"
                 />
               </a>
             </div>

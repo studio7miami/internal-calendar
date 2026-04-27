@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, formatApiError } from "../lib/api";
 import { Button } from "../components/ui/button";
@@ -31,7 +31,12 @@ export default function CalendarsAdmin() {
   const [gList, setGList] = useState([]);
   const [mapDraft, setMapDraft] = useState({});
   const [mapLoading, setMapLoading] = useState(false);
+  /** Google calendar id → selected for import (only used when there are no resources yet). */
+  const [importSelection, setImportSelection] = useState({});
+  const [importSubmitting, setImportSubmitting] = useState(false);
   const [weekRowsState, setWeekRowsState] = useState(null);
+  /** Avoid duplicate OAuth→dialog work (e.g. React Strict Mode) while `google=connected` is in the URL. */
+  const googleConnectedFlowRef = useRef(false);
 
   const refresh = useCallback(async () => {
     const { data } = await api.get("/calendars");
@@ -52,47 +57,99 @@ export default function CalendarsAdmin() {
     loadGoogleStatus();
   }, [refresh, loadGoogleStatus]);
 
-  useEffect(() => {
-    const g = searchParams.get("google");
-    if (!g) return;
-    if (g === "connected") {
-      setInfo("Google linked — pick calendars below.");
-      setMapOpen(true);
-      loadGoogleStatus();
-    } else if (g === "error") {
-      const reason = searchParams.get("reason") || "unknown";
-      setErr(`Google sign-in: ${reason.replace(/\+/g, " ")}`);
-    }
-    setSearchParams(
-      (prev) => {
-        const n = new URLSearchParams(prev);
-        n.delete("google");
-        n.delete("reason");
-        return n;
-      },
-      { replace: true }
-    );
-  }, [searchParams, setSearchParams, loadGoogleStatus]);
-
-  const openMapDialog = async () => {
+  const loadMapDialog = useCallback(async () => {
     setErr("");
     setMapLoading(true);
     setMapOpen(true);
+    setImportSelection({});
     try {
       const [calRes, listRes] = await Promise.all([api.get("/calendars"), api.get("/integrations/google/calendar-list")]);
       const list = calRes.data || [];
+      const gArr = Array.isArray(listRes.data) ? listRes.data : [];
       setCals(list);
-      setGList(Array.isArray(listRes.data) ? listRes.data : []);
+      setGList(gArr);
       const draft = {};
       list.forEach((c) => {
         draft[c.id] = c.google_calendar_id || "";
       });
       setMapDraft(draft);
+      const writable = gArr.filter((g) => g.writable);
+      if (list.length === 0 && writable.length > 0) {
+        setImportSelection(Object.fromEntries(writable.map((g) => [g.id, false])));
+      }
     } catch (e) {
       setErr(formatApiError(e?.response?.data?.detail) || "Could not load your Google calendars.");
       setMapOpen(false);
     } finally {
       setMapLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const g = searchParams.get("google");
+    if (!g) return;
+
+    if (g === "error") {
+      const reason = searchParams.get("reason") || "unknown";
+      setErr(`Google sign-in: ${reason.replace(/\+/g, " ")}`);
+      setSearchParams(
+        (prev) => {
+          const n = new URLSearchParams(prev);
+          n.delete("google");
+          n.delete("reason");
+          return n;
+        },
+        { replace: true }
+      );
+      return;
+    }
+
+    if (g === "connected") {
+      if (googleConnectedFlowRef.current) return;
+      googleConnectedFlowRef.current = true;
+      void (async () => {
+        try {
+          await loadGoogleStatus();
+          await loadMapDialog();
+        } finally {
+          googleConnectedFlowRef.current = false;
+          setSearchParams(
+            (prev) => {
+              const n = new URLSearchParams(prev);
+              n.delete("google");
+              n.delete("reason");
+              return n;
+            },
+            { replace: true }
+          );
+        }
+      })();
+    }
+  }, [searchParams, setSearchParams, loadGoogleStatus, loadMapDialog]);
+
+  const importFromGoogle = async () => {
+    const items = Object.entries(importSelection)
+      .filter(([, on]) => on)
+      .map(([google_calendar_id]) => ({ google_calendar_id }));
+    if (!items.length) return;
+    setErr("");
+    setImportSubmitting(true);
+    try {
+      const { data } = await api.post("/integrations/google/import-calendars", { items });
+      const n = (data?.imported || []).length;
+      setMapOpen(false);
+      await refresh();
+      await loadGoogleStatus();
+      setImportSelection({});
+      if (n > 0) {
+        setInfo(`Imported ${n} calendar(s).`);
+      } else {
+        setInfo("");
+      }
+    } catch (e) {
+      setErr(formatApiError(e?.response?.data?.detail) || "Import failed");
+    } finally {
+      setImportSubmitting(false);
     }
   };
 
@@ -182,7 +239,7 @@ export default function CalendarsAdmin() {
         google_calendar_id: c.google_calendar_id || "",
         is_active: !c.is_active,
       });
-      refresh();
+      await refresh();
     } catch (e) {
       setErr(formatApiError(e?.response?.data?.detail) || "Failed");
     }
@@ -227,7 +284,7 @@ export default function CalendarsAdmin() {
     <div className="space-y-4" data-testid="calendars-admin-page">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
         <div className="min-w-0">
-          <div className="label-tech">Admin</div>
+          <div className="label-tech">Accounts</div>
           <h1 className={pageTitleClass}>Calendars</h1>
         </div>
         {(info || err) && (
@@ -249,14 +306,6 @@ export default function CalendarsAdmin() {
             {gStatus == null ? (
               <p className="text-xs text-slate-500 dark:text-zinc-500">Loading…</p>
             ) : null}
-            {gStatus?.connected && gStatus?.needs_calendar_mapping && (
-              <div
-                className="rounded-[7px] border border-amber-200/90 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-950 dark:border-amber-800/60 dark:bg-amber-950/35 dark:text-amber-100"
-                data-testid="google-needs-mapping-banner"
-              >
-                Link each calendar to Google (Map calendars).
-              </div>
-            )}
             {gStatus != null && !gStatus?.client_configured ? (
               <p className="text-xs text-slate-600 dark:text-zinc-400">
                 OAuth off — server <code className="rounded bg-slate-100 px-1 font-mono text-[11px] dark:bg-zinc-800">GOOGLE_OAUTH_*</code> (
@@ -265,14 +314,13 @@ export default function CalendarsAdmin() {
             ) : gStatus?.connected ? (
               <p className="text-xs text-slate-600 dark:text-zinc-400">
                 <span className="font-medium text-slate-800 dark:text-zinc-200">{gStatus.email || "Linked"}</span>
-                <span className="text-slate-500 dark:text-zinc-500"> · until disconnect</span>
               </p>
             ) : null}
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             {gStatus != null && gStatus.client_configured && gStatus.connected ? (
               <>
-                <Button type="button" variant="ghost" onClick={openMapDialog} className={cn("h-9", pageBtnPrimaryClass)} data-testid="google-map-calendars">
+                <Button type="button" variant="ghost" onClick={() => loadMapDialog()} className={cn("h-9", pageBtnPrimaryClass)} data-testid="google-map-calendars">
                   Map calendars
                 </Button>
                 <Button type="button" variant="ghost" onClick={() => disconnectGoogle()} className={cn("h-9", pageBtnOutlineClass)} data-testid="google-disconnect">
@@ -305,16 +353,18 @@ export default function CalendarsAdmin() {
       <Dialog open={mapOpen} onOpenChange={setMapOpen}>
         <DialogContent className="max-w-md gap-0 border border-gray-200/95 bg-[#FAFAFA] p-5 text-slate-900 dark:border-white/20 dark:bg-zinc-950 dark:text-white sm:rounded-[7px]">
           <DialogHeader className="space-y-1 pb-3">
-            <DialogTitle className="font-['Manrope',system-ui,sans-serif] text-lg font-semibold">Map to Google</DialogTitle>
-            <DialogDescription className="text-left text-xs text-slate-600 dark:text-zinc-400">
-              One Google calendar per row — bookings sync there only.
-            </DialogDescription>
+            <DialogTitle className="font-['Manrope',system-ui,sans-serif] text-lg font-semibold">
+              {cals.length > 0 ? "Map to Google" : "Import from Google"}
+            </DialogTitle>
+            {cals.length > 0 ? (
+              <DialogDescription className="text-left text-xs text-slate-600 dark:text-zinc-400">
+                One Google calendar per resource row — bookings sync to the mapped calendar.
+              </DialogDescription>
+            ) : null}
           </DialogHeader>
           {mapLoading ? (
             <p className="py-4 text-xs text-slate-500">Loading…</p>
-          ) : cals.length === 0 ? (
-            <p className="py-2 text-xs text-slate-600 dark:text-zinc-400">Add at least one calendar under Resources first.</p>
-          ) : (
+          ) : cals.length > 0 ? (
             <div className="space-y-3">
               {cals.map((c) => (
                 <div key={c.id} className="space-y-1">
@@ -326,11 +376,13 @@ export default function CalendarsAdmin() {
                     data-testid={`google-map-select-${c.id}`}
                   >
                     <option value="">— Select —</option>
-                    {gList.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.summary}
-                      </option>
-                    ))}
+                    {gList
+                      .filter((g) => g.writable !== false)
+                      .map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.summary}
+                        </option>
+                      ))}
                   </select>
                 </div>
               ))}
@@ -343,6 +395,59 @@ export default function CalendarsAdmin() {
                 </Button>
               </div>
             </div>
+          ) : (gList || []).filter((g) => g.writable).length > 0 ? (
+            <div className="space-y-3">
+              {(gList || [])
+                .filter((g) => g.writable)
+                .map((g) => (
+                  <label
+                    key={g.id}
+                    className="flex cursor-pointer items-center gap-3 rounded-[7px] border border-slate-200/90 bg-white/80 px-3 py-2.5 dark:border-white/10 dark:bg-zinc-900/40"
+                  >
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 shrink-0 rounded border-slate-300"
+                      checked={!!importSelection[g.id]}
+                      onChange={(e) => setImportSelection((prev) => ({ ...prev, [g.id]: e.target.checked }))}
+                      data-testid={`google-import-check-${g.id}`}
+                    />
+                    <span
+                      className="h-3 w-3 shrink-0 rounded-full border border-black/10 dark:border-white/10"
+                      style={{ background: g.backgroundColor || "#94a3b8" }}
+                      aria-hidden
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-slate-900 dark:text-zinc-100">{g.summary}</div>
+                      <div className="truncate text-[10px] uppercase tracking-wide text-slate-500 dark:text-zinc-500">
+                        {g.accessRole || "calendar"}
+                      </div>
+                    </div>
+                  </label>
+                ))}
+              <div className="flex justify-end gap-2 pt-1">
+                <Button type="button" variant="ghost" onClick={() => setMapOpen(false)} className={cn("h-9", pageBtnOutlineClass)}>
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={importFromGoogle}
+                  disabled={importSubmitting || !Object.values(importSelection).some(Boolean)}
+                  className={cn("h-9", pageBtnPrimaryClass)}
+                  data-testid="google-import-submit"
+                >
+                  {importSubmitting ? "Importing…" : "Import selected"}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <p className="py-2 text-xs text-slate-600 dark:text-zinc-400">
+              No editable Google calendars were returned. Add a resource manually under Resources, or try{" "}
+              <button type="button" className="underline underline-offset-2" onClick={() => reconnectGoogle()}>
+                a different Google account
+              </button>
+              .
+            </p>
           )}
         </DialogContent>
       </Dialog>
@@ -374,17 +479,11 @@ export default function CalendarsAdmin() {
         {cals.map((c) =>
           editing === c.id ? (
             <div key={c.id} className={cn("space-y-3 p-3 sm:p-4", pageCardClass)}>
-              <div className="grid gap-2 sm:grid-cols-3 sm:gap-3">
+              <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
                 <Input
                   value={c.name}
                   onChange={(e) => setCals((prev) => prev.map((p) => (p.id === c.id ? { ...p, name: e.target.value } : p)))}
                   className={pageInputClass}
-                />
-                <Input
-                  value={c.google_calendar_id || ""}
-                  onChange={(e) => setCals((prev) => prev.map((p) => (p.id === c.id ? { ...p, google_calendar_id: e.target.value } : p)))}
-                  placeholder="Google calendar ID"
-                  className={cn(pageInputClass, "tabular-nums")}
                 />
                 <ColorWheel
                   value={c.color}
@@ -462,16 +561,17 @@ export default function CalendarsAdmin() {
           ) : (
             <div
               key={c.id}
-              className={cn("flex flex-wrap items-center justify-between gap-3 p-3 sm:gap-4 sm:p-4", pageCardClass)}
+              className={cn(
+                "flex flex-wrap items-center justify-between gap-3 p-3 sm:gap-4 sm:p-4",
+                pageCardClass,
+                !c.is_active && "opacity-80 saturate-[0.65]"
+              )}
               data-testid={`calendar-row-${c.id}`}
             >
               <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
                 <span className="h-2.5 w-2.5 shrink-0 rounded-full sm:h-3 sm:w-3" style={{ background: c.color }} />
                 <div className="min-w-0">
                   <div className="truncate text-base font-semibold text-slate-900 dark:text-white sm:text-lg">{c.name}</div>
-                  <div className="label-tech truncate text-slate-500 dark:text-neutral-400">
-                    {c.google_calendar_id ? c.google_calendar_id : "No Google ID"}
-                  </div>
                 </div>
               </div>
               <div className="flex items-center gap-2 sm:gap-3">

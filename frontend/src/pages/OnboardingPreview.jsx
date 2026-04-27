@@ -15,6 +15,8 @@ const SAMPLE_LINK = `${typeof window !== "undefined" ? window.location.origin : 
 export default function OnboardingPreview() {
   const [inviteStatus, setInviteStatus] = useState("ok");
   const [name, setName] = useState("Preview Member");
+  const [phone, setPhone] = useState("");
+  const [sauce, setSauce] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [formError, setFormError] = useState("");
@@ -80,6 +82,10 @@ export default function OnboardingPreview() {
               email="preview.member@studio7.miami"
               name={name}
               onNameChange={setName}
+              phone={phone}
+              onPhoneChange={setPhone}
+              sauce={sauce}
+              onSauceChange={setSauce}
               password={password}
               onPasswordChange={setPassword}
               confirm={confirm}

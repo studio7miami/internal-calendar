@@ -2,12 +2,13 @@
 
 /** Same hover as Calendar toolbar (Today / New / chevrons). */
 export const glassBarHoverClass =
-  "hover:bg-slate-900/10 hover:text-black dark:hover:bg-white/[0.08] dark:hover:text-zinc-100";
+  "md:hover:bg-slate-900/10 md:hover:text-black md:dark:hover:bg-white/[0.08] md:dark:hover:text-zinc-100";
 
 export const pageTitleClass =
   "mt-1 text-3xl sm:text-4xl font-['Manrope',system-ui,sans-serif] font-semibold tracking-[-0.02em] text-slate-900 dark:text-zinc-200";
 
-export const pageSubtextClass = "text-sm text-slate-500 dark:text-zinc-500 mt-2";
+export const pageSubtextClass =
+  "text-sm text-slate-900 dark:text-zinc-500 mt-2 pt-0.5";
 
 export const pageCardClass =
   "border border-gray-200/95 bg-[#FCFCFC] text-slate-900 dark:border-white/10 dark:bg-white/[0.03] dark:text-zinc-200 rounded-[7px]";
@@ -29,5 +30,5 @@ export const pageBtnPrimaryClass =
 
 export const pageBtnOutlineClass =
   "h-10 min-h-8 box-border border border-gray-200/50 bg-transparent text-neutral-400 rounded-[7px] transition-colors " +
-  "hover:border-gray-200/80 dark:border-white/20 dark:text-neutral-500 dark:hover:border-white/30 " +
+  "md:hover:border-gray-200/80 dark:border-white/20 dark:text-neutral-500 md:dark:hover:border-white/30 " +
   glassBarHoverClass;

@@ -15,6 +15,33 @@ const chatFieldClass =
   "border border-gray-200/95 bg-white dark:border-white/20 dark:bg-zinc-900/50 dark:text-white dark:placeholder:text-neutral-500 " +
   `${r7} focus:outline-none focus:ring-1 focus:ring-slate-400/30 dark:focus:ring-white/20`;
 
+const PALM_IMG_SRC = ["/brand/concierge-palm.png", "/brand/concierge-palm.svg"];
+
+/** Palm mark: prefers your transparent PNG if present, else bundled SVG (transparent). */
+function ConciergePalmMark({ className }) {
+  const [tier, setTier] = useState(0);
+  if (tier >= PALM_IMG_SRC.length) {
+    return (
+      <span className={cn("inline-flex h-9 w-9 items-center justify-center text-slate-900 dark:text-zinc-100", className)} aria-hidden>
+        <Sparkles className="h-5 w-5 opacity-70" strokeWidth={1.8} />
+      </span>
+    );
+  }
+  return (
+    <img
+      src={PALM_IMG_SRC[tier]}
+      alt=""
+      width={36}
+      height={42}
+      onError={() => setTier((t) => t + 1)}
+      className={cn(
+        "h-9 w-auto max-h-9 max-w-[2.25rem] shrink-0 object-contain opacity-90 dark:brightness-0 dark:invert",
+        className
+      )}
+    />
+  );
+}
+
 function greetingForNow(name) {
   const h = new Date().getHours();
   let g;
@@ -80,7 +107,7 @@ export default function ChatBot() {
           type="button"
           onClick={() => setOpen(true)}
           data-testid="chatbot-open-button"
-          aria-label="Open Studio 7 Assistant"
+          aria-label="Open Concierge"
           className="fixed bottom-24 md:bottom-6 right-4 md:right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-white text-black shadow-[0_12px_40px_rgba(0,0,0,0.12)] transition-transform hover:scale-110 hover:bg-neutral-100 chat-float dark:shadow-[0_12px_40px_rgba(255,255,255,0.12)]"
         >
           <span className="absolute inset-0 rounded-full chat-pulse-ring pointer-events-none" />
@@ -97,20 +124,12 @@ export default function ChatBot() {
           )}
           data-testid="chatbot-panel"
         >
-          <div className="flex items-center justify-between gap-2 border-b border-gray-200/95 px-4 py-3 dark:border-white/10">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="h-2 w-2 flex-shrink-0 rounded-full bg-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.25)] dark:bg-emerald-400" />
-              <div className="min-w-0">
-                <p className="font-['Manrope',system-ui,sans-serif] text-base font-semibold text-slate-900 dark:text-white">
-                  Assistant
-                </p>
-                <p className="label-tech !mt-0.5">Studio 7</p>
-                <p className="mt-1 max-w-[220px] text-[10px] leading-snug text-slate-500 dark:text-zinc-500">
-                  Replies use live calendar data (bookings in your scope, last ~30 days through ~6 months out).
-                </p>
-              </div>
+          <div className="flex items-center justify-between gap-3 border-b border-gray-200/95 px-4 py-3 dark:border-white/10">
+            <div className="min-w-0 flex-1 pr-2">
+              <p className="label-tech tracking-[0.2em] text-slate-500 dark:text-zinc-500">Concierge</p>
             </div>
-            <div className="flex flex-shrink-0 items-center gap-1.5">
+            <div className="flex shrink-0 items-center gap-2">
+              <ConciergePalmMark />
               <select
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
@@ -198,6 +217,9 @@ export default function ChatBot() {
               <Send className="h-4 w-4" strokeWidth={1.5} />
             </button>
           </form>
+          <div className="border-t border-gray-200/95 bg-[#FAFAFA] px-3 py-2 text-center dark:border-white/10 dark:bg-zinc-950">
+            <p className="label-tech tracking-[0.2em] text-slate-500 dark:text-zinc-500">STUDIO 7 MIAMI</p>
+          </div>
         </div>
       )}
     </>

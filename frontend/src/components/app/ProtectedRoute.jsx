@@ -3,7 +3,7 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 
 function hasMembersPageAccess(user) {
-  if (user?.role === "admin") return true;
+  if (user?.role === "admin" || user?.role === "manager") return true;
   if (user?.permissions?.assign_member_calendars) return true;
   if (user?.permissions?.view_members_directory) return true;
   return false;

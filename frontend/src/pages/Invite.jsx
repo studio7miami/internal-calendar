@@ -13,6 +13,8 @@ export default function Invite() {
   const [email, setEmail] = useState("");
   const [inviteStatus, setInviteStatus] = useState("loading");
   const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [sauce, setSauce] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
@@ -38,11 +40,15 @@ export default function Invite() {
     setError("");
     if (password !== confirm) return setError("Passwords do not match");
     if (password.length < 8) return setError("Password must be at least 8 characters");
+    if (!phone.trim()) return setError("Enter your phone number.");
+    if (!sauce) return setError("Choose what's your sauce.");
     try {
       const { data } = await api.post("/auth/register", {
         invite_token: token,
         name,
         password,
+        phone_e164: phone,
+        sauce,
       });
       loginWithToken(data.token, data.user);
       setDone(true);
@@ -59,6 +65,10 @@ export default function Invite() {
           email={email}
           name={name}
           onNameChange={setName}
+          phone={phone}
+          onPhoneChange={setPhone}
+          sauce={sauce}
+          onSauceChange={setSauce}
           password={password}
           onPasswordChange={setPassword}
           confirm={confirm}

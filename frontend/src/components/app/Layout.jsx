@@ -51,11 +51,12 @@ function NotificationBell() {
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
-        <button
-          data-testid="notification-bell-button"
-          className="relative p-2 border border-neutral-300 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-900 rounded-[16px]"
-        >
-          <Bell className="w-4 h-4" strokeWidth={1.5} />
+          <button
+            type="button"
+            data-testid="notification-bell-button"
+            className="relative rounded-[16px] border border-neutral-300 p-1.5 dark:border-neutral-800 md:hover:bg-neutral-100 md:dark:hover:bg-neutral-900"
+          >
+          <Bell className="h-3.5 w-3.5" strokeWidth={1.5} />
           {unread > 0 && (
             <span
               className="absolute -right-1 -top-1 flex h-[16px] min-w-[16px] items-center justify-center rounded-[16px] bg-black px-1 text-[10px] font-bold text-white dark:bg-white dark:text-black"
@@ -75,7 +76,7 @@ function NotificationBell() {
           <span className="label-tech">Notifications</span>
           {unread > 0 && (
             <button
-              className="text-xs text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white"
+              className="text-xs text-neutral-600 dark:text-neutral-400 md:hover:text-black md:dark:hover:text-white"
               onClick={markAll}
               data-testid="mark-all-read-button"
             >
@@ -113,7 +114,6 @@ function NotificationBell() {
 
 const navItems = (user) => {
   const role = user?.role;
-  const p = user?.permissions || {};
   const items = [
     { to: "/", label: "Calendar", icon: CalendarDays, testid: "nav-calendar", end: true },
     { to: "/requests", label: "Requests", icon: Inbox, testid: "nav-requests" },
@@ -121,7 +121,7 @@ const navItems = (user) => {
   if (role === "admin") {
     items.push({ to: "/calendars", label: "Calendars", icon: Layers, testid: "nav-calendars" });
     items.push({ to: "/members", label: "Members", icon: Users, testid: "nav-members" });
-  } else if (p.assign_member_calendars || p.view_members_directory) {
+  } else if (role === "manager") {
     items.push({ to: "/members", label: "Members", icon: Users, testid: "nav-members" });
   }
   items.push({ to: "/profile", label: "Profile", icon: User, testid: "nav-profile" });
@@ -168,7 +168,7 @@ export default function Layout() {
                 `flex min-h-8 items-center gap-3 border px-3 py-1.5 text-sm transition-colors rounded-[7px] ${
                   isActive
                     ? "border-gray-200/95 bg-[#FCFCFC] text-slate-900 dark:border-white/10 dark:bg-white/[0.05] dark:text-zinc-200"
-                    : "border-gray-200/50 text-neutral-400 hover:border-gray-200/80 hover:text-slate-600 dark:border-white/[0.06] dark:text-zinc-500 dark:hover:border-white/10 dark:hover:text-zinc-300"
+                    : "border-gray-200/50 text-neutral-400 dark:border-white/[0.06] dark:text-zinc-500 md:hover:border-gray-200/80 md:hover:text-slate-600 md:dark:hover:border-white/10 md:dark:hover:text-zinc-300"
                 }`
               }
             >
@@ -185,7 +185,7 @@ export default function Layout() {
           <button
             data-testid="logout-button"
             onClick={logout}
-            className="flex w-full items-center gap-2 rounded-[7px] border border-neutral-300 px-3 py-2 text-xs text-neutral-600 transition-colors hover:bg-slate-50 dark:border-white/10 dark:text-zinc-400 dark:hover:border-white/15 dark:hover:bg-white/[0.04] dark:hover:text-zinc-200"
+            className="flex w-full items-center gap-2 rounded-[7px] border border-neutral-300 px-3 py-2 text-xs text-neutral-600 transition-colors dark:border-white/10 dark:text-zinc-400 md:hover:bg-slate-50 md:dark:hover:border-white/15 md:dark:hover:bg-white/[0.04] md:dark:hover:text-zinc-200"
           >
             <LogOut className="w-3.5 h-3.5" strokeWidth={1.5} /> Sign out
           </button>
@@ -193,20 +193,20 @@ export default function Layout() {
       </aside>
 
       {/* Top bar (mobile + desktop right-side actions) */}
-      <header className="fixed left-0 right-0 top-0 z-20 flex h-14 items-center justify-between border-b border-neutral-200 bg-white/80 px-4 backdrop-blur-xl dark:border-white/[0.06] dark:bg-[#0b0b0c]/80 md:left-60 md:px-8">
-        <div className="md:hidden min-w-0 pr-2">
-          <a
-            href="https://studio7.miami"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block max-w-[min(11rem,52vw)] shrink-0 rounded-[7px] focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/80 dark:focus-visible:ring-zinc-500/60"
-            aria-label="Studio 7 Miami (opens studio7.miami)"
-          >
-            <img src="/brand/logo.png" alt="Studio 7 Miami" className="brand-logo brand-logo-nav brand-logo-nav-header" />
-          </a>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="hidden md:block label-tech">
+      <header className="fixed left-0 right-0 top-0 z-20 flex h-14 min-w-0 items-center justify-between gap-3 border-b border-neutral-200 bg-white/80 px-4 backdrop-blur-xl dark:border-white/[0.06] dark:bg-[#0b0b0c]/80 md:left-60 md:px-8">
+        <div className="flex min-w-0 flex-1 items-center gap-4">
+          <div className="min-w-0 md:hidden">
+            <a
+              href="https://studio7.miami"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block max-w-[min(11rem,52vw)] shrink-0 rounded-[7px] focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/80 dark:focus-visible:ring-zinc-500/60"
+              aria-label="Studio 7 Miami (opens studio7.miami)"
+            >
+              <img src="/brand/logo.png" alt="Studio 7 Miami" className="brand-logo brand-logo-nav brand-logo-nav-header" />
+            </a>
+          </div>
+          <div className="hidden min-w-0 truncate md:block label-tech">
             {new Date().toLocaleDateString(undefined, {
               weekday: "long",
               month: "long",
@@ -214,12 +214,14 @@ export default function Layout() {
               year: "numeric",
             })}
           </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
           <button
             onClick={toggleTheme}
-            className="rounded-[7px] border border-neutral-300 p-2 transition-colors hover:bg-slate-50 dark:border-white/10 dark:hover:bg-white/[0.05]"
+            className="rounded-[7px] border border-neutral-300 p-1.5 transition-colors dark:border-white/10 md:hover:bg-slate-50 md:dark:hover:bg-white/[0.05]"
             data-testid="theme-toggle"
           >
-            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            {theme === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
           </button>
           <NotificationBell />
         </div>

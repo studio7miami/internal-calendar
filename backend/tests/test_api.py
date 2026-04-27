@@ -38,13 +38,24 @@ def member(admin_headers):
     r = requests.post(f"{API}/invites", json={"email": email}, headers=admin_headers)
     assert r.status_code == 200, r.text
     invite = r.json()
+    assert "email_sent" in invite
+    assert "email_error" in invite
     token = invite["invite_link"].rsplit("/", 1)[-1]
 
     # validate invite
     v = requests.get(f"{API}/auth/invite/{token}")
     assert v.status_code == 200 and v.json()["email"] == email
 
-    reg = requests.post(f"{API}/auth/register", json={"invite_token": token, "name": "Test Member", "password": "memberpass123"})
+    reg = requests.post(
+        f"{API}/auth/register",
+        json={
+            "invite_token": token,
+            "name": "Test Member",
+            "password": "memberpass123",
+            "phone_e164": "+13055559999",
+            "sauce": "photography",
+        },
+    )
     assert reg.status_code == 200, reg.text
     d = reg.json()
     return {"email": email, "token": d["token"], "user": d["user"], "headers": {"Authorization": f"Bearer {d['token']}"}}
@@ -74,6 +85,15 @@ class TestAuth:
 
     def test_me_no_token(self):
         assert requests.get(f"{API}/auth/me").status_code == 401
+
+    def test_members_bootstrap_admin(self, admin_headers):
+        r = requests.get(f"{API}/members/bootstrap", headers=admin_headers)
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert isinstance(data.get("users"), list)
+        assert isinstance(data.get("invites"), list)
+        assert isinstance(data.get("permissions"), dict)
+        assert isinstance(data.get("calendars"), list)
 
     def test_invite_invalid_token(self):
         assert requests.get(f"{API}/auth/invite/bogus123").status_code == 404
@@ -192,6 +212,10 @@ class TestBookings:
         # Admin approves
         ap = requests.post(f"{API}/bookings/{bid}/approve", json={"message": "ok"}, headers=admin_headers)
         assert ap.status_code == 200
+        m_notifs = requests.get(f"{API}/notifications", headers=member["headers"]).json()
+        assert any(
+            n.get("type") == "request_approved" and n.get("booking_id") == bid for n in m_notifs
+        ), "Member should receive in-app notification when a request is approved"
 
         # Verify approved + has google_event_id when viewed by admin
         bookings = requests.get(f"{API}/bookings", headers=admin_headers).json()
@@ -224,6 +248,10 @@ class TestBookings:
         bid2 = r2.json()["id"]
         dn = requests.post(f"{API}/bookings/{bid2}/deny", json={"message": "no"}, headers=admin_headers)
         assert dn.status_code == 200
+        m_notifs2 = requests.get(f"{API}/notifications", headers=member["headers"]).json()
+        assert any(
+            n.get("type") == "request_denied" and n.get("booking_id") == bid2 for n in m_notifs2
+        ), "Member should receive in-app notification when a request is denied"
 
         # Member cannot delete another user's booking
         assert requests.delete(f"{API}/bookings/{mbid}", headers=member["headers"]).status_code == 403

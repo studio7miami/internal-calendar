@@ -28,7 +28,7 @@ const EFF_MEMBER = {
   see_all_booking_details: false,
   create_manual_booking: false,
   approve_deny_requests: false,
-  view_members_directory: true,
+  view_members_directory: false,
   assign_member_calendars: false,
   delete_any_booking: false,
 };
@@ -71,6 +71,8 @@ export const PREVIEW_TEAM_USERS = [
     role: "admin",
     is_disabled: false,
     visible_calendar_ids: null,
+    phone_e164: "+13055550100",
+    sauce: "photography",
   },
   {
     id: PREVIEW_USER_IDS.manager,
@@ -79,6 +81,8 @@ export const PREVIEW_TEAM_USERS = [
     role: "manager",
     is_disabled: false,
     visible_calendar_ids: null,
+    phone_e164: "+13055550101",
+    sauce: "videography",
   },
   {
     id: PREVIEW_USER_IDS.member,
@@ -87,6 +91,8 @@ export const PREVIEW_TEAM_USERS = [
     role: "member",
     is_disabled: false,
     visible_calendar_ids: [PREVIEW_CALENDAR_IDS.miami],
+    phone_e164: "+13055550102",
+    sauce: "artist",
   },
 ];
 

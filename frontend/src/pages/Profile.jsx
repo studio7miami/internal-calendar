@@ -44,7 +44,7 @@ export default function Profile() {
       setChannelChoice(user.mfa_pending_channel === "phone" ? "phone" : "email");
       if (user.phone_e164) setPhoneForSetup(user.phone_e164);
     }
-  }, [user?.id, user?.mfa_setup_pending, user?.mfa_pending_channel, user?.phone_e164]);
+  }, [user]);
 
   if (!user) return null;
 
@@ -175,9 +175,6 @@ export default function Profile() {
       <div>
         <div className="label-tech">Profile</div>
         <h1 className={pageTitleClass}>{user.name}</h1>
-        <p className={pageSubtextClass}>
-          Account details and sign-in security. If you have account issues, contact an admin.
-        </p>
       </div>
 
       <div className={cn("space-y-4 p-6", pageCardClass)}>
@@ -187,7 +184,9 @@ export default function Profile() {
         </div>
         <div>
           <div className="label-tech">Role</div>
-          <div className="capitalize text-slate-900 dark:text-zinc-200">{user.role}</div>
+          <div className="text-slate-900 dark:text-zinc-200">
+            <span className="capitalize">{user.role}</span>
+          </div>
         </div>
         <div>
           <div className="label-tech">Member since</div>
