@@ -2417,10 +2417,19 @@ async def root():
 
 app.include_router(api)
 
+raw_cors = os.environ.get("CORS_ORIGINS", "*")
+cors_origins = [o.strip() for o in raw_cors.split(",") if o.strip()]
+if not cors_origins:
+    cors_origins = ["*"]
+
+allow_all = "*" in cors_origins
+# Browsers reject `Access-Control-Allow-Credentials: true` when origin is `*`.
+cors_allow_credentials = False if allow_all else True
+
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
+    allow_credentials=cors_allow_credentials,
+    allow_origins=["*"] if allow_all else cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
