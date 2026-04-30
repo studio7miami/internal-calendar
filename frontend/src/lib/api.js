@@ -1,20 +1,6 @@
 import axios from "axios";
 
-function normalizeApiBase() {
-  const raw = String(process.env.REACT_APP_BACKEND_URL || "").trim();
-  // If not set, default to same-origin. This prevents production from ever trying localhost.
-  if (!raw) return "/api";
-
-  // Remove trailing slashes for consistent joining.
-  const origin = raw.replace(/\/+$/, "");
-
-  // Allow passing full base including /api.
-  if (origin.endsWith("/api")) return origin;
-
-  return `${origin}/api`;
-}
-
-const API_BASE = normalizeApiBase();
+const API_BASE = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 export const api = axios.create({
   baseURL: API_BASE,
