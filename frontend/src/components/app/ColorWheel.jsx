@@ -34,11 +34,16 @@ function hexToHsl(hex) {
   return { h: Math.round(h), s: Math.round(s * 100), l: Math.round(l * 100) };
 }
 
-const normalizeHex = (v) => {
+/**
+ * @param {{ shorthand?: boolean }} opts shorthand: expand #RGB → #RRGGBB (blur/Enter only). Off while typing
+ *   so partial 6-digit values like `#212…` are not misread as 3-digit shorthand.
+ */
+const normalizeHex = (v, opts = {}) => {
+  const allowShort = opts.shorthand === true;
   if (!v) return null;
   const t = v.trim().replace(/^#/, "");
   if (/^[0-9a-f]{6}$/i.test(t)) return `#${t.toUpperCase()}`;
-  if (/^[0-9a-f]{3}$/i.test(t))
+  if (allowShort && /^[0-9a-f]{3}$/i.test(t))
     return `#${t.split("").map((c) => c + c).join("").toUpperCase()}`;
   return null;
 };
@@ -48,17 +53,27 @@ export default function ColorWheel({ value, onChange, testId }) {
   const [hexDraft, setHexDraft] = useState(value?.toUpperCase() || "");
   const wheelRef = useRef(null);
   const draggingRef = useRef(false);
+  /** When true, do not reset hexDraft from `value` (wheel/slider would overwrite in-progress typing). */
+  const hexInputFocusedRef = useRef(false);
 
   useEffect(() => {
+    if (hexInputFocusedRef.current) return;
     setHsl(hexToHsl(value));
     setHexDraft((value || "").toUpperCase());
   }, [value]);
 
-  const commit = (next) => {
+  const commitHsl = (next) => {
     setHsl(next);
     const hex = hslToHex(next.h, next.s, next.l);
     setHexDraft(hex);
     onChange?.(hex);
+  };
+
+  /** Keep the exact #RRGGBB the user entered (avoid HSL round-trip changing the string). */
+  const commitExactHex = (hexNormalized) => {
+    setHsl(hexToHsl(hexNormalized));
+    setHexDraft(hexNormalized);
+    onChange?.(hexNormalized);
   };
 
   // Pointer → hue/sat. Align 0° = TOP (12 o'clock), clockwise, matching conic-gradient from 0deg.
@@ -78,7 +93,7 @@ export default function ColorWheel({ value, onChange, testId }) {
     if (angle < 0) angle += 360;
     const h = Math.round(angle);
     const s = Math.round((dist / r) * 100);
-    commit({ ...hsl, h, s });
+    commitHsl({ ...hsl, h, s });
   };
 
   const onPointerDown = (e) => {
@@ -105,12 +120,9 @@ export default function ColorWheel({ value, onChange, testId }) {
   const grayAtL = `hsl(0, 0%, ${hsl.l}%)`;
 
   const applyHexDraft = () => {
-    const normalized = normalizeHex(hexDraft);
-    if (normalized) {
-      commit(hexToHsl(normalized));
-    } else {
-      setHexDraft(currentHex);
-    }
+    const normalized = normalizeHex(hexDraft, { shorthand: true });
+    if (normalized) commitExactHex(normalized);
+    else setHexDraft(currentHex);
   };
 
   return (
@@ -122,19 +134,20 @@ export default function ColorWheel({ value, onChange, testId }) {
           className="flex items-center gap-3 group"
         >
           <span
-            className="block w-10 h-10 rounded-full border-2 border-neutral-800 transition-transform group-hover:scale-105"
+            className="block h-10 w-10 rounded-full border-2 border-gray-200/90 transition-transform group-hover:scale-105 dark:border-neutral-800"
             style={{ background: value }}
           />
           <span className="text-left">
             <span className="label-tech block">Color</span>
-            <span className="font-mono text-xs text-neutral-400 uppercase">{value}</span>
+            <span className="text-xs uppercase tabular-nums text-slate-500 dark:text-zinc-400">{value}</span>
           </span>
         </button>
       </PopoverTrigger>
       <PopoverContent
         side="bottom"
         align="start"
-        className="bg-[#0F0F11] border-neutral-800 text-white p-4 w-[260px]"
+        className="w-[260px] border border-gray-200/95 bg-white p-4 text-slate-900 shadow-md dark:border-white/20 dark:bg-zinc-900 dark:text-white"
+        style={{ borderRadius: 7 }}
       >
         {/* Wheel */}
         <div
@@ -185,7 +198,7 @@ export default function ColorWheel({ value, onChange, testId }) {
             min="5"
             max="95"
             value={hsl.l}
-            onChange={(e) => commit({ ...hsl, l: Number(e.target.value) })}
+            onChange={(e) => commitHsl({ ...hsl, l: Number(e.target.value) })}
             className="w-full h-3 appearance-none rounded-full cursor-pointer"
             style={{
               background: `linear-gradient(to right, hsl(${hsl.h},${hsl.s}%,5%), hsl(${hsl.h},${hsl.s}%,50%), hsl(${hsl.h},${hsl.s}%,95%))`,
@@ -197,19 +210,26 @@ export default function ColorWheel({ value, onChange, testId }) {
         <div className="mt-4 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <span
-              className="block w-6 h-6 rounded-sm border border-neutral-700"
+              className="block h-6 w-6 rounded-[4px] border border-gray-200/90 dark:border-neutral-700"
               style={{ background: currentHex }}
             />
           </div>
           <input
             type="text"
             value={hexDraft}
-            onChange={(e) => {
-              setHexDraft(e.target.value);
-              const normalized = normalizeHex(e.target.value);
-              if (normalized) commit(hexToHsl(normalized));
+            onFocus={() => {
+              hexInputFocusedRef.current = true;
             }}
-            onBlur={applyHexDraft}
+            onChange={(e) => {
+              const raw = e.target.value;
+              setHexDraft(raw);
+              const normalized = normalizeHex(raw, { shorthand: false });
+              if (normalized) commitExactHex(normalized);
+            }}
+            onBlur={() => {
+              hexInputFocusedRef.current = false;
+              applyHexDraft();
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -218,7 +238,7 @@ export default function ColorWheel({ value, onChange, testId }) {
             }}
             placeholder="#RRGGBB"
             spellCheck={false}
-            className="flex-1 bg-[#121214] border border-neutral-800 h-8 px-2 font-mono text-xs uppercase focus:outline-none focus:ring-1 focus:ring-white rounded-sm"
+            className="h-8 min-h-8 flex-1 rounded-[7px] border border-gray-200/95 bg-white px-2 text-xs uppercase tabular-nums text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400/30 dark:border-white/20 dark:bg-zinc-900/50 dark:text-white dark:focus:ring-white/20"
           />
         </div>
       </PopoverContent>

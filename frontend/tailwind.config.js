@@ -7,6 +7,11 @@ module.exports = {
   ],
   theme: {
   	extend: {
+  		fontFamily: {
+  			sans: ['Manrope', 'system-ui', 'sans-serif'],
+  			/* Keep `font-mono` class for tabular alignment; same family as UI */
+  			mono: ['Manrope', 'ui-monospace', 'system-ui', 'sans-serif'],
+  		},
   		borderRadius: {
   			lg: 'var(--radius)',
   			md: 'calc(var(--radius) - 2px)',

@@ -4,8 +4,14 @@ import uuid
 import pytest
 import requests
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://team-bookings-hub.preview.emergentagent.com").rstrip("/")
-API = f"{BASE_URL}/api"
+# Origin only, e.g. http://127.0.0.1:8000 — same as frontend REACT_APP_BACKEND_URL (frontend adds /api in api.js).
+# If the env var already ends with /api, do not double it (otherwise every request is /api/api/... → 404).
+_default_backend = "https://team-bookings-hub.preview.emergentagent.com"
+_raw_base = os.environ.get("REACT_APP_BACKEND_URL", _default_backend).rstrip("/")
+if _raw_base.endswith("/api"):
+    API = _raw_base
+else:
+    API = f"{_raw_base}/api"
 
 ADMIN_EMAIL = "seven@studio7.miami"
 ADMIN_PASSWORD = "Studio7Miami"
@@ -32,13 +38,24 @@ def member(admin_headers):
     r = requests.post(f"{API}/invites", json={"email": email}, headers=admin_headers)
     assert r.status_code == 200, r.text
     invite = r.json()
+    assert "email_sent" in invite
+    assert "email_error" in invite
     token = invite["invite_link"].rsplit("/", 1)[-1]
 
     # validate invite
     v = requests.get(f"{API}/auth/invite/{token}")
     assert v.status_code == 200 and v.json()["email"] == email
 
-    reg = requests.post(f"{API}/auth/register", json={"invite_token": token, "name": "Test Member", "password": "memberpass123"})
+    reg = requests.post(
+        f"{API}/auth/register",
+        json={
+            "invite_token": token,
+            "name": "Test Member",
+            "password": "memberpass123",
+            "phone_e164": "+13055559999",
+            "sauce": "photography",
+        },
+    )
     assert reg.status_code == 200, reg.text
     d = reg.json()
     return {"email": email, "token": d["token"], "user": d["user"], "headers": {"Authorization": f"Bearer {d['token']}"}}
@@ -53,11 +70,30 @@ class TestAuth:
     def test_me(self, admin_headers):
         r = requests.get(f"{API}/auth/me", headers=admin_headers)
         assert r.status_code == 200
-        assert r.json()["email"] == ADMIN_EMAIL
-        assert "password_hash" not in r.json()
+        data = r.json()
+        assert data["email"] == ADMIN_EMAIL
+        assert "password_hash" not in data
+        assert "permissions" in data
+        perms = data["permissions"]
+        assert perms.get("view_schedule") is True
+        assert perms.get("approve_deny_requests") is True
+        assert perms.get("see_all_booking_details") is True
+        assert perms.get("assign_member_calendars") is True
+        assert "mfa_enabled" in data
+        assert data.get("mfa_enabled") in (True, False)
+        assert "mfa_setup_pending" in data
 
     def test_me_no_token(self):
         assert requests.get(f"{API}/auth/me").status_code == 401
+
+    def test_members_bootstrap_admin(self, admin_headers):
+        r = requests.get(f"{API}/members/bootstrap", headers=admin_headers)
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert isinstance(data.get("users"), list)
+        assert isinstance(data.get("invites"), list)
+        assert isinstance(data.get("permissions"), dict)
+        assert isinstance(data.get("calendars"), list)
 
     def test_invite_invalid_token(self):
         assert requests.get(f"{API}/auth/invite/bogus123").status_code == 404
@@ -65,29 +101,68 @@ class TestAuth:
 
 # ----- Calendars -----
 class TestCalendars:
-    def test_list_has_seeds(self, admin_headers):
+    def test_list_calendars(self, admin_headers):
         r = requests.get(f"{API}/calendars", headers=admin_headers)
         assert r.status_code == 200
-        names = [c["name"] for c in r.json()]
-        assert "Photobooth" in names and "Studio 7 Miami" in names
+        cals = r.json()
+        assert isinstance(cals, list)
+        for c in cals:
+            assert c.get("is_fixed") is False
 
     def test_member_cannot_create(self, member):
         r = requests.post(f"{API}/calendars", json={"name": "X", "color": "#fff"}, headers=member["headers"])
         assert r.status_code == 403
 
-    def test_admin_crud(self, admin_headers):
-        r = requests.post(f"{API}/calendars", json={"name": f"TEST_{uuid.uuid4().hex[:6]}", "color": "#FF0000"}, headers=admin_headers)
-        assert r.status_code == 200
-        cid = r.json()["id"]
-        # patch
-        p = requests.patch(f"{API}/calendars/{cid}", json={"name": "TEST_upd", "color": "#00FF00", "is_active": False}, headers=admin_headers)
-        assert p.status_code == 200 and p.json()["color"] == "#00FF00"
-        # verify
-        g = requests.get(f"{API}/calendars", headers=admin_headers).json()
-        assert any(c["id"] == cid and c["name"] == "TEST_upd" for c in g)
-        # delete
-        d = requests.delete(f"{API}/calendars/{cid}", headers=admin_headers)
+    def test_admin_can_create_and_delete(self, admin_headers):
+        name = f"TEST_{uuid.uuid4().hex[:8]}"
+        r = requests.post(
+            f"{API}/calendars",
+            json={"name": name, "color": "#FF0000", "is_active": True},
+            headers=admin_headers,
+        )
+        assert r.status_code == 200, r.text
+        cal = r.json()
+        assert cal["name"] == name and cal.get("is_fixed") is False
+        d = requests.delete(f"{API}/calendars/{cal['id']}", headers=admin_headers)
         assert d.status_code == 200
+
+    def test_admin_can_patch_color(self, admin_headers):
+        name = f"PATCH_{uuid.uuid4().hex[:8]}"
+        cr = requests.post(
+            f"{API}/calendars",
+            json={"name": name, "color": "#111111", "is_active": True},
+            headers=admin_headers,
+        )
+        assert cr.status_code == 200, cr.text
+        cid = cr.json()["id"]
+        p = requests.patch(
+            f"{API}/calendars/{cid}",
+            json={
+                "name": name,
+                "color": "#33CCFF",
+                "google_calendar_id": "",
+                "is_active": True,
+            },
+            headers=admin_headers,
+        )
+        assert p.status_code == 200
+        assert p.json()["color"] == "#33CCFF" and p.json().get("is_fixed") is False
+        requests.delete(f"{API}/calendars/{cid}", headers=admin_headers)
+
+
+def _calendar_id_or_create(admin_headers):
+    """Return (calendar_id, created) so integration tests work when the project DB has no rows yet."""
+    cals = requests.get(f"{API}/calendars", headers=admin_headers).json()
+    if cals:
+        return cals[0]["id"], False
+    name = f"E2E_{uuid.uuid4().hex[:8]}"
+    r = requests.post(
+        f"{API}/calendars",
+        json={"name": name, "color": "#22C55E", "is_active": True},
+        headers=admin_headers,
+    )
+    assert r.status_code == 200, r.text
+    return r.json()["id"], True
 
 
 # ----- Invites & RBAC -----
@@ -97,21 +172,30 @@ class TestInvitesRBAC:
         assert r.status_code == 403
 
     def test_member_cannot_manual_book(self, member, admin_headers):
-        cals = requests.get(f"{API}/calendars", headers=admin_headers).json()
-        r = requests.post(f"{API}/bookings/manual", json={
-            "calendar_id": cals[0]["id"], "date": "2026-03-01", "start_time": "10:00", "end_time": "11:00"
-        }, headers=member["headers"])
-        assert r.status_code == 403
+        cal_id, created = _calendar_id_or_create(admin_headers)
+        try:
+            r = requests.post(f"{API}/bookings/manual", json={
+                "calendar_id": cal_id, "date": "2026-03-01", "start_time": "10:00", "end_time": "11:00"
+            }, headers=member["headers"])
+            assert r.status_code == 403
+        finally:
+            if created:
+                requests.delete(f"{API}/calendars/{cal_id}", headers=admin_headers)
 
     def test_member_registered(self, member):
-        assert member["user"]["role"] == "member"
+        u = member["user"]
+        assert u["role"] == "member"
+        assert "permissions" in u
+        p = u["permissions"]
+        assert p.get("view_schedule") is True
+        assert p.get("see_all_booking_details") in (None, False)
+        assert p.get("create_request") is True
 
 
 # ----- Bookings flow -----
 class TestBookings:
     def test_full_flow(self, admin_headers, member):
-        cals = requests.get(f"{API}/calendars", headers=admin_headers).json()
-        cal_id = cals[0]["id"]
+        cal_id, created_cal = _calendar_id_or_create(admin_headers)
 
         # Member requests
         r = requests.post(f"{API}/bookings/request", json={
@@ -128,6 +212,10 @@ class TestBookings:
         # Admin approves
         ap = requests.post(f"{API}/bookings/{bid}/approve", json={"message": "ok"}, headers=admin_headers)
         assert ap.status_code == 200
+        m_notifs = requests.get(f"{API}/notifications", headers=member["headers"]).json()
+        assert any(
+            n.get("type") == "request_approved" and n.get("booking_id") == bid for n in m_notifs
+        ), "Member should receive in-app notification when a request is approved"
 
         # Verify approved + has google_event_id when viewed by admin
         bookings = requests.get(f"{API}/bookings", headers=admin_headers).json()
@@ -160,11 +248,29 @@ class TestBookings:
         bid2 = r2.json()["id"]
         dn = requests.post(f"{API}/bookings/{bid2}/deny", json={"message": "no"}, headers=admin_headers)
         assert dn.status_code == 200
+        m_notifs2 = requests.get(f"{API}/notifications", headers=member["headers"]).json()
+        assert any(
+            n.get("type") == "request_denied" and n.get("booking_id") == bid2 for n in m_notifs2
+        ), "Member should receive in-app notification when a request is denied"
+
+        # Member cannot delete another user's booking
+        assert requests.delete(f"{API}/bookings/{mbid}", headers=member["headers"]).status_code == 403
+
+        # Member reschedules own approved booking, then cancels it
+        patch = requests.patch(
+            f"{API}/bookings/{bid}",
+            json={"start_time": "15:00", "end_time": "16:00"},
+            headers=member["headers"],
+        )
+        assert patch.status_code == 200, patch.text
+        assert patch.json().get("start_time") == "15:00"
+        assert requests.delete(f"{API}/bookings/{bid}", headers=member["headers"]).status_code == 200
 
         # Cleanup
-        requests.delete(f"{API}/bookings/{bid}", headers=admin_headers)
         requests.delete(f"{API}/bookings/{mbid}", headers=admin_headers)
         requests.delete(f"{API}/bookings/{bid2}", headers=admin_headers)
+        if created_cal:
+            requests.delete(f"{API}/calendars/{cal_id}", headers=admin_headers)
 
 
 # ----- Notifications -----

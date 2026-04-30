@@ -9,6 +9,31 @@ import { Calendar as CalendarPicker } from "../ui/calendar";
 import { Calendar as CalendarIcon } from "lucide-react";
 import { api, formatApiError } from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
+import { cn } from "@/lib/utils";
+
+const r7 = "rounded-[7px]";
+
+const calSurface =
+  "border border-gray-200/95 bg-[#FAFAFA] text-slate-900 dark:border-white/70 dark:bg-zinc-950 dark:text-white";
+
+const fieldClass =
+  `h-10 w-full px-3 text-sm text-slate-900 placeholder:text-slate-400 border border-gray-200/95 dark:border-white/20 bg-white dark:bg-zinc-900/50 dark:text-white dark:placeholder:text-neutral-500 ` +
+  `${r7} focus:outline-none focus:ring-1 focus:ring-slate-400/30 dark:focus:ring-white/20`;
+
+const chipToggle = (on) =>
+  cn(
+    "flex-1 min-h-8 box-border border px-3 py-1.5 text-xs leading-none transition-colors",
+    r7,
+    on
+      ? "border border-gray-200/95 bg-[#FCFCFC] text-black dark:border-white/70 dark:bg-white/10 dark:text-white"
+      : "border border-gray-200/50 text-neutral-400 dark:border-white/20 dark:text-neutral-500"
+  );
+
+function normTime(t) {
+  if (!t) return "10:00";
+  const s = String(t);
+  return s.length >= 5 ? s.slice(0, 5) : s;
+}
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = React.useState(
@@ -30,51 +55,98 @@ export default function BookingForm({
   defaultDate,
   defaultStart,
   defaultEnd,
-  isAdmin,
+  canManualBook,
   members = [],
+  editingBooking = null,
+  allBookings = [],
 }) {
   const { user } = useAuth();
   const isMobile = useIsMobile();
+  const isAdmin = user?.role === "admin";
+  const editMode = Boolean(editingBooking?.id);
   const [calendarId, setCalendarId] = useState(calendars?.[0]?.id || "");
   const [date, setDate] = useState(defaultDate || "");
   const [start, setStart] = useState(defaultStart || "10:00");
   const [end, setEnd] = useState(defaultEnd || "11:00");
   const [notes, setNotes] = useState("");
   const [memberId, setMemberId] = useState("");
-  const [mode, setMode] = useState(isAdmin ? "manual" : "request"); // admin picks
+  // Admins only create manual bookings (no request submission).
+  const [mode, setMode] = useState(isAdmin || canManualBook ? "manual" : "request");
   const [err, setErr] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const p = user?.permissions || {};
+  const canCancelBooking =
+    editMode &&
+    (editingBooking.is_own ||
+      p.delete_any_booking ||
+      (p.create_manual_booking && !editingBooking.is_own));
 
   React.useEffect(() => {
-    if (open) {
-      setCalendarId(calendars?.[0]?.id || "");
-      setDate(defaultDate || "");
-      setStart(defaultStart || "10:00");
-      setEnd(defaultEnd || "11:00");
-      setNotes("");
+    if (!open) return;
+    if (editMode) {
+      setCalendarId(editingBooking.calendar_id || calendars?.[0]?.id || "");
+      setDate(editingBooking.date || "");
+      setStart(normTime(editingBooking.start_time));
+      setEnd(normTime(editingBooking.end_time));
+      setNotes(editingBooking.notes ?? "");
       setMemberId("");
       setErr("");
-      setMode(isAdmin ? "manual" : "request");
+      return;
     }
-  }, [open, defaultDate, defaultStart, defaultEnd, calendars, isAdmin]);
+    setCalendarId(calendars?.[0]?.id || "");
+    setDate(defaultDate || "");
+    setStart(defaultStart || "10:00");
+    setEnd(defaultEnd || "11:00");
+    setNotes("");
+    setMemberId("");
+    setErr("");
+    setMode(isAdmin || canManualBook ? "manual" : "request");
+  }, [open, editMode, editingBooking, defaultDate, defaultStart, defaultEnd, calendars, canManualBook, isAdmin]);
+
+  const handleDeleteBooking = async () => {
+    if (!editingBooking?.id) return;
+    if (!window.confirm("Cancel this booking? It will be removed from the calendar.")) return;
+    setErr("");
+    setDeleting(true);
+    try {
+      await api.delete(`/bookings/${editingBooking.id}`);
+      onSuccess?.();
+      onClose();
+    } catch (e) {
+      setErr(formatApiError(e?.response?.data?.detail) || "Could not cancel");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const submit = async (e) => {
     e.preventDefault();
     setErr("");
     setSubmitting(true);
     try {
-      const payload = {
-        calendar_id: calendarId,
-        date,
-        start_time: start,
-        end_time: end,
-        notes,
-      };
-      if (isAdmin && mode === "manual") {
-        if (memberId) payload.member_id = memberId;
-        await api.post("/bookings/manual", payload);
+      if (editMode) {
+        await api.patch(`/bookings/${editingBooking.id}`, {
+          date,
+          start_time: start,
+          end_time: end,
+          notes,
+        });
       } else {
-        await api.post("/bookings/request", payload);
+        const payload = {
+          calendar_id: calendarId,
+          date,
+          start_time: start,
+          end_time: end,
+          notes,
+        };
+        if ((isAdmin || canManualBook) && mode === "manual") {
+          if (memberId) payload.member_id = memberId;
+          await api.post("/bookings/manual", payload);
+        } else {
+          await api.post("/bookings/request", payload);
+        }
       }
       onSuccess?.();
       onClose();
@@ -85,17 +157,23 @@ export default function BookingForm({
     }
   };
 
+  const formTitle = editMode ? "Your booking" : "New booking";
+  const statusLine =
+    editMode && editingBooking.status === "pending" ? (
+      <p className="text-sm text-slate-600 dark:text-zinc-400">Pending approval — you can still change the time or cancel.</p>
+    ) : null;
+
   const Form = (
     <form onSubmit={submit} className="space-y-4" data-testid="booking-form">
-      {isAdmin && (
+      {statusLine}
+
+      {canManualBook && !editMode && !isAdmin && (
         <div className="flex gap-2">
           <button
             type="button"
             data-testid="booking-mode-manual"
             onClick={() => setMode("manual")}
-            className={`flex-1 px-3 py-2 text-xs uppercase tracking-wider border rounded-sm ${
-              mode === "manual" ? "bg-white text-black border-white" : "border-neutral-800 text-neutral-400"
-            }`}
+            className={chipToggle(mode === "manual")}
           >
             Manual booking
           </button>
@@ -103,9 +181,7 @@ export default function BookingForm({
             type="button"
             data-testid="booking-mode-request"
             onClick={() => setMode("request")}
-            className={`flex-1 px-3 py-2 text-xs uppercase tracking-wider border rounded-sm ${
-              mode === "request" ? "bg-white text-black border-white" : "border-neutral-800 text-neutral-400"
-            }`}
+            className={chipToggle(mode === "request")}
           >
             Submit request
           </button>
@@ -118,29 +194,30 @@ export default function BookingForm({
           value={calendarId}
           onChange={(e) => setCalendarId(e.target.value)}
           required
+          disabled={editMode}
           data-testid="booking-calendar-select"
-          className="w-full bg-[#121214] border border-neutral-800 rounded-sm h-10 px-3 text-sm focus:outline-none focus:ring-1 focus:ring-white"
+          className={cn(fieldClass, editMode && "cursor-not-allowed opacity-70")}
         >
           {calendars.map((c) => (
-            <option key={c.id} value={c.id} style={{ background: "#121214" }}>
+            <option key={c.id} value={c.id} className="text-slate-900 dark:bg-zinc-900">
               {c.name}
             </option>
           ))}
         </select>
       </div>
 
-      {isAdmin && mode === "manual" && (
+      {canManualBook && mode === "manual" && !editMode && (
         <div>
           <label className="label-tech block mb-1">Assign member (optional)</label>
           <select
             value={memberId}
             onChange={(e) => setMemberId(e.target.value)}
             data-testid="booking-member-select"
-            className="w-full bg-[#121214] border border-neutral-800 rounded-sm h-10 px-3 text-sm focus:outline-none focus:ring-1 focus:ring-white"
+            className={fieldClass}
           >
             <option value="">{user?.name || "Admin"} (self)</option>
             {members.filter((m) => m.role === "member").map((m) => (
-              <option key={m.id} value={m.id} style={{ background: "#121214" }}>
+              <option key={m.id} value={m.id} className="text-slate-900 dark:bg-zinc-900">
                 {m.name} · {m.email}
               </option>
             ))}
@@ -155,9 +232,15 @@ export default function BookingForm({
             <button
               type="button"
               data-testid="booking-date-button"
-              className="w-full flex items-center justify-between bg-[#121214] border border-neutral-800 rounded-sm h-10 px-3 text-sm hover:bg-neutral-900 focus:outline-none focus:ring-1 focus:ring-white"
+              className={cn(
+                "flex w-full h-10 items-center justify-between px-3 text-sm",
+                "border border-gray-200/95 dark:border-white/20 bg-white dark:bg-zinc-900/50",
+                "text-slate-900 dark:text-white transition-colors hover:bg-slate-50/80 dark:hover:bg-zinc-800/50",
+                "focus:outline-none focus:ring-1 focus:ring-slate-400/30 dark:focus:ring-white/20",
+                r7
+              )}
             >
-              <span className={date ? "text-white" : "text-neutral-500"}>
+              <span className={date ? "text-slate-900 dark:text-white" : "text-slate-400 dark:text-neutral-500"}>
                 {date
                   ? new Date(date + "T00:00:00").toLocaleDateString(undefined, {
                       weekday: "short",
@@ -167,10 +250,14 @@ export default function BookingForm({
                     })
                   : "Select a date"}
               </span>
-              <CalendarIcon className="w-4 h-4 text-neutral-400" strokeWidth={1.5} />
+              <CalendarIcon className="h-4 w-4 text-slate-500 dark:text-neutral-400" strokeWidth={1.5} />
             </button>
           </PopoverTrigger>
-          <PopoverContent className="w-auto p-0 bg-[#0F0F11] border-neutral-800" align="start">
+          <PopoverContent
+            className="w-auto rounded-[7px] border border-gray-200/95 bg-white p-0 text-slate-900 shadow-md dark:border-white/20 dark:bg-zinc-900 dark:text-white"
+            sideOffset={4}
+            align="start"
+          >
             <CalendarPicker
               mode="single"
               selected={date ? new Date(date + "T00:00:00") : undefined}
@@ -182,7 +269,7 @@ export default function BookingForm({
                 setDate(`${y}-${m}-${dd}`);
               }}
               initialFocus
-              className="text-white"
+              className="text-slate-900 dark:text-white"
             />
           </PopoverContent>
         </Popover>
@@ -197,7 +284,7 @@ export default function BookingForm({
             onChange={(e) => setStart(e.target.value)}
             required
             data-testid="booking-start-input"
-            className="bg-[#121214] border-neutral-800 h-10 focus-visible:ring-white"
+            className={cn("shadow-sm", fieldClass, "md:text-sm")}
           />
         </div>
         <div>
@@ -208,7 +295,7 @@ export default function BookingForm({
             onChange={(e) => setEnd(e.target.value)}
             required
             data-testid="booking-end-input"
-            className="bg-[#121214] border-neutral-800 h-10 focus-visible:ring-white"
+            className={cn("shadow-sm", fieldClass, "md:text-sm")}
           />
         </div>
       </div>
@@ -220,29 +307,74 @@ export default function BookingForm({
           onChange={(e) => setNotes(e.target.value)}
           rows={3}
           data-testid="booking-notes-input"
-          className="bg-[#121214] border-neutral-800 focus-visible:ring-white"
+          className={cn(
+            "min-h-[4.5rem] w-full border border-gray-200/95 dark:border-white/20 bg-white px-3 py-2 text-sm",
+            "text-slate-900 dark:bg-zinc-900/50 dark:text-white",
+            "placeholder:text-slate-400 dark:placeholder:text-neutral-500",
+            r7,
+            "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-400/30 dark:focus-visible:ring-white/20"
+          )}
         />
       </div>
 
-      {err && <div className="text-sm text-red-400 border border-red-900 bg-red-950/30 px-3 py-2">{err}</div>}
+      {err && (
+        <div
+          className={cn("border border-red-200 dark:border-red-900/50 bg-red-50 px-3 py-2 text-sm text-red-700", r7, "dark:bg-red-950/30 dark:text-red-300")}
+        >
+          {err}
+        </div>
+      )}
+
+      {canCancelBooking && (
+        <div className="border-t border-slate-200/80 pt-3 dark:border-white/10">
+          <button
+            type="button"
+            onClick={handleDeleteBooking}
+            disabled={deleting || submitting}
+            data-testid="booking-delete-button"
+            className={cn(
+              "text-sm font-medium text-red-700 underline-offset-2 hover:underline disabled:opacity-50 dark:text-red-400"
+            )}
+          >
+            {deleting ? "Canceling…" : "Cancel booking"}
+          </button>
+        </div>
+      )}
 
       <div className="flex gap-2 pt-2">
         <Button
           type="button"
           variant="ghost"
           onClick={onClose}
-          data-testid="booking-cancel-button"
-          className="flex-1 border border-neutral-800 hover:bg-neutral-900 rounded-sm h-11"
+          data-testid="booking-close-button"
+          className={cn(
+            "h-10 flex-1 min-h-8 box-border border border-gray-200/50 bg-transparent text-neutral-400",
+            "hover:bg-slate-50/80 hover:text-neutral-500 dark:border-white/20 dark:text-neutral-500 dark:hover:bg-zinc-800/50 dark:hover:text-neutral-400",
+            r7
+          )}
         >
-          Cancel
+          Close
         </Button>
         <Button
           type="submit"
-          disabled={submitting}
+          variant="ghost"
+          disabled={submitting || deleting}
           data-testid="booking-submit-button"
-          className="flex-1 bg-white text-black hover:bg-neutral-200 rounded-sm h-11"
+          className={cn(
+            "h-10 flex-1 min-h-8 box-border",
+            "border border-gray-200/95 bg-white/90 text-slate-900",
+            "hover:bg-slate-100 dark:border-white/20 dark:bg-zinc-900/30 dark:text-white dark:hover:bg-zinc-800",
+            "disabled:pointer-events-none disabled:opacity-60",
+            r7
+          )}
         >
-          {submitting ? "Saving…" : isAdmin && mode === "manual" ? "Create booking" : "Send request"}
+          {submitting
+            ? "Saving…"
+            : editMode
+            ? "Save changes"
+            : (isAdmin || canManualBook) && mode === "manual"
+            ? "Create booking"
+            : "Send request"}
         </Button>
       </div>
     </form>
@@ -251,9 +383,11 @@ export default function BookingForm({
   if (isMobile) {
     return (
       <Drawer open={open} onOpenChange={(v) => !v && onClose()}>
-        <DrawerContent className="bg-[#09090B] text-white border-neutral-900">
+        <DrawerContent className={cn("p-0", calSurface)}>
           <DrawerHeader>
-            <DrawerTitle className="font-display text-2xl">New booking</DrawerTitle>
+            <DrawerTitle className="text-left font-['Manrope',system-ui,sans-serif] text-2xl font-semibold text-slate-900 dark:text-white">
+              {formTitle}
+            </DrawerTitle>
           </DrawerHeader>
           <div className="px-4 pb-6">{Form}</div>
         </DrawerContent>
@@ -263,11 +397,15 @@ export default function BookingForm({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="bg-[#0F0F11] border-neutral-800 text-white max-w-md">
-        <DialogHeader>
-          <DialogTitle className="font-display text-2xl">New booking</DialogTitle>
-        </DialogHeader>
-        {Form}
+      <DialogContent className={cn("max-w-md gap-0 p-0 shadow-lg", calSurface)}>
+        <div className="p-6">
+          <DialogHeader>
+            <DialogTitle className="font-['Manrope',system-ui,sans-serif] text-2xl font-semibold text-slate-900 dark:text-white">
+              {formTitle}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="pt-2">{Form}</div>
+        </div>
       </DialogContent>
     </Dialog>
   );
