@@ -6,7 +6,6 @@ import { Button } from "../components/ui/button";
 import { Navigate } from "react-router-dom";
 import { pageTitleClass, pageSubtextClass, pageInputClass, pageBtnPrimaryClass } from "../lib/pageTheme";
 import { cn } from "@/lib/utils";
-import { Eye, EyeOff } from "lucide-react";
 
 const SLIDES = ["/brand/slide-2.jpg", "/brand/slide-3.jpg", "/brand/slide-4.jpg"];
 
@@ -14,17 +13,12 @@ export default function Login() {
   const { user, loginWithToken, loading } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [mfaToken, setMfaToken] = useState(null);
   const [mfaCode, setMfaCode] = useState("");
   const [mfaHint, setMfaHint] = useState(null);
   const [slide, setSlide] = useState(0);
-
-  useEffect(() => {
-    if ((password || "").length < 3 && showPassword) setShowPassword(false);
-  }, [password, showPassword]);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -230,29 +224,14 @@ export default function Login() {
             </div>
             <div>
               <label className="label-tech mb-1 block">Password</label>
-              <div className="relative">
-                <Input
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  autoComplete="current-password"
-                  data-testid="login-password-input"
-                  className={cn(fieldClass, password.length >= 3 ? "pr-11" : "")}
-                />
-                {password.length >= 3 && (
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-[7px] p-2 text-slate-500 transition-colors hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/20 dark:text-zinc-400 dark:hover:text-zinc-100 dark:focus-visible:ring-white/20"
-                    aria-label={showPassword ? "Hide password" : "Show password"}
-                    aria-pressed={showPassword}
-                    data-testid="login-password-toggle"
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                )}
-              </div>
+              <Input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                data-testid="login-password-input"
+                className={fieldClass}
+              />
             </div>
           </div>
 
