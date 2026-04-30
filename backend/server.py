@@ -1412,6 +1412,17 @@ async def google_oauth_callback(
     return RedirectResponse(f"{base}?google=connected")
 
 
+# Some hosting setups (custom domains / proxies) may rewrite paths (e.g. stripping "/api").
+# Provide a no-prefix alias so OAuth callbacks still resolve.
+@app.get("/integrations/google/callback")
+async def google_oauth_callback_alias(
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+):
+    return await google_oauth_callback(code=code, state=state, error=error)
+
+
 # ---------- Stripe Connect OAuth + Checkout (admin) ----------
 @api.post("/integrations/stripe/start")
 async def stripe_oauth_start(_admin: dict = Depends(require_admin)):
@@ -1474,6 +1485,21 @@ async def stripe_oauth_callback(
         return RedirectResponse(f"{base}?stripe=error&reason=token_exchange")
 
     return RedirectResponse(f"{base}?stripe=connected")
+
+
+@app.get("/integrations/stripe/callback")
+async def stripe_oauth_callback_alias(
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+    error_description: Optional[str] = None,
+):
+    return await stripe_oauth_callback(
+        code=code,
+        state=state,
+        error=error,
+        error_description=error_description,
+    )
 
 
 @api.get("/integrations/stripe/status")
