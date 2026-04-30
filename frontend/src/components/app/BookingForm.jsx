@@ -10,7 +10,6 @@ import { Calendar as CalendarIcon } from "lucide-react";
 import { api, formatApiError } from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
 import { cn } from "@/lib/utils";
-import { suggestedSlots, normHm } from "../../lib/availability";
 
 const r7 = "rounded-[7px]";
 
@@ -63,6 +62,7 @@ export default function BookingForm({
 }) {
   const { user } = useAuth();
   const isMobile = useIsMobile();
+  const isAdmin = user?.role === "admin";
   const editMode = Boolean(editingBooking?.id);
   const [calendarId, setCalendarId] = useState(calendars?.[0]?.id || "");
   const [date, setDate] = useState(defaultDate || "");
@@ -70,7 +70,8 @@ export default function BookingForm({
   const [end, setEnd] = useState(defaultEnd || "11:00");
   const [notes, setNotes] = useState("");
   const [memberId, setMemberId] = useState("");
-  const [mode, setMode] = useState(canManualBook ? "manual" : "request");
+  // Admins only create manual bookings (no request submission).
+  const [mode, setMode] = useState(isAdmin || canManualBook ? "manual" : "request");
   const [err, setErr] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -101,8 +102,8 @@ export default function BookingForm({
     setNotes("");
     setMemberId("");
     setErr("");
-    setMode(canManualBook ? "manual" : "request");
-  }, [open, editMode, editingBooking, defaultDate, defaultStart, defaultEnd, calendars, canManualBook]);
+    setMode(isAdmin || canManualBook ? "manual" : "request");
+  }, [open, editMode, editingBooking, defaultDate, defaultStart, defaultEnd, calendars, canManualBook, isAdmin]);
 
   const handleDeleteBooking = async () => {
     if (!editingBooking?.id) return;
@@ -140,7 +141,7 @@ export default function BookingForm({
           end_time: end,
           notes,
         };
-        if (canManualBook && mode === "manual") {
+        if ((isAdmin || canManualBook) && mode === "manual") {
           if (memberId) payload.member_id = memberId;
           await api.post("/bookings/manual", payload);
         } else {
@@ -156,17 +157,6 @@ export default function BookingForm({
     }
   };
 
-  const selectedCal = calendars?.find((x) => x.id === calendarId);
-  const dayBookingsForCal = React.useMemo(() => {
-    if (!date || !calendarId) return [];
-    return (allBookings || []).filter((b) => b.calendar_id === calendarId && b.date === date && b.status !== "denied");
-  }, [allBookings, date, calendarId]);
-
-  const quickSlots = React.useMemo(() => {
-    if (editMode || !selectedCal || !date) return [];
-    return suggestedSlots(date, selectedCal, dayBookingsForCal, 30, 16);
-  }, [editMode, selectedCal, date, dayBookingsForCal]);
-
   const formTitle = editMode ? "Your booking" : "New booking";
   const statusLine =
     editMode && editingBooking.status === "pending" ? (
@@ -177,7 +167,7 @@ export default function BookingForm({
     <form onSubmit={submit} className="space-y-4" data-testid="booking-form">
       {statusLine}
 
-      {canManualBook && !editMode && (
+      {canManualBook && !editMode && !isAdmin && (
         <div className="flex gap-2">
           <button
             type="button"
@@ -285,32 +275,6 @@ export default function BookingForm({
         </Popover>
       </div>
 
-      {!editMode && quickSlots.length > 0 && (
-        <div>
-          <label className="label-tech block mb-1.5">Open slots (this calendar and day)</label>
-          <div className="flex flex-wrap gap-1.5">
-            {quickSlots.map((slot) => (
-              <button
-                key={`${slot.start}-${slot.end}`}
-                type="button"
-                onClick={() => {
-                  setStart(slot.start);
-                  setEnd(slot.end);
-                }}
-                className={cn(
-                  "rounded-[7px] border px-2 py-1 text-[11px] transition-colors",
-                  normHm(start) === slot.start && normHm(end) === slot.end
-                    ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-zinc-900"
-                    : "border-gray-200/95 bg-white text-slate-700 hover:bg-slate-50 dark:border-white/15 dark:bg-zinc-900/50 dark:text-zinc-200 dark:hover:bg-zinc-800/60"
-                )}
-              >
-                {slot.start}–{slot.end}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="label-tech block mb-1">Start</label>
@@ -408,7 +372,7 @@ export default function BookingForm({
             ? "Saving…"
             : editMode
             ? "Save changes"
-            : canManualBook && mode === "manual"
+            : (isAdmin || canManualBook) && mode === "manual"
             ? "Create booking"
             : "Send request"}
         </Button>

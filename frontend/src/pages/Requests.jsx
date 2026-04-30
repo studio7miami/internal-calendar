@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api, formatApiError } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
+import { useLocation } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import {
   Dialog,
@@ -17,6 +18,7 @@ import {
   pageCardClass,
   pageTextareaClass,
   pageBtnPrimaryClass,
+  pageInputClass,
   glassBarHoverClass,
 } from "../lib/pageTheme";
 import { cn } from "@/lib/utils";
@@ -131,9 +133,23 @@ function StatusBadge({ status, compact }) {
   );
 }
 
-function RequestCard({ b, calendars, canModerate, msg, setMsg, act, calName, setProfileMember, compact = false }) {
+function RequestCard({
+  b,
+  calendars,
+  canModerate,
+  msg,
+  setMsg,
+  amount = {},
+  setAmount = () => {},
+  act,
+  calName,
+  setProfileMember,
+  compact = false,
+}) {
   const cal = calendars.find((c) => c.id === b.calendar_id);
   const color = cal?.color || "#64748b";
+  const needsPay = Boolean(b?.payment_required && b?.payment_status !== "paid" && b?.stripe_checkout_url && b?.status === "approved");
+  const paid = Boolean(b?.payment_status === "paid");
 
   return (
     <div
@@ -209,6 +225,30 @@ function RequestCard({ b, calendars, canModerate, msg, setMsg, act, calName, set
               Message: {b.approval_message}
             </div>
           )}
+          {(needsPay || paid) && (
+            <div className={cn("mt-1 flex flex-wrap items-center gap-2", compact ? "text-xs" : "text-sm")}>
+              {paid ? (
+                <span className="label-tech rounded-[7px] border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
+                  Paid
+                </span>
+              ) : (
+                <span className="label-tech rounded-[7px] border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                  Payment needed
+                </span>
+              )}
+              {needsPay && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => window.open(b.stripe_checkout_url, "_blank", "noopener,noreferrer")}
+                  className={cn(pageBtnPrimaryClass, compact && "h-8 text-xs")}
+                  data-testid={`pay-${b.id}`}
+                >
+                  Pay now
+                </Button>
+              )}
+            </div>
+          )}
         </div>
 
         {canModerate && b.status === "pending" && (
@@ -218,6 +258,23 @@ function RequestCard({ b, calendars, canModerate, msg, setMsg, act, calName, set
               compact ? "gap-1.5 sm:min-w-[11rem]" : "gap-2 sm:min-w-[240px]"
             )}
           >
+            <div className={cn("flex items-center gap-2", compact ? "flex-wrap" : "")}>
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="0.01"
+                placeholder="Amount (USD)"
+                value={amount[b.id] || ""}
+                onChange={(e) => setAmount((m) => ({ ...m, [b.id]: e.target.value }))}
+                className={cn(
+                  pageInputClass,
+                  "w-[9.5rem] shrink-0 tabular-nums text-right",
+                  compact && "h-9 text-xs"
+                )}
+                data-testid={`request-amount-${b.id}`}
+              />
+            </div>
             <Textarea
               placeholder="Optional message to member…"
               value={msg[b.id] || ""}
@@ -244,7 +301,8 @@ function RequestCard({ b, calendars, canModerate, msg, setMsg, act, calName, set
                 variant="ghost"
                 className={cn("flex-1", pageBtnPrimaryClass, compact && "h-8 text-xs")}
               >
-                <Check className={cn("mr-1 shrink-0", compact ? "h-3.5 w-3.5" : "h-4 w-4")} strokeWidth={1.5} /> Approve
+                <Check className={cn("mr-1 shrink-0", compact ? "h-3.5 w-3.5" : "h-4 w-4")} strokeWidth={1.5} />{" "}
+                {(amount[b.id] || "").trim() ? "Approve & send checkout" : "Approve"}
               </Button>
             </div>
           </div>
@@ -256,14 +314,19 @@ function RequestCard({ b, calendars, canModerate, msg, setMsg, act, calName, set
 
 export default function Requests() {
   const { user } = useAuth();
+  const location = useLocation();
   const isMobile = useIsMobile();
   const [items, setItems] = useState([]);
   const [calendars, setCalendars] = useState([]);
   const [msg, setMsg] = useState({});
+  const [amount, setAmount] = useState({});
   const [profileMember, setProfileMember] = useState(null);
   const [allRequestsOpen, setAllRequestsOpen] = useState(false);
   const [allReqGranularity, setAllReqGranularity] = useState("week");
   const [allReqCursor, setAllReqCursor] = useState(() => new Date());
+  const [statusTab, setStatusTab] = useState("all"); // all | approved | denied
+
+  const canModerate = !!user?.permissions?.approve_deny_requests;
 
   const refresh = async () => {
     const [r, c] = await Promise.all([
@@ -279,32 +342,70 @@ export default function Requests() {
   }, []);
 
   useEffect(() => {
+    if (!location?.search) return;
+    const sp = new URLSearchParams(location.search);
+    const openId = sp.get("open");
+    if (!openId) return;
+    if (!canModerate) return;
+    if (!items || items.length === 0) return;
+    const b = items.find((x) => String(x.id) === String(openId));
+    if (!b?.date) return;
+    setAllReqCursor(new Date(`${b.date}T12:00:00`));
+    setAllReqGranularity("week");
+    setAllRequestsOpen(true);
+  }, [location?.search, items, canModerate]);
+
+  useEffect(() => {
     if (items.length === 0) setAllRequestsOpen(false);
   }, [items.length]);
 
   const calName = (id) => calendars.find((c) => c.id === id)?.name || String(id ?? "");
 
+  const dollarsToCents = (s) => {
+    const v = Number(String(s || "").replace(/[^0-9.]/g, ""));
+    if (!Number.isFinite(v) || v <= 0) return 0;
+    return Math.round(v * 100);
+  };
+
   const act = async (id, verb) => {
     try {
       await api.post(`/bookings/${id}/${verb}`, { message: msg[id] || "" });
+      if (verb === "approve") {
+        const cents = dollarsToCents(amount[id]);
+        if (cents > 0) {
+          await api.post(`/bookings/${id}/payment/checkout`, { amount_cents: cents, currency: "usd" });
+        }
+      }
       setMsg((m) => ({ ...m, [id]: "" }));
+      setAmount((m) => ({ ...m, [id]: "" }));
       refresh();
     } catch (e) {
       alert(formatApiError(e?.response?.data?.detail) || "Action failed");
     }
   };
 
-  const canModerate = !!user?.permissions?.approve_deny_requests;
+  const filteredItems = useMemo(() => {
+    if (statusTab === "approved") return items.filter((x) => x.status === "approved");
+    if (statusTab === "denied") return items.filter((x) => x.status === "denied");
+    return items;
+  }, [items, statusTab]);
 
-  const byRecent = useMemo(
-    () => items.slice().sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || ""))),
-    [items]
-  );
+  const byRecent = useMemo(() => {
+    // Sort by requested booking date (newest → oldest), then start time.
+    return filteredItems
+      .slice()
+      .sort(
+        (a, b) =>
+          String(b.date || "").localeCompare(String(a.date || "")) ||
+          String(a.start_time || "").localeCompare(String(b.start_time || "")) ||
+          String(b.created_at || "").localeCompare(String(a.created_at || ""))
+      );
+  }, [filteredItems]);
 
   const previewRequests = useMemo(() => byRecent.slice(0, PREVIEW_LIMIT), [byRecent]);
 
   const requestsInRange = useMemo(() => {
-    const list = items.slice();
+    const list = filteredItems.slice();
     if (allReqGranularity === "week") {
       const w0 = startOfWeek(allReqCursor);
       const w6 = endOfWeekFrom(allReqCursor);
@@ -319,7 +420,7 @@ export default function Requests() {
     }
     const y = allReqCursor.getFullYear();
     return list.filter((x) => x.date >= `${y}-01-01` && x.date <= `${y}-12-31`);
-  }, [items, allReqGranularity, allReqCursor]);
+  }, [filteredItems, allReqGranularity, allReqCursor]);
 
   const requestsInRangeSorted = useMemo(
     () =>
@@ -361,6 +462,8 @@ export default function Requests() {
           canModerate={canModerate}
           msg={msg}
           setMsg={setMsg}
+          amount={amount}
+          setAmount={setAmount}
           act={act}
           calName={calName}
           setProfileMember={setProfileMember}
@@ -458,6 +561,8 @@ export default function Requests() {
                   canModerate={canModerate}
                   msg={msg}
                   setMsg={setMsg}
+                  amount={amount}
+                  setAmount={setAmount}
                   act={act}
                   calName={calName}
                   setProfileMember={setProfileMember}
@@ -508,6 +613,37 @@ export default function Requests() {
           <div className="label-tech">Queue</div>
           <h1 className={pageTitleClass}>{canModerate ? "Booking requests" : "My requests"}</h1>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div
+            className="min-h-8 box-border inline-flex select-none items-center gap-2.5 rounded-[7px] border border-gray-200/95 bg-[#FCFCFC] px-2.5 py-1.5 text-xs leading-none dark:border-white/10 dark:bg-white/[0.04] sm:gap-3 sm:px-3"
+            role="tablist"
+            aria-label="Request status filter"
+          >
+            {[
+              { id: "all", label: "All" },
+              { id: "approved", label: "Approved" },
+              { id: "denied", label: "Denied" },
+            ].map(({ id, label }) => {
+              const on = statusTab === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={on}
+                  onClick={() => setStatusTab(id)}
+                  className={cn(
+                    "-m-0.5 inline-flex items-center rounded-sm border-0 bg-transparent p-0.5 px-1.5 text-xs font-normal leading-none transition-colors focus-visible:outline focus-visible:ring-2 focus-visible:ring-slate-500/30 sm:px-2",
+                    on
+                      ? "text-black dark:text-zinc-200"
+                      : "text-neutral-400 dark:text-zinc-500 md:hover:text-neutral-500 md:dark:hover:text-zinc-400"
+                  )}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
         {items.length > 0 && (
           <button
             type="button"
@@ -523,6 +659,7 @@ export default function Requests() {
             View all
           </button>
         )}
+        </div>
       </div>
 
       {items.length === 0 && (

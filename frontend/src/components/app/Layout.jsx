@@ -26,6 +26,8 @@ import {
 import ChatBot from "./ChatBot";
 
 function NotificationBell() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [notifs, setNotifs] = useState([]);
   const [open, setOpen] = useState(false);
   const unread = notifs.filter((n) => !n.is_read).length;
@@ -46,6 +48,32 @@ function NotificationBell() {
   const markAll = async () => {
     await api.post("/notifications/read-all");
     refresh();
+  };
+
+  const canOpenRequests = !!user?.permissions?.approve_deny_requests;
+
+  const fmtSubmittedStamp = (iso) => {
+    try {
+      const d = new Date(iso);
+      const date = d.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "2-digit" });
+      const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+      const t = String(time).replace(/\s/g, "").toLowerCase();
+      return `${date} ${t}`;
+    } catch {
+      return "";
+    }
+  };
+
+  const onNotificationClick = async (n) => {
+    try {
+      if (!n?.is_read) await api.post(`/notifications/${n.id}/read`);
+    } catch {}
+    refresh();
+
+    if (canOpenRequests && n?.type === "request_submitted" && n?.booking_id) {
+      setOpen(false);
+      navigate(`/requests?open=${encodeURIComponent(String(n.booking_id))}`);
+    }
   };
 
   return (
@@ -69,6 +97,7 @@ function NotificationBell() {
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
+        sideOffset={18}
         className="w-80 bg-white dark:bg-[#121214] border-neutral-300 dark:border-neutral-800 text-black dark:text-white"
         data-testid="notification-dropdown"
       >
@@ -92,19 +121,21 @@ function NotificationBell() {
         )}
         <div className="max-h-96 overflow-y-auto scrollbar-thin">
           {notifs.map((n) => (
-            <div
+            <button
               key={n.id}
               className={`px-3 py-2 border-b border-neutral-200 dark:border-neutral-900 last:border-0 ${
                 !n.is_read ? "bg-neutral-100/50 dark:bg-neutral-900/50" : ""
-              }`}
+              } w-full text-left`}
               data-testid={`notification-item-${n.id}`}
+              type="button"
+              onClick={() => onNotificationClick(n)}
             >
               <div className="text-sm font-medium">{n.title}</div>
-              <div className="text-xs text-neutral-600 dark:text-neutral-400 mt-0.5">{n.message}</div>
-              <div className="label-tech text-[9px] mt-1">
-                {new Date(n.created_at).toLocaleString()}
+              <div className="text-xs text-neutral-600 dark:text-neutral-400 mt-0.5 whitespace-pre-line">{n.message}</div>
+              <div className="mt-1 text-left text-[10px] leading-none tracking-[0.2em] uppercase text-neutral-400 dark:text-zinc-500">
+                {fmtSubmittedStamp(n.created_at)}
               </div>
-            </div>
+            </button>
           ))}
         </div>
       </DropdownMenuContent>
@@ -119,7 +150,6 @@ const navItems = (user) => {
     { to: "/requests", label: "Requests", icon: Inbox, testid: "nav-requests" },
   ];
   if (role === "admin") {
-    items.push({ to: "/calendars", label: "Calendars", icon: Layers, testid: "nav-calendars" });
     items.push({ to: "/members", label: "Members", icon: Users, testid: "nav-members" });
   } else if (role === "manager") {
     items.push({ to: "/members", label: "Members", icon: Users, testid: "nav-members" });

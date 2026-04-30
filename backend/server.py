@@ -21,11 +21,15 @@ import bcrypt
 import jwt
 import google_calendar_client
 import google_inbound_sync
+try:
+    import stripe  # type: ignore
+except Exception:  # pragma: no cover
+    stripe = None
 from fastapi import Body, FastAPI, APIRouter, HTTPException, Depends, Request
 from fastapi.responses import FileResponse
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import RedirectResponse
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlencode
 from supabase import create_client, Client
 from pydantic import BaseModel, EmailStr, field_validator, model_validator
 
@@ -42,8 +46,67 @@ JWT_ALG = "HS256"
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 BRAND_LOGO_PATH = ROOT_DIR.parent / "frontend" / "public" / "brand" / "logo.png"
 
+# Stripe configuration (optional; used when enabling payment processing)
+STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
+STRIPE_CONNECT_CLIENT_ID = os.environ.get("STRIPE_CONNECT_CLIENT_ID")
+STRIPE_CONNECT_REDIRECT_URI = os.environ.get("STRIPE_CONNECT_REDIRECT_URI")
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
+if STRIPE_SECRET_KEY and stripe is not None:
+    stripe.api_key = STRIPE_SECRET_KEY
+
 app = FastAPI(title="Studio 7 Miami Calendar API")
 api = APIRouter(prefix="/api")
+
+
+def _frontend_profile_url() -> str:
+    return FRONTEND_URL.rstrip("/") + "/profile"
+
+
+def _read_app_config_row() -> dict:
+    try:
+        res = supabase.table("app_config").select("*").eq("id", "default").limit(1).execute()
+        if res.data and len(res.data) > 0 and isinstance(res.data[0], dict):
+            return dict(res.data[0])
+    except Exception:
+        pass
+    return {}
+
+
+def _upsert_app_config_updates(updates: dict) -> None:
+    ex = supabase.table("app_config").select("id").eq("id", "default").limit(1).execute()
+    if ex.data:
+        supabase.table("app_config").update(updates).eq("id", "default").execute()
+    else:
+        supabase.table("app_config").insert({"id": "default", **updates}).execute()
+
+
+def stripe_connect_configured() -> bool:
+    return bool(STRIPE_SECRET_KEY and STRIPE_CONNECT_CLIENT_ID and STRIPE_CONNECT_REDIRECT_URI and stripe is not None)
+
+
+def read_stripe_connect_status() -> dict:
+    row = _read_app_config_row()
+    raw = row.get("stripe_connect")
+    if isinstance(raw, dict):
+        connected = bool(raw.get("connected"))
+        account_id = raw.get("account_id") if isinstance(raw.get("account_id"), str) else None
+        connected_at = raw.get("connected_at") if isinstance(raw.get("connected_at"), str) else None
+        return {
+            "configured": stripe_connect_configured(),
+            "connected": connected and bool(account_id),
+            "account_id": account_id,
+            "connected_at": connected_at,
+        }
+    return {"configured": stripe_connect_configured(), "connected": False, "account_id": None, "connected_at": None}
+
+
+def write_stripe_connect_status(connected: bool, account_id: Optional[str] = None) -> None:
+    payload = {
+        "connected": bool(connected and account_id),
+        "account_id": account_id if connected else None,
+        "connected_at": now_iso() if connected and account_id else None,
+    }
+    _upsert_app_config_updates({"stripe_connect": payload})
 
 def _calendar_enriched(row: dict) -> dict:
     if not row:
@@ -96,6 +159,57 @@ def parse_mfa_login_token(token: str) -> str:
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _ordinal_suffix(n: int) -> str:
+    if 11 <= (n % 100) <= 13:
+        return "th"
+    return {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+
+
+def _format_request_pretty_date(date_str: str) -> str:
+    """
+    Format YYYY-MM-DD -> 'Tuesday, April 28th'
+    """
+    d = datetime.strptime(date_str, "%Y-%m-%d").date()
+    return f"{d.strftime('%A')}, {d.strftime('%B')} {d.day}{_ordinal_suffix(d.day)}"
+
+
+def _parse_hhmm_time(t: str) -> tuple[int, int]:
+    s = str(t or "").strip()
+    if not s:
+        raise ValueError("empty time")
+    for fmt in ("%H:%M", "%H:%M:%S"):
+        try:
+            x = datetime.strptime(s, fmt)
+            return x.hour, x.minute
+        except Exception:
+            pass
+    raise ValueError(f"unsupported time format: {s}")
+
+
+def _format_time_12h(h: int, m: int) -> tuple[str, str]:
+    ampm = "am" if h < 12 else "pm"
+    hh = h % 12
+    if hh == 0:
+        hh = 12
+    return f"{hh}:{m:02d}", ampm
+
+
+def _format_request_time_range(start_time: str, end_time: str) -> str:
+    sh, sm = _parse_hhmm_time(start_time)
+    eh, em = _parse_hhmm_time(end_time)
+    s_hm, s_ampm = _format_time_12h(sh, sm)
+    e_hm, e_ampm = _format_time_12h(eh, em)
+    if s_ampm == e_ampm:
+        return f"{s_hm}-{e_hm}{e_ampm}"
+    return f"{s_hm}{s_ampm}-{e_hm}{e_ampm}"
+
+
+def _format_request_time_point(t: str) -> str:
+    h, m = _parse_hhmm_time(t)
+    hm, ampm = _format_time_12h(h, m)
+    return f"{hm}{ampm}"
 
 
 PRIMARY_ADMIN_EMAIL = (
@@ -409,6 +523,11 @@ class BookingUpdateIn(BaseModel):
 
 class ApproveDenyIn(BaseModel):
     message: Optional[str] = ""
+
+
+class StripeCheckoutCreateIn(BaseModel):
+    amount_cents: int
+    currency: Optional[str] = "usd"
 
 
 class DisableIn(BaseModel):
@@ -1246,7 +1365,7 @@ async def google_oauth_callback(
     state: Optional[str] = None,
     error: Optional[str] = None,
 ):
-    base = FRONTEND_URL.rstrip("/") + "/calendars"
+    base = _frontend_profile_url()
     if error:
         return RedirectResponse(f"{base}?google=error&reason={quote_plus(error)}")
     if not code or not state:
@@ -1291,6 +1410,122 @@ async def google_oauth_callback(
         logger.exception("Saving Google OAuth to google_tokens failed (run supabase/006_google_tokens.sql)")
         return RedirectResponse(f"{base}?google=error&reason=config_db")
     return RedirectResponse(f"{base}?google=connected")
+
+
+# ---------- Stripe Connect OAuth + Checkout (admin) ----------
+@api.post("/integrations/stripe/start")
+async def stripe_oauth_start(_admin: dict = Depends(require_admin)):
+    if not stripe_connect_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Stripe is not configured. Add STRIPE_SECRET_KEY, STRIPE_CONNECT_CLIENT_ID, and STRIPE_CONNECT_REDIRECT_URI to the server environment.",
+        )
+    state = jwt.encode(
+        {
+            "purpose": "stripe_oauth",
+            "sub": _admin["id"],
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=15),
+        },
+        JWT_SECRET,
+        algorithm=JWT_ALG,
+    )
+    qs = {
+        "response_type": "code",
+        "client_id": STRIPE_CONNECT_CLIENT_ID,
+        "scope": "read_write",
+        "redirect_uri": STRIPE_CONNECT_REDIRECT_URI,
+        "state": state,
+    }
+    return {"authorization_url": f"https://connect.stripe.com/oauth/authorize?{urlencode(qs)}"}
+
+
+@api.get("/integrations/stripe/callback")
+async def stripe_oauth_callback(
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+    error_description: Optional[str] = None,
+):
+    base = _frontend_profile_url()
+    if error:
+        reason = error_description or error
+        return RedirectResponse(f"{base}?stripe=error&reason={quote_plus(reason)}")
+    if not code or not state:
+        return RedirectResponse(f"{base}?stripe=error&reason=missing_code")
+    try:
+        payload = jwt.decode(state, JWT_SECRET, algorithms=[JWT_ALG])
+        if payload.get("purpose") != "stripe_oauth":
+            return RedirectResponse(f"{base}?stripe=error&reason=bad_state")
+    except jwt.PyJWTError:
+        return RedirectResponse(f"{base}?stripe=error&reason=invalid_or_expired_state")
+
+    if not stripe_connect_configured():
+        return RedirectResponse(f"{base}?stripe=error&reason=server_not_configured")
+
+    try:
+        # Uses Stripe secret key as bearer
+        resp = stripe.OAuth.token(grant_type="authorization_code", code=code)
+        account_id = resp.get("stripe_user_id")
+        if not account_id:
+            return RedirectResponse(f"{base}?stripe=error&reason=no_account_id")
+        write_stripe_connect_status(True, str(account_id))
+    except Exception:
+        logger.exception("Stripe OAuth token exchange failed")
+        return RedirectResponse(f"{base}?stripe=error&reason=token_exchange")
+
+    return RedirectResponse(f"{base}?stripe=connected")
+
+
+@api.get("/integrations/stripe/status")
+async def stripe_status(_admin: dict = Depends(require_admin)):
+    return read_stripe_connect_status()
+
+
+@api.post("/integrations/stripe/disconnect")
+async def stripe_disconnect(_admin: dict = Depends(require_admin)):
+    write_stripe_connect_status(False, None)
+    return {"ok": True}
+
+
+@api.post("/integrations/stripe/webhook")
+async def stripe_webhook(req: Request):
+    if not STRIPE_WEBHOOK_SECRET or not STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=503, detail="Stripe webhook is not configured.")
+    payload = await req.body()
+    sig = req.headers.get("stripe-signature")
+    if not sig:
+        raise HTTPException(status_code=400, detail="Missing Stripe signature header.")
+    try:
+        event = stripe.Webhook.construct_event(payload=payload, sig_header=sig, secret=STRIPE_WEBHOOK_SECRET)
+    except Exception:
+        logger.exception("Stripe webhook signature verification failed")
+        raise HTTPException(status_code=400, detail="Invalid signature.")
+
+    etype = str(event.get("type") or "")
+    obj = (event.get("data") or {}).get("object") or {}
+
+    if etype == "checkout.session.completed":
+        session_id = str(obj.get("id") or "")
+        payment_intent = obj.get("payment_intent")
+        ref_booking_id = str(obj.get("client_reference_id") or "").strip()
+        # Update by session id first; fall back to client_reference_id.
+        updates = {
+            "payment_status": "paid",
+            "paid_at": now_iso(),
+        }
+        if payment_intent:
+            updates["stripe_payment_intent_id"] = str(payment_intent)
+        try:
+            if session_id:
+                res = supabase.table("bookings").update(updates).eq("stripe_checkout_session_id", session_id).execute()
+                if res.data:
+                    return {"ok": True}
+            if ref_booking_id:
+                supabase.table("bookings").update(updates).eq("id", ref_booking_id).execute()
+        except Exception:
+            logger.exception("Stripe webhook booking update failed")
+            raise HTTPException(status_code=500, detail="Update failed.")
+    return {"ok": True}
 
 
 @api.get("/integrations/google/status")
@@ -1586,6 +1821,12 @@ def _serialize_booking(b: dict, viewer: dict, users_by_id: dict, viewer_perms: O
             "google_event_id": b.get("google_event_id"),
             "created_at": b.get("created_at"),
             "approval_message": b.get("approval_message", ""),
+            "payment_required": bool(b.get("payment_required")),
+            "payment_status": b.get("payment_status") or "unpaid",
+            "payment_amount_cents": b.get("payment_amount_cents"),
+            "payment_currency": b.get("payment_currency") or "usd",
+            "stripe_checkout_url": b.get("stripe_checkout_url"),
+            "paid_at": b.get("paid_at"),
         })
     return base
 
@@ -1702,8 +1943,11 @@ async def create_request(data: BookingRequestIn, user: dict = Depends(get_curren
             "user_id": a_id,
             "booking_id": booking["id"],
             "type": "request_submitted",
-            "title": "New booking request",
-            "message": f"{user['name']} requested {cal['name']} on {data.date} {data.start_time}-{data.end_time}",
+            "title": "New request",
+            "message": (
+                f"{user['name']} · {cal['name']}\n"
+                f"{_format_request_pretty_date(data.date)} · {_format_request_time_range(data.start_time, data.end_time)}"
+            ),
             "is_read": False,
             "created_at": now_iso(),
         }).execute()
@@ -1712,8 +1956,11 @@ async def create_request(data: BookingRequestIn, user: dict = Depends(get_curren
         "user_id": user["id"],
         "booking_id": booking["id"],
         "type": "request_confirmed",
-        "title": "Request submitted",
-        "message": f"Your {cal['name']} request for {data.date} is awaiting approval.",
+        "title": "Request received",
+        "message": (
+            f"Your request for {_format_request_pretty_date(data.date)} at "
+            f"{_format_request_time_point(data.start_time)} is in. We'll get back to you soon."
+        ),
         "is_read": False,
         "created_at": now_iso(),
     }).execute()
@@ -1867,7 +2114,10 @@ async def approve_booking(booking_id: str, data: ApproveDenyIn, admin: dict = De
         "booking_id": booking_id,
         "type": "request_approved",
         "title": "Booking approved",
-        "message": data.message or f"Your booking on {b['date']} has been approved.",
+        "message": (
+            (data.message.strip() if isinstance(data.message, str) and data.message.strip() else "")
+            or f"All confirmed. See you in the space {_format_request_pretty_date(str(b['date']))} at {_format_request_time_point(str(b['start_time']))}. 🌴"
+        ),
         "is_read": False,
         "created_at": now_iso(),
     }).execute()
@@ -1894,6 +2144,100 @@ async def approve_booking(booking_id: str, data: ApproveDenyIn, admin: dict = De
     return {"ok": True}
 
 
+@api.post("/bookings/{booking_id}/payment/checkout")
+async def create_booking_checkout(
+    booking_id: str,
+    data: StripeCheckoutCreateIn,
+    mod: dict = Depends(get_current_user),
+):
+    p = user_permissions_for(mod)
+    if not permissions.has(p, "approve_deny_requests"):
+        raise HTTPException(status_code=403, detail="Not allowed")
+    if not stripe_connect_configured():
+        raise HTTPException(status_code=503, detail="Stripe is not configured on the server.")
+    st = read_stripe_connect_status()
+    if not st.get("connected"):
+        raise HTTPException(status_code=400, detail="Stripe is not connected. Connect Stripe in Profile → Accounts.")
+
+    amount_cents = int(data.amount_cents or 0)
+    currency = str((data.currency or "usd")).lower().strip() or "usd"
+    if amount_cents <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be greater than 0.")
+    # Stripe minimums vary; enforce a safe floor.
+    if amount_cents < 50:
+        raise HTTPException(status_code=400, detail="Amount is too small.")
+
+    res = supabase.table("bookings").select("*").eq("id", booking_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    b = res.data[0]
+    _assert_calendar_in_scope(mod, p, b.get("calendar_id", ""))
+    if str(b.get("status")) != "approved":
+        raise HTTPException(status_code=400, detail="Booking must be approved before creating checkout.")
+    if not b.get("member_id"):
+        raise HTTPException(status_code=400, detail="Booking is missing a member.")
+
+    cal_res = supabase.table("calendars").select("name").eq("id", b.get("calendar_id")).execute()
+    cal_name = str((cal_res.data or [{}])[0].get("name") or "Calendar")
+
+    mem = supabase.table("users").select("email,name").eq("id", b["member_id"]).single().execute()
+    mem_email = (mem.data or {}).get("email")
+    mem_name = (mem.data or {}).get("name") or "Member"
+
+    base_frontend = str(FRONTEND_URL or "").rstrip("/") or "http://localhost:3000"
+    success_url = f"{base_frontend}/requests?stripe=success&session_id={{CHECKOUT_SESSION_ID}}"
+    cancel_url = f"{base_frontend}/requests?stripe=cancel&booking={quote_plus(str(booking_id))}"
+
+    desc = f"{cal_name} · {b.get('date')} {b.get('start_time')}-{b.get('end_time')}"
+    try:
+        session = stripe.checkout.Session.create(
+            mode="payment",
+            client_reference_id=str(booking_id),
+            customer_email=str(mem_email) if mem_email else None,
+            success_url=success_url,
+            cancel_url=cancel_url,
+            line_items=[
+                {
+                    "quantity": 1,
+                    "price_data": {
+                        "currency": currency,
+                        "unit_amount": amount_cents,
+                        "product_data": {
+                            "name": "Booking fee",
+                            "description": desc,
+                        },
+                    },
+                }
+            ],
+            metadata={
+                "booking_id": str(booking_id),
+                "calendar": cal_name,
+                "member": str(mem_name),
+            },
+        )
+    except Exception:
+        logger.exception("Stripe Checkout Session create failed")
+        raise HTTPException(status_code=500, detail="Could not create Stripe checkout session.")
+
+    url = session.get("url")
+    sid = session.get("id")
+    if not url or not sid:
+        raise HTTPException(status_code=500, detail="Stripe did not return a checkout URL.")
+
+    supabase.table("bookings").update(
+        {
+            "payment_required": True,
+            "payment_amount_cents": amount_cents,
+            "payment_currency": currency,
+            "payment_status": "checkout_created",
+            "stripe_checkout_session_id": str(sid),
+            "stripe_checkout_url": str(url),
+        }
+    ).eq("id", booking_id).execute()
+
+    return {"url": str(url)}
+
+
 @api.post("/bookings/{booking_id}/deny")
 async def deny_booking(booking_id: str, data: ApproveDenyIn, mod: dict = Depends(get_current_user)):
     p = user_permissions_for(mod)
@@ -1918,7 +2262,10 @@ async def deny_booking(booking_id: str, data: ApproveDenyIn, mod: dict = Depends
         "booking_id": booking_id,
         "type": "request_denied",
         "title": "Booking denied",
-        "message": data.message or f"Your booking on {b['date']} was denied.",
+        "message": (
+            (data.message.strip() if isinstance(data.message, str) and data.message.strip() else "")
+            or "This one couldn't be locked in this time. Feel free to find another time that fits"
+        ),
         "is_read": False,
         "created_at": now_iso(),
     }).execute()

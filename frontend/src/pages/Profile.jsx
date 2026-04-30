@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { api, formatApiError } from "../lib/api";
 import { Button } from "../components/ui/button";
@@ -13,9 +14,25 @@ import {
   pageBtnOutlineClass,
 } from "../lib/pageTheme";
 import { cn } from "@/lib/utils";
+import CalendarsAdmin from "./Calendars";
 
 export default function Profile() {
   const { user, refreshUser, logout } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const stripeParam = searchParams.get("stripe");
+  const stripeReason = searchParams.get("reason");
+  const stripeBanner =
+    stripeParam === "connected"
+      ? { kind: "ok", text: "Stripe is connected." }
+      : stripeParam === "error"
+        ? { kind: "err", text: `Stripe connection failed${stripeReason ? `: ${stripeReason}` : "."}` }
+        : null;
+  const clearStripeParams = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("stripe");
+    next.delete("reason");
+    setSearchParams(next, { replace: true });
+  };
 
   const [curPw, setCurPw] = useState("");
   const [newPw, setNewPw] = useState("");
@@ -38,12 +55,24 @@ export default function Profile() {
   const mfaOn = !!user?.mfa_enabled;
   const mfaPending = !!user?.mfa_setup_pending;
 
+  const [stripeStatus, setStripeStatus] = useState(null); // null=loading
+  const [stripeErr, setStripeErr] = useState("");
+  const [stripeBusy, setStripeBusy] = useState(false);
+
   useEffect(() => {
     if (!user) return;
     if (user.mfa_setup_pending && user.mfa_pending_channel) {
       setChannelChoice(user.mfa_pending_channel === "phone" ? "phone" : "email");
       if (user.phone_e164) setPhoneForSetup(user.phone_e164);
     }
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || user.role !== "admin") return;
+    api
+      .get("/integrations/stripe/status")
+      .then((r) => setStripeStatus(r.data))
+      .catch(() => setStripeStatus({ configured: false, connected: false, account_id: null }));
   }, [user]);
 
   if (!user) return null;
@@ -171,11 +200,34 @@ export default function Profile() {
   };
 
   return (
-    <div className="max-w-xl space-y-8" data-testid="profile-page">
+    <div className="space-y-8" data-testid="profile-page">
       <div>
         <div className="label-tech">Profile</div>
         <h1 className={pageTitleClass}>{user.name}</h1>
       </div>
+
+      {stripeBanner && (
+        <div
+          className={cn(
+            "rounded-[7px] border px-4 py-3 text-sm",
+            stripeBanner.kind === "ok"
+              ? "border-emerald-200/90 bg-emerald-50 text-emerald-950 dark:border-emerald-800/40 dark:bg-emerald-950/25 dark:text-emerald-100"
+              : "border-red-200/90 bg-red-50 text-red-950 dark:border-red-900/40 dark:bg-red-950/25 dark:text-red-100"
+          )}
+          role="status"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <span>{stripeBanner.text}</span>
+            <button
+              type="button"
+              className="text-xs underline underline-offset-2"
+              onClick={clearStripeParams}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className={cn("space-y-4 p-6", pageCardClass)}>
         <div>
@@ -480,11 +532,90 @@ export default function Profile() {
         )}
       </div>
 
+      {user?.role === "admin" && (
+        <div className="pt-4">
+          <div className="label-tech">ACCOUNTS</div>
+          <div className="mt-4 space-y-4">
+            <CalendarsAdmin embedded />
+            <div>
+              <div className="label-tech">PAYMENT PROCESSING</div>
+              <div className={cn(pageCardClass, "mt-4 p-4 sm:p-6")}>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    {stripeStatus == null ? (
+                      <div className="text-sm text-slate-600 dark:text-zinc-400">Loading…</div>
+                    ) : stripeStatus.configured ? (
+                      stripeStatus.connected ? (
+                        <div className="text-sm text-slate-700 dark:text-zinc-300">
+                          Connected{stripeStatus.account_id ? ` · ${stripeStatus.account_id}` : ""}
+                        </div>
+                      ) : (
+                        <div className="text-sm text-slate-600 dark:text-zinc-400">Not connected</div>
+                      )
+                    ) : (
+                      <div className="text-sm text-slate-600 dark:text-zinc-400">Stripe is not configured on the server.</div>
+                    )}
+                    {stripeErr && <div className="mt-1 text-xs text-red-600 dark:text-red-400">{stripeErr}</div>}
+                  </div>
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    {stripeStatus?.configured && !stripeStatus?.connected && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        disabled={stripeBusy}
+                        className={cn("h-9", pageBtnPrimaryClass)}
+                        onClick={async () => {
+                          setStripeErr("");
+                          setStripeBusy(true);
+                          try {
+                            const { data } = await api.post("/integrations/stripe/start");
+                            window.location.href = data.authorization_url;
+                          } catch (e) {
+                            setStripeErr(formatApiError(e?.response?.data?.detail) || "Could not start Stripe connection.");
+                            setStripeBusy(false);
+                          }
+                        }}
+                      >
+                        {stripeBusy ? "Connecting…" : "Connect Stripe"}
+                      </Button>
+                    )}
+                    {stripeStatus?.configured && stripeStatus?.connected && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        disabled={stripeBusy}
+                        className={cn("h-9", pageBtnOutlineClass)}
+                        onClick={async () => {
+                          if (!window.confirm("Disconnect Stripe from this workspace?")) return;
+                          setStripeErr("");
+                          setStripeBusy(true);
+                          try {
+                            await api.post("/integrations/stripe/disconnect");
+                            const { data } = await api.get("/integrations/stripe/status");
+                            setStripeStatus(data);
+                          } catch (e) {
+                            setStripeErr(formatApiError(e?.response?.data?.detail) || "Could not disconnect Stripe.");
+                          } finally {
+                            setStripeBusy(false);
+                          }
+                        }}
+                      >
+                        Disconnect
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Button
         onClick={logout}
         data-testid="profile-logout-button"
         variant="ghost"
-        className={pageBtnPrimaryClass}
+        className={cn(pageBtnPrimaryClass, "mb-4")}
       >
         <LogOut className="mr-1 h-4 w-4" strokeWidth={1.5} /> Sign out
       </Button>

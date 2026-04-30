@@ -17,7 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-export default function CalendarsAdmin() {
+export default function CalendarsAdmin({ embedded = false }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [cals, setCals] = useState([]);
   const [editing, setEditing] = useState(null);
@@ -282,20 +282,28 @@ export default function CalendarsAdmin() {
 
   return (
     <div className="space-y-4" data-testid="calendars-admin-page">
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
-        <div className="min-w-0">
-          <div className="label-tech">Accounts</div>
-          <h1 className={pageTitleClass}>Calendars</h1>
-        </div>
-        {(info || err) && (
-          <div className="flex shrink-0 flex-col items-start gap-1 sm:items-end">
-            {info && (
-              <div className="max-w-full truncate text-xs font-medium text-emerald-700 dark:text-emerald-400">{info}</div>
-            )}
-            {err && <div className="max-w-full text-right text-xs text-red-600 dark:text-red-400">{err}</div>}
+      {!embedded && (
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
+          <div className="min-w-0">
+            <div className="label-tech">Accounts</div>
+            <h1 className={pageTitleClass}>Calendars</h1>
           </div>
-        )}
-      </div>
+          {(info || err) && (
+            <div className="flex shrink-0 flex-col items-start gap-1 sm:items-end">
+              {info && (
+                <div className="max-w-full truncate text-xs font-medium text-emerald-700 dark:text-emerald-400">{info}</div>
+              )}
+              {err && <div className="max-w-full text-right text-xs text-red-600 dark:text-red-400">{err}</div>}
+            </div>
+          )}
+        </div>
+      )}
+      {embedded && (info || err) && (
+        <div className="flex flex-col gap-1">
+          {info && <div className="text-xs font-medium text-emerald-700 dark:text-emerald-400">{info}</div>}
+          {err && <div className="text-xs text-red-600 dark:text-red-400">{err}</div>}
+        </div>
+      )}
 
       <div className={cn("p-3 sm:p-4", pageCardClass)}>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
@@ -320,12 +328,14 @@ export default function CalendarsAdmin() {
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             {gStatus != null && gStatus.client_configured && gStatus.connected ? (
               <>
-                <Button type="button" variant="ghost" onClick={() => loadMapDialog()} className={cn("h-9", pageBtnPrimaryClass)} data-testid="google-map-calendars">
+                <button
+                  type="button"
+                  onClick={() => loadMapDialog()}
+                  className="px-1 text-xs text-slate-500 underline-offset-2 hover:text-slate-800 hover:underline dark:text-zinc-500 dark:hover:text-zinc-300"
+                  data-testid="google-map-calendars"
+                >
                   Map calendars
-                </Button>
-                <Button type="button" variant="ghost" onClick={() => disconnectGoogle()} className={cn("h-9", pageBtnOutlineClass)} data-testid="google-disconnect">
-                  Disconnect
-                </Button>
+                </button>
                 <button
                   type="button"
                   onClick={reconnectGoogle}
@@ -333,6 +343,14 @@ export default function CalendarsAdmin() {
                   data-testid="google-reconnect"
                 >
                   Different account
+                </button>
+                <button
+                  type="button"
+                  onClick={() => disconnectGoogle()}
+                  className="px-1 text-xs text-slate-500 underline-offset-2 hover:text-slate-800 hover:underline dark:text-zinc-500 dark:hover:text-zinc-300"
+                  data-testid="google-disconnect"
+                >
+                  Disconnect
                 </button>
               </>
             ) : gStatus != null && gStatus.client_configured ? (
@@ -452,29 +470,6 @@ export default function CalendarsAdmin() {
         </DialogContent>
       </Dialog>
 
-      <div className="label-tech">Resources</div>
-      <div className={cn("mb-3 flex flex-col gap-3 p-3 sm:flex-row sm:items-end sm:gap-4 sm:p-4", pageCardClass)}>
-        <Input
-          value={newCalName}
-          onChange={(e) => setNewCalName(e.target.value)}
-          placeholder="New calendar name"
-          className={cn(pageInputClass, "sm:max-w-xs")}
-          data-testid="new-calendar-name"
-        />
-        <div className="flex shrink-0 items-center gap-3">
-          <ColorWheel value={newCalColor} onChange={setNewCalColor} />
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={createCalendar}
-            disabled={creatingCal || !newCalName.trim()}
-            className={cn("h-10 shrink-0", pageBtnPrimaryClass)}
-            data-testid="new-calendar-add"
-          >
-            {creatingCal ? "Adding…" : "Add calendar"}
-          </Button>
-        </div>
-      </div>
       <div className="grid gap-2">
         {cals.map((c) =>
           editing === c.id ? (
@@ -609,6 +604,29 @@ export default function CalendarsAdmin() {
             </div>
           )
         )}
+      </div>
+
+      <div className={cn("mt-3 flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:gap-4 sm:p-4", pageCardClass)}>
+        <Input
+          value={newCalName}
+          onChange={(e) => setNewCalName(e.target.value)}
+          placeholder="New calendar name"
+          className={cn(pageInputClass, "sm:max-w-xs")}
+          data-testid="new-calendar-name"
+        />
+        <div className="flex shrink-0 items-center justify-end gap-3 sm:ml-auto">
+          <ColorWheel value={newCalColor} onChange={setNewCalColor} />
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={createCalendar}
+            disabled={creatingCal || !newCalName.trim()}
+            className={cn("h-10 shrink-0", pageBtnPrimaryClass)}
+            data-testid="new-calendar-add"
+          >
+            {creatingCal ? "Adding…" : "Add calendar"}
+          </Button>
+        </div>
       </div>
     </div>
   );

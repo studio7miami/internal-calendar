@@ -104,23 +104,81 @@ def build_invite_email_html(*, invite_link: str, org_name: str) -> str:
     href = invite_link.replace('"', "%22")
     logo_src = resolve_invite_logo_url().replace("&", "&amp;")
     return f"""<!DOCTYPE html>
-<html><body style="font-family:system-ui,Segoe UI,sans-serif;line-height:1.5;color:#111;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td style="padding:0 0 20px;">
-    <img src="{logo_src}" alt="Studio 7 Miami" width="140" border="0" style="display:block;max-width:140px;height:auto;width:100%;" />
-  </td></tr></table>
-  <p>You've been invited to join <strong>{org_e}</strong> team calendar.</p>
-  <p><a href="{href}" style="display:inline-block;margin:12px 0;padding:12px 20px;background:#111;color:#fff;text-decoration:none;border-radius:8px;">Accept invite</a></p>
-  <p style="font-size:13px;color:#555;margin:16px 0 6px;">This link expires in 7 days and can only be used once.</p>
-  <p style="font-size:13px;color:#555;margin:0;">Questions? Reach out to Seven directly.</p>
-</body></html>"""
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="x-apple-disable-message-reformatting" />
+    <title>{org_e}</title>
+  </head>
+  <body style="margin:0;padding:0;background:#ffffff;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#ffffff;">
+      <tr>
+        <td align="center" style="padding:28px 12px;">
+          <table role="presentation" width="560" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:560px;">
+            <tr>
+              <td align="center" style="padding:0 0 18px;">
+                <img
+                  src="{logo_src}"
+                  alt="{org_e}"
+                  width="150"
+                  border="0"
+                  style="display:block;max-width:150px;height:auto;width:100%;"
+                />
+              </td>
+            </tr>
+            <tr>
+              <td
+                style="background:#ffffff;border:1px solid #e5e5e5;border-radius:12px;padding:28px 22px;color:#0a0a0a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;"
+              >
+                <div style="font-size:22px;line-height:1.2;font-weight:700;margin:0 0 10px;">
+                  Welcome.
+                </div>
+                <div style="font-size:14px;line-height:1.55;margin:0 0 18px;color:#111111;">
+                  Click the button below to access your <strong>{org_e}</strong> calendar. This link is valid for 7 days and can only be used once.
+                </div>
+
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 18px;">
+                  <tr>
+                    <td
+                      bgcolor="#0a0a0a"
+                      style="border-radius:7px;"
+                    >
+                      <a
+                        href="{href}"
+                        style="display:inline-block;padding:12px 18px;background:#0a0a0a;color:#ffffff;text-decoration:none;border-radius:7px;font-size:14px;font-weight:700;letter-spacing:0.2px;"
+                      >
+                        Enter portal →
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+
+                <div style="font-size:12px;line-height:1.45;color:#6b6b6b;margin:0;">
+                  If the button doesn’t work, copy and paste this link:
+                  <br />
+                  <a href="{href}" style="color:#0a0a0a;text-decoration:underline;word-break:break-all;">{href}</a>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td align="center" style="padding:14px 6px 0;color:#8a8a8a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:11px;line-height:1.4;">
+                {org_e}
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>"""
 
 
 def _text_body(invite_link: str, org_name: str) -> str:
     return (
-        f"You've been invited to join {org_name}.\n\n"
-        f"Open this link to accept:\n{invite_link}\n\n"
-        "This link expires in 7 days and can only be used once.\n"
-        "Questions? Reach out to Seven directly.\n"
+        "Welcome.\n\n"
+        f"Click the link below to access your {org_name} calendar:\n{invite_link}\n\n"
+        "This link is valid for 7 days and can only be used once.\n"
     )
 
 

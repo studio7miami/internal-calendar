@@ -46,6 +46,7 @@ The app relies on a few services you control or subscribe to. **Passwords and AP
 | Service | Role in this project |
 |--------|------------------------|
 | **[Supabase](https://supabase.com)** | Database and secure storage for app data |
+| **[GitHub](https://github.com)** | Source code repository (version history + deployment source) |
 | **[Railway](https://railway.app)** *(or similar)* | Where the live API often runs—ask TAĪSTU which host you’re on |
 | **[Vercel](https://vercel.com)** *(or similar)* | Where the public website / calendar front end is hosted |
 | **[Resend](https://resend.com)** *(if configured)* | Sends invite links and booking emails from your domain |
@@ -76,4 +77,4 @@ If you’re not sure which provider you’re on, TAĪSTU can confirm from your d
 BUILT BY:
 
 TAĪSTU — [https://www.taistu.com]
-delivered with care - April 28, 2026
+delivered with care - April 30, 2026

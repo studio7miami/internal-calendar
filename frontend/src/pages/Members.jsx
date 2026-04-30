@@ -546,11 +546,7 @@ export default function Members({ previewRole }) {
 
                 {canAssignCalendars && u.role !== "admin" && allCals.length > 0 && (
                   <div className="space-y-2 border-t border-slate-200/60 pt-3 dark:border-white/[0.08]">
-                    <div className="label-tech">Calendars they can see</div>
-                    <p className="mb-1 mt-0 text-xs text-slate-500 dark:text-zinc-500">
-                      Leave all checked for full access (default). Admins always see every calendar regardless of this
-                      list.
-                    </p>
+                    <div className="label-tech">CALENDAR ACCESS</div>
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                       {allCals.map((c) => (
                         <label

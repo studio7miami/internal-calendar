@@ -9,7 +9,6 @@ import Login from "./pages/Login";
 import Invite from "./pages/Invite";
 import CalendarPage from "./pages/Calendar";
 import Requests from "./pages/Requests";
-import CalendarsAdmin from "./pages/Calendars";
 import Members from "./pages/Members";
 import Profile from "./pages/Profile";
 import OnboardingPreview from "./pages/OnboardingPreview";
@@ -67,14 +66,6 @@ function App() {
             >
               <Route path="/" element={<CalendarPage />} />
               <Route path="/requests" element={<Requests />} />
-              <Route
-                path="/calendars"
-                element={
-                  <ProtectedRoute adminOnly>
-                    <CalendarsAdmin />
-                  </ProtectedRoute>
-                }
-              />
               <Route
                 path="/members"
                 element={
