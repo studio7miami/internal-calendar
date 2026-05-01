@@ -121,6 +121,15 @@ def build_invite_email_html(*, invite_link: str, org_name: str) -> str:
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="x-apple-disable-message-reformatting" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="supported-color-schemes" content="light dark" />
+    <style>
+      @media (prefers-color-scheme: dark) {{
+        .s7-logo {{
+          filter: invert(1) !important;
+        }}
+      }}
+    </style>
     <title>{org_e}</title>
   </head>
   <body style="margin:0;padding:0;background:transparent;">
@@ -135,6 +144,7 @@ def build_invite_email_html(*, invite_link: str, org_name: str) -> str:
                   alt="{org_e}"
                   width="150"
                   border="0"
+                  class="s7-logo"
                   style="display:block;max-width:150px;height:auto;width:100%;"
                 />
               </td>
@@ -174,7 +184,7 @@ def build_invite_email_html(*, invite_link: str, org_name: str) -> str:
                   </table>
                 </div>
 
-                <div style="font-size:12px;line-height:1.5;color:{fg};margin:0;text-align:center;">
+                <div style="font-size:12px;line-height:1.5;color:{fg};margin:0;text-align:left;">
                   This link is valid for 7 days and can only be used once.
                 </div>
               </td>
