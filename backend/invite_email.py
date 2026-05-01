@@ -123,13 +123,13 @@ def build_invite_email_html(*, invite_link: str, org_name: str) -> str:
     <meta name="x-apple-disable-message-reformatting" />
     <title>{org_e}</title>
   </head>
-  <body style="margin:0;padding:0;background:{bg};">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:{bg};">
+  <body style="margin:0;padding:0;background:transparent;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:transparent;">
       <tr>
-        <td align="center" style="padding:28px 12px;">
-          <table role="presentation" width="560" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:560px;">
+        <td align="center" style="padding:28px 12px;background:transparent;">
+          <table role="presentation" width="560" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:560px;background:transparent;">
             <tr>
-              <td align="center" style="padding:0 0 18px;">
+              <td align="center" style="padding:0 0 18px;background:transparent;">
                 <img
                   src="{logo_src}"
                   alt="{org_e}"
@@ -156,38 +156,28 @@ def build_invite_email_html(*, invite_link: str, org_name: str) -> str:
                   Tap below to set up your account.
                 </div>
 
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 22px;">
-                  <tr>
-                    <td align="center" style="padding:0;">
-                      <table role="presentation" cellspacing="0" cellpadding="0" border="0">
-                        <tr>
-                          <td style="border:1px solid {fg};border-radius:7px;background:{bg};">
-                            <a
-                              href="{href}"
-                              style="display:inline-block;padding:12px 18px;background:{bg};color:{fg};text-decoration:none;border-radius:7px;font-size:14px;font-weight:700;letter-spacing:0.2px;"
-                            >
-                              Accept invite →
-                            </a>
-                          </td>
-                        </tr>
-                      </table>
-                    </td>
-                  </tr>
-                </table>
-
-                <div style="font-size:12px;line-height:1.5;color:{fg};margin:0 0 18px;">
-                  This link is valid for 7 days and can only be used once.
+                <div style="text-align:center;margin:0 0 22px;">
+                  <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto;">
+                    <tr>
+                      <td align="center" style="border:1px solid {fg};border-radius:7px;background:{bg};">
+                        <a
+                          href="{href}"
+                          style="display:inline-block;padding:12px 18px;background:{bg};color:{fg};text-decoration:none;border-radius:7px;font-size:14px;font-weight:700;letter-spacing:0.2px;"
+                        >
+                          Accept invite →
+                        </a>
+                      </td>
+                    </tr>
+                  </table>
                 </div>
 
-                <div style="font-size:12px;line-height:1.45;color:{fg};margin:0;">
-                  If the button doesn&apos;t work, copy and paste this link:
-                  <br />
-                  <a href="{href}" style="color:{fg};text-decoration:underline;word-break:break-all;">{href}</a>
+                <div style="font-size:12px;line-height:1.5;color:{fg};margin:0;text-align:center;">
+                  This link is valid for 7 days and can only be used once.
                 </div>
               </td>
             </tr>
             <tr>
-              <td align="center" style="padding:14px 6px 0;color:{fg};font-family:{ff};font-size:11px;line-height:1.4;">
+              <td align="center" style="padding:14px 6px 0;color:{fg};font-family:{ff};font-size:11px;line-height:1.4;background:transparent;">
                 {org_e}
               </td>
             </tr>
