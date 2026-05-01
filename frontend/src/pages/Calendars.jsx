@@ -57,9 +57,8 @@ function ScheduleTimeStepper({ value, disabled, onChange, label }) {
       )}
       aria-label={label}
     >
-      <div className="flex min-w-[6.75rem] flex-1 flex-col justify-center px-2">
+      <div className="flex min-w-[6.25rem] flex-1 items-center px-2">
         <div className="text-[11px] font-medium tabular-nums leading-none">{formatHm12(value)}</div>
-        <div className="mt-0.5 text-[9px] uppercase tracking-wide text-slate-400 dark:text-zinc-500">24h {normHm(value)}</div>
       </div>
       <div className="flex w-7 flex-col border-l border-gray-200/95 dark:border-white/15">
         <button
