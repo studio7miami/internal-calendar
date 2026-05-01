@@ -340,7 +340,7 @@ export default function Members({ previewRole }) {
     try {
       const { data } = await api.post("/invites", { email });
       if (data.email_sent) {
-        setInviteNotice({ kind: "success", email: data.email });
+        setInviteNotice({ kind: "success", email: data.email, copyLink: data.invite_link });
       } else {
         setInviteNotice({
           kind: "fail",
@@ -459,17 +459,28 @@ export default function Members({ previewRole }) {
             <Mail className="mr-1 h-4 w-4" strokeWidth={1.5} /> Send invite
           </Button>
         </div>
-        <p className="text-xs leading-relaxed text-slate-500 dark:text-zinc-500">
+        <p className="text-xs leading-relaxed text-black dark:text-zinc-500">
           Note: Invites are single-use and expire in 7 days.
         </p>
         {err && <div className="text-sm text-red-600 dark:text-red-400">{err}</div>}
         {inviteNotice?.kind === "success" && (
-          <div
-            className="rounded-[7px] border border-emerald-200/90 bg-emerald-50 px-3 py-2 text-sm text-emerald-950 dark:border-emerald-800/40 dark:bg-emerald-950/25 dark:text-emerald-100"
-            data-testid="invite-email-success"
-            role="status"
-          >
-            Invitation emailed to <span className="font-medium">{inviteNotice.email}</span>.
+          <div className="space-y-2" data-testid="invite-email-success" role="status">
+            <div className="rounded-[7px] border border-emerald-200/90 bg-emerald-50 px-3 py-2 text-sm text-emerald-950 dark:border-emerald-800/40 dark:bg-emerald-950/25 dark:text-emerald-100">
+              Invitation emailed to <span className="font-medium">{inviteNotice.email}</span>.
+            </div>
+            {inviteNotice.copyLink && (
+              <div className="flex flex-wrap items-center gap-2 rounded-[7px] border border-gray-200/90 bg-white/60 px-2 py-1.5 text-xs dark:border-white/10 dark:bg-white/[0.04]">
+                <code className="min-w-0 flex-1 truncate text-slate-800 dark:text-zinc-200">{inviteNotice.copyLink}</code>
+                <button
+                  type="button"
+                  onClick={() => copy(inviteNotice.copyLink)}
+                  className="shrink-0 rounded-[7px] border border-gray-200/90 px-2 py-1 text-slate-700 dark:border-white/20 dark:text-zinc-300"
+                  data-testid="copy-invite-link"
+                >
+                  <Copy className="mr-1 inline h-3 w-3" strokeWidth={1.5} /> Copy link
+                </button>
+              </div>
+            )}
           </div>
         )}
         {inviteNotice?.kind === "fail" && (
@@ -540,7 +551,7 @@ export default function Members({ previewRole }) {
                     className="shrink-0 text-sm font-medium text-slate-600 dark:text-zinc-400"
                     data-testid={`user-sauce-${u.id}`}
                   >
-                    {formatSauceLabel(u.sauce)}
+                    {formatSauceLabel(u.sauce ?? u.member_sauce)}
                   </span>
                 </div>
 
