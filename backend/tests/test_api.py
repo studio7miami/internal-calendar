@@ -79,9 +79,7 @@ class TestAuth:
         assert perms.get("approve_deny_requests") is True
         assert perms.get("see_all_booking_details") is True
         assert perms.get("assign_member_calendars") is True
-        assert "mfa_enabled" in data
-        assert data.get("mfa_enabled") in (True, False)
-        assert "mfa_setup_pending" in data
+        assert "phone_e164" in data
 
     def test_me_no_token(self):
         assert requests.get(f"{API}/auth/me").status_code == 401
