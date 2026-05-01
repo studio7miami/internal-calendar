@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { api } from "../lib/api";
+import { buildPreviewMe } from "../lib/memberPreviewFixtures";
 
 const AuthContext = createContext(null);
 
@@ -8,6 +9,12 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (String(process.env.REACT_APP_MOCK_API || "") === "1") {
+      const me = buildPreviewMe("admin");
+      setUser(me);
+      setLoading(false);
+      return;
+    }
     const token = localStorage.getItem("s7_token");
     if (!token) {
       setUser(false);
@@ -36,10 +43,16 @@ export function AuthProvider({ children }) {
     localStorage.removeItem("s7_token");
     localStorage.removeItem("s7_user");
     setUser(false);
+    if (String(process.env.REACT_APP_MOCK_API || "") === "1") return;
     window.location.href = "/login";
   };
 
   const refreshUser = () => {
+    if (String(process.env.REACT_APP_MOCK_API || "") === "1") {
+      const me = buildPreviewMe("admin");
+      setUser(me);
+      return Promise.resolve(me);
+    }
     return api
       .get("/auth/me")
       .then((r) => {
