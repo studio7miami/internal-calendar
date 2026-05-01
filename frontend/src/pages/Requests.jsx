@@ -160,7 +160,8 @@ function RequestCard({
     t = t.replace(/^Google Calendar ·\s*/i, "").trim();
     t = t.replace(/^studio\s+7\s+miami\s*[·\-–—@|:]\s*/i, "").trim();
     // Hard remove any parenthetical containing "Studio 7" (never show).
-    t = t.replace(/\s*\(\s*[^)]*studio\s*7[^)]*\)\s*/gi, " ").trim();
+    // Some sources may use full-width parentheses （ ）.
+    t = t.replace(/\s*[（(]\s*[^）)]*studio\s*7[^）)]*[)）]\s*/gi, " ").trim();
     t = t.replace(/\s+at\s+studio\s+7\s+miami\b/gi, "").trim();
     t = t.replace(/\s*[@·,;|]\s*studio\s+7\s+miami\b/gi, "").trim();
     let prev;
