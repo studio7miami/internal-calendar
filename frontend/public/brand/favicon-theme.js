@@ -1,10 +1,11 @@
 /* Studio 7 favicon theme sync (public asset; no bundler).
    - Reads app theme from localStorage key "theme" (light|dark) OR <html class="dark">.
    - Uses /brand/favicon.png as the source art and swaps a data:image/svg+xml favicon.
-   - Art is a white palm on a dark canvas; invert in light mode so it reads on light UI chrome.
+   - favicon.png is black palm on transparent; light theme uses it as-is.
+   - Dark theme inverts so the silhouette reads on dark browser chrome.
 */
 (function () {
-  var PNG_PATH = "/brand/favicon.png?v=4";
+  var PNG_PATH = "/brand/favicon.png?v=5";
   var cachedB64 = null;
 
   function getTheme() {
@@ -47,7 +48,8 @@
 
   function buildSvgDataUrl(theme) {
     if (!cachedB64) throw new Error("favicon png not loaded yet");
-    var invert = theme === "light";
+    var invert = theme === "dark";
+    var zoom = 1.48;
     var filterBlock =
       '<defs><filter id="inv" color-interpolation-filters="sRGB">' +
       '<feColorMatrix type="matrix" values="-1 0 0 0 1 0 -1 0 0 1 0 0 -1 0 1 0 0 0 1 0"/>' +
@@ -62,12 +64,16 @@
 
     var svg =
       '<?xml version="1.0" encoding="UTF-8"?>' +
-      '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">' +
+      '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 64 64">' +
       filterBlock +
       style +
-      '<image class="palm" href="data:image/png;base64,' +
+      '<g class="palm" transform="translate(32,32) scale(' +
+      zoom +
+      ') translate(-32,-32)">' +
+      '<image href="data:image/png;base64,' +
       cachedB64 +
       '" x="0" y="0" width="64" height="64" preserveAspectRatio="xMidYMid meet"/>' +
+      "</g>" +
       "</svg>";
 
     return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
