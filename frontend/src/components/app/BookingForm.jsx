@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 const r7 = "rounded-[7px]";
 
 const calSurface =
-  "border border-gray-200/95 bg-[#FAFAFA] text-slate-900 dark:border-white/70 dark:bg-zinc-950 dark:text-white";
+  "border border-gray-200/[0.07] bg-[#FAFAFA] text-slate-900 dark:border-white/[0.07] dark:bg-zinc-950 dark:text-white";
 
 const fieldClass =
   `h-10 w-full px-3 text-sm text-slate-900 placeholder:text-slate-400 border border-gray-200/95 dark:border-white/20 bg-white dark:bg-zinc-900/50 dark:text-white dark:placeholder:text-neutral-500 ` +
@@ -366,7 +366,7 @@ export default function BookingForm({
             </button>
           </PopoverTrigger>
           <PopoverContent
-            className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] rounded-[7px] border border-gray-200/95 bg-white p-0 text-slate-900 shadow-md dark:border-white/20 dark:bg-zinc-900 dark:text-white"
+            className="z-[60] w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] rounded-[7px] border border-gray-200/95 bg-white p-0 text-slate-900 shadow-md dark:border-white/20 dark:bg-zinc-900 dark:text-white"
             sideOffset={4}
             align="start"
           >
