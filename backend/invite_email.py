@@ -156,6 +156,18 @@ def build_invite_email_html(*, invite_link: str, org_name: str) -> str:
       [data-ogsc] .s7-footer {{
         color: {fg} !important;
       }}
+
+      /* Some clients use data-ogsb for dark mode */
+      [data-ogsb] .s7-logo-light {{
+        display: none !important;
+        mso-hide: all !important;
+      }}
+      [data-ogsb] .s7-logo-dark {{
+        display: block !important;
+      }}
+      [data-ogsb] .s7-footer {{
+        color: {fg} !important;
+      }}
     </style>
     <title>{org_e}</title>
   </head>
@@ -203,7 +215,7 @@ def build_invite_email_html(*, invite_link: str, org_name: str) -> str:
 
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:0;">
                   <tr>
-                    <td align="left" style="padding:0 0 10px;">
+                    <td align="left" style="padding:0 0 22px;">
                       <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="left" style="margin:0;">
                         <tr>
                           <td
