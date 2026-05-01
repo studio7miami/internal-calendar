@@ -1,0 +1,9 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://api.studio7.miami/api/$1"
+    }
+  ]
+}
+
