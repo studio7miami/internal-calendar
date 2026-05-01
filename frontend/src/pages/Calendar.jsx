@@ -1170,7 +1170,7 @@ export default function CalendarPage() {
                       openForm(dayPanelYmd);
                     }}
                   >
-                    Request a time
+                    {isAdmin ? "Add a booking" : "Request a time"}
                   </Button>
                 )}
                 <Button type="button" variant="ghost" className={cn("h-10 w-full sm:flex-1", pageBtnOutlineClass)} onClick={() => setDayPanelOpen(false)}>
@@ -1253,7 +1253,7 @@ export default function CalendarPage() {
                       openForm(dayPanelYmd);
                     }}
                   >
-                    Request a time
+                    {isAdmin ? "Add a booking" : "Request a time"}
                   </Button>
                 )}
                 <Button type="button" variant="ghost" className={cn("h-10 w-full sm:flex-1", pageBtnOutlineClass)} onClick={() => setDayPanelOpen(false)}>
