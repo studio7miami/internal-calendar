@@ -28,12 +28,13 @@ import httpx
 logger = logging.getLogger(__name__)
 
 # Shared look for invite + booking transactional HTML (many clients ignore <style> blocks).
-EMAIL_PAGE_BG = "#161616"
-EMAIL_TEXT = "#F7F7F7"
-EMAIL_CARD_BORDER = "#2a2a2a"
+# Light card (brand): off-white background with near-black text + outline.
+EMAIL_PAGE_BG = "#F7F7F7"
+EMAIL_TEXT = "#161616"
+EMAIL_CARD_BORDER = "#161616"
 
 # Bump this when changing invite HTML significantly.
-INVITE_EMAIL_TEMPLATE_VERSION = "invite-email-2026-04-30-v1"
+INVITE_EMAIL_TEMPLATE_VERSION = "invite-email-2026-05-01-v1"
 
 
 def _from_addr() -> str:
