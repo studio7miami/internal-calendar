@@ -21,6 +21,11 @@ export default function Invite() {
   const [done, setDone] = useState(false);
 
   useEffect(() => {
+    if (token === "preview-token") {
+      setEmail("member@studio7.miami");
+      setInviteStatus("ok");
+      return;
+    }
     api
       .get(`/auth/invite/${token}`)
       .then((r) => {
@@ -38,6 +43,10 @@ export default function Invite() {
   const submit = async (e) => {
     e.preventDefault();
     setError("");
+    if (token === "preview-token") {
+      window.alert("Preview mode — this does not create an account.");
+      return;
+    }
     if (password !== confirm) return setError("Passwords do not match");
     if (password.length < 8) return setError("Password must be at least 8 characters");
     if (!phone.trim()) return setError("Enter your phone number.");
@@ -59,9 +68,16 @@ export default function Invite() {
 
   return (
     <div className={invitePageShellClass}>
-      <div className={cn("p-6 sm:p-8", pageCardClass)}>
+      <div className="w-full max-w-md">
+        <img
+          src="/brand/logo.png"
+          alt="Studio 7 Miami"
+          className="mx-auto mb-6 w-44 sm:w-52 h-auto"
+        />
+        <div className={cn("p-6 sm:p-8", pageCardClass)}>
         <InviteRegistrationForm
           inviteStatus={inviteStatus}
+          eyebrow={null}
           email={email}
           name={name}
           onNameChange={setName}
@@ -75,7 +91,11 @@ export default function Invite() {
           onConfirmChange={setConfirm}
           error={error}
           onSubmit={submit}
+          onStepChange={(s) => {
+            if (s < 3) setError("");
+          }}
         />
+      </div>
       </div>
     </div>
   );
