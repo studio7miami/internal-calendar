@@ -205,11 +205,11 @@ def build_invite_email_html(*, invite_link: str, org_name: str) -> str:
                       </td>
                     </tr>
                   </table>
-                </div>
+                <br></div>
 
                 <div style="font-size:12px;line-height:1.5;color:{fg};margin:0;text-align:center;">
                   This link is valid for 7 days and can only be used once.
-                </div>
+                </div></br>
               </td>
             </tr>
             <tr>
