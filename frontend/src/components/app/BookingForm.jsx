@@ -70,6 +70,7 @@ export default function BookingForm({
   const [end, setEnd] = useState(defaultEnd || "11:00");
   const [notes, setNotes] = useState("");
   const [memberId, setMemberId] = useState("");
+  const [recurring, setRecurring] = useState(false);
   // Admins only create manual bookings (no request submission).
   const [mode, setMode] = useState(isAdmin || canManualBook ? "manual" : "request");
   const [err, setErr] = useState("");
@@ -92,6 +93,7 @@ export default function BookingForm({
       setEnd(normTime(editingBooking.end_time));
       setNotes(editingBooking.notes ?? "");
       setMemberId("");
+      setRecurring(false);
       setErr("");
       return;
     }
@@ -101,9 +103,19 @@ export default function BookingForm({
     setEnd(defaultEnd || "11:00");
     setNotes("");
     setMemberId("");
+    setRecurring(false);
     setErr("");
     setMode(isAdmin || canManualBook ? "manual" : "request");
   }, [open, editMode, editingBooking, defaultDate, defaultStart, defaultEnd, calendars, canManualBook, isAdmin]);
+
+  const addDays = (ymdStr, days) => {
+    const d = new Date(`${ymdStr}T00:00:00`);
+    d.setDate(d.getDate() + days);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${dd}`;
+  };
 
   const handleDeleteBooking = async () => {
     if (!editingBooking?.id) return;
@@ -134,18 +146,22 @@ export default function BookingForm({
           notes,
         });
       } else {
-        const payload = {
+        const basePayload = {
           calendar_id: calendarId,
           date,
           start_time: start,
           end_time: end,
           notes,
         };
-        if ((isAdmin || canManualBook) && mode === "manual") {
-          if (memberId) payload.member_id = memberId;
-          await api.post("/bookings/manual", payload);
-        } else {
-          await api.post("/bookings/request", payload);
+        const dates = recurring ? [0, 7, 14, 21].map((delta) => addDays(date, delta)) : [date];
+        for (const d of dates) {
+          const payload = { ...basePayload, date: d };
+          if ((isAdmin || canManualBook) && mode === "manual") {
+            if (memberId) payload.member_id = memberId;
+            await api.post("/bookings/manual", payload);
+          } else {
+            await api.post("/bookings/request", payload);
+          }
         }
       }
       onSuccess?.();
@@ -208,7 +224,7 @@ export default function BookingForm({
 
       {canManualBook && mode === "manual" && !editMode && (
         <div>
-          <label className="label-tech block mb-1">Assign member (optional)</label>
+          <label className="label-tech block mb-1">Assign member</label>
           <select
             value={memberId}
             onChange={(e) => setMemberId(e.target.value)}
@@ -275,8 +291,8 @@ export default function BookingForm({
         </Popover>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="min-w-0 overflow-hidden">
           <label className="label-tech block mb-1">Start</label>
           <Input
             type="time"
@@ -284,10 +300,10 @@ export default function BookingForm({
             onChange={(e) => setStart(e.target.value)}
             required
             data-testid="booking-start-input"
-            className={cn("shadow-sm", fieldClass, "md:text-sm")}
+            className={cn("min-w-0 shadow-sm", fieldClass, "md:text-sm")}
           />
         </div>
-        <div>
+        <div className="min-w-0 overflow-hidden">
           <label className="label-tech block mb-1">End</label>
           <Input
             type="time"
@@ -295,10 +311,23 @@ export default function BookingForm({
             onChange={(e) => setEnd(e.target.value)}
             required
             data-testid="booking-end-input"
-            className={cn("shadow-sm", fieldClass, "md:text-sm")}
+            className={cn("min-w-0 shadow-sm", fieldClass, "md:text-sm")}
           />
         </div>
       </div>
+
+      {!editMode && (
+        <label className="flex select-none items-center gap-2 text-sm text-slate-700 dark:text-zinc-300">
+          <input
+            type="checkbox"
+            className="h-4 w-4"
+            checked={recurring}
+            onChange={(e) => setRecurring(e.target.checked)}
+            data-testid="booking-recurring-checkbox"
+          />
+          Recurring (weekly, 4 weeks)
+        </label>
+      )}
 
       <div>
         <label className="label-tech block mb-1">Notes</label>
