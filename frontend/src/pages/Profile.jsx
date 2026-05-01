@@ -200,7 +200,7 @@ export default function Profile() {
   };
 
   return (
-    <div className="space-y-8" data-testid="profile-page">
+    <div className="space-y-8 max-md:pb-4" data-testid="profile-page">
       <div>
         <div className="label-tech">Profile</div>
         <h1 className={pageTitleClass}>{user.name}</h1>
@@ -615,7 +615,7 @@ export default function Profile() {
         onClick={logout}
         data-testid="profile-logout-button"
         variant="ghost"
-        className={cn(pageBtnPrimaryClass, "mb-4")}
+        className={pageBtnPrimaryClass}
       >
         <LogOut className="mr-1 h-4 w-4" strokeWidth={1.5} /> Sign out
       </Button>
