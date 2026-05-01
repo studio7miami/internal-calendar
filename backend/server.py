@@ -1875,6 +1875,27 @@ def _can_user_modify_booking(user: dict, perms: dict, b: dict) -> bool:
     return False
 
 
+def _strip_venue_from_text(s: Any) -> str:
+    """Remove venue fragments like 'Studio 7 Miami' / 'Studio 7' from imported event text."""
+    if not s:
+        return ""
+    t = str(s).strip()
+    t = re.sub(r"\s*\n+\s*", " ", t).strip()
+    t = re.sub(r"^Google Calendar ·\s*", "", t, flags=re.I).strip()
+    t = re.sub(r"^studio\s+7\s+miami\s*[·\-–—@|:]\s*", "", t, flags=re.I).strip()
+    # Remove any parenthetical containing "Studio 7" (supports full-width parentheses too).
+    t = re.sub(r"\s*[（(]\s*[^）)]*studio\s*7[^）)]*[)）]\s*", " ", t, flags=re.I).strip()
+    # Remove remaining bare venue mentions.
+    t = re.sub(r"\bstudio\s*7\s*miami\b", " ", t, flags=re.I).strip()
+    t = re.sub(r"\bstudio\s*7\b", " ", t, flags=re.I).strip()
+    # Cleanup leftover empty parens / separators.
+    t = re.sub(r"[（(]\s*[)）]", " ", t).strip()
+    t = re.sub(r"^\s*(?:@|·|\||—|-|:|,|;)\s*", "", t).strip()
+    t = re.sub(r"\s*[:·\-–—]\s*$", "", t).strip()
+    t = re.sub(r"\s{2,}", " ", t).strip()
+    return t
+
+
 def _serialize_booking(b: dict, viewer: dict, users_by_id: dict, viewer_perms: Optional[dict] = None) -> dict:
     perms = viewer_perms if viewer_perms is not None else user_permissions_for(viewer)
     mid = b.get("member_id")
@@ -1899,7 +1920,7 @@ def _serialize_booking(b: dict, viewer: dict, users_by_id: dict, viewer_perms: O
         if not disp_name and str(b.get("source") or "") == "google_external":
             disp_name = b.get("external_title") or "Booked (external)"
         base.update({
-            "notes": b.get("notes", ""),
+            "notes": _strip_venue_from_text(b.get("notes", "")),
             "member_id": b.get("member_id"),
             "member_name": disp_name,
             "member_email": owner["email"] if owner else None,
