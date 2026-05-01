@@ -43,8 +43,42 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALG = "HS256"
-FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
-BRAND_LOGO_PATH = ROOT_DIR.parent / "frontend" / "public" / "brand" / "logo.png"
+
+
+def _clean_http_origin(raw: Optional[str], *, default: str) -> str:
+    """
+    Normalize env-provided URLs so redirects never contain illegal whitespace/newlines.
+
+    Common failure mode: pasting `https://a.com https://b.com` or a leading space into Railway.
+    """
+    s = str(raw or "").strip()
+    if not s:
+        return default
+    # If multiple tokens were pasted, take the first URL-like token.
+    for tok in s.replace("\n", " ").split():
+        t = tok.strip()
+        if t.startswith("http://") or t.startswith("https://"):
+            return t.rstrip("/")
+    return str(default).rstrip("/")
+
+
+FRONTEND_URL = _clean_http_origin(os.environ.get("FRONTEND_URL"), default="http://localhost:3000")
+
+
+def _resolve_brand_logo_path() -> Path:
+    """Prefer CRA build output, then public source (same asset as /brand/logo.png on the site)."""
+    repo = ROOT_DIR.parent
+    candidates = (
+        repo / "frontend" / "build" / "brand" / "logo.png",
+        repo / "frontend" / "public" / "brand" / "logo.png",
+    )
+    for p in candidates:
+        if p.is_file():
+            return p
+    return candidates[1]
+
+
+BRAND_LOGO_PATH = _resolve_brand_logo_path()
 
 # Stripe configuration (optional; used when enabling payment processing)
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
@@ -611,7 +645,7 @@ async def startup():
         logger.warning("Google inbound background sync task not started: %s", e)
 
 
-# ---------- Public assets (no auth; used by invite email <img> — must be a public https URL) ----------
+# ---------- Public assets (no auth; invite fallback — file is frontend brand/logo.png, build preferred) ----------
 @api.get("/public/brand-logo.png")
 async def public_brand_logo_png():
     if not BRAND_LOGO_PATH.is_file():
