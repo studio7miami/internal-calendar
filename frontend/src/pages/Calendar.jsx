@@ -963,12 +963,12 @@ export default function CalendarPage() {
       className="flex min-h-0 min-w-0 flex-1 flex-col basis-0 gap-4 overflow-hidden"
       data-testid="calendar-page"
     >
-      <div className="flex shrink-0 items-start justify-between gap-4 flex-wrap">
+      <div className="flex shrink-0 flex-col items-start justify-between gap-2 sm:flex-row sm:items-start sm:gap-4">
         <div>
           <div className="label-tech">Calendar</div>
           <h1 className={pageTitleClass}>{title}</h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex max-w-full items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1">
           <button
             type="button"
             onClick={() => setCursor(new Date())}

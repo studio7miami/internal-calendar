@@ -150,11 +150,13 @@ function RequestCard({
   const color = cal?.color || "#64748b";
   const needsPay = Boolean(b?.payment_required && b?.payment_status !== "paid" && b?.stripe_checkout_url && b?.status === "approved");
   const paid = Boolean(b?.payment_status === "paid");
-  const isPhotobooth = /photobooth/i.test(String(cal?.name || ""));
+  const calTitle = calName(b.calendar_id);
+  const isPhotobooth = /photobooth/i.test(String(cal?.name || calTitle || ""));
 
   const stripVenueFromText = (s) => {
     if (!s) return "";
     let t = String(s).trim();
+    t = t.replace(/\s*\n+\s*/g, " ").trim();
     t = t.replace(/^Google Calendar ·\s*/i, "").trim();
     t = t.replace(/^studio\s+7\s+miami\s*[·\-–—@|:]\s*/i, "").trim();
     t = t.replace(/\s*\(\s*studio\s+7\s+miami\s*\)/gi, "").trim();
@@ -180,19 +182,21 @@ function RequestCard({
     >
       <div className={cn("flex items-start", compact ? "gap-2" : "gap-4", "flex-col sm:flex-row")}>
         <div className={cn("min-w-0 flex-1", compact ? "space-y-1.5" : "space-y-2")}>
-          <div className="flex items-center justify-between gap-2">
-            <div className={cn("flex min-w-0 flex-nowrap items-center", compact ? "gap-1.5" : "gap-2")}>
+          <div className="flex items-center gap-2">
+            <div className={cn("flex min-w-0 flex-1 flex-nowrap items-center gap-2")}>
               <StatusBadge status={b.status} compact={compact} />
               <span
                 className={cn(
-                  "label-tech text-slate-600 dark:text-neutral-400",
+                  "label-tech min-w-0 flex-1 truncate text-left text-slate-600 dark:text-neutral-400",
                   compact && "text-[10px] uppercase tracking-wide"
                 )}
               >
-                {calName(b.calendar_id)}
+                {calTitle}
               </span>
             </div>
-            <FieldCircle colorHex={color} title={calName(b.calendar_id)} compact={compact} />
+            <div className="ml-auto shrink-0">
+              <FieldCircle colorHex={color} title={calTitle} compact={compact} />
+            </div>
           </div>
           <div
             className={cn(
