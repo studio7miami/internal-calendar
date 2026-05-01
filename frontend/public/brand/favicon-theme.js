@@ -1,9 +1,10 @@
 /* Studio 7 favicon theme sync (public asset; no bundler).
    - Reads app theme from localStorage key "theme" (light|dark) OR <html class="dark">.
    - Uses /brand/favicon.png as the source art and swaps a data:image/svg+xml favicon.
+   - Default art is a black palm on a light canvas; invert for dark mode so it reads on dark UI chrome.
 */
 (function () {
-  var PNG_PATH = "/brand/favicon.png";
+  var PNG_PATH = "/brand/favicon.png?v=3";
   var cachedB64 = null;
 
   function getTheme() {
@@ -24,6 +25,9 @@
     el.id = "studio7-favicon";
     el.rel = "icon";
     el.type = "image/svg+xml";
+    try {
+      el.setAttribute("sizes", "any");
+    } catch (e) {}
     document.head.appendChild(el);
     return el;
   }
@@ -43,7 +47,7 @@
 
   function buildSvgDataUrl(theme) {
     if (!cachedB64) throw new Error("favicon png not loaded yet");
-    var invert = theme !== "dark";
+    var invert = theme === "dark";
     var filterBlock =
       '<defs><filter id="inv" color-interpolation-filters="sRGB">' +
       '<feColorMatrix type="matrix" values="-1 0 0 0 1 0 -1 0 0 1 0 0 -1 0 1 0 0 0 1 0"/>' +
@@ -95,14 +99,21 @@
       .catch(function () {
         // Fallback: at least point to the png.
         link.removeAttribute("type");
-        link.href = PNG_PATH + "?v=1";
+        link.href = PNG_PATH;
       });
   }
 
   window.__S7_SYNC_FAVICON__ = sync;
 
-  // Initial paint ASAP.
+  // Initial paint ASAP (script should be placed after static <link rel="icon"> in index.html).
   sync(getTheme());
+
+  // Re-sync once the full head exists (guards against script order changes / late injections).
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", function () {
+      sync(getTheme());
+    });
+  }
 
   // If theme flips without a full reload, poll lightly (cheap) for a short window.
   var last = getTheme();
