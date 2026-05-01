@@ -963,17 +963,17 @@ export default function CalendarPage() {
       className="flex min-h-0 min-w-0 flex-1 flex-col basis-0 gap-4 overflow-hidden"
       data-testid="calendar-page"
     >
-      <div className="flex shrink-0 flex-col items-start justify-between gap-2 sm:flex-row sm:items-start sm:gap-4">
-        <div>
+      <div className="flex shrink-0 flex-wrap items-start gap-x-4 gap-y-2">
+        <div className="min-w-0 flex-1">
           <div className="label-tech">Calendar</div>
-          <h1 className={pageTitleClass}>{title}</h1>
+          <h1 className={cn(pageTitleClass, "whitespace-nowrap overflow-hidden text-ellipsis")}>{title}</h1>
         </div>
-        <div className="flex max-w-full items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+        <div className="no-scrollbar ml-auto flex h-9 max-w-full items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
           <button
             type="button"
             onClick={() => setCursor(new Date())}
             data-testid="today-button"
-            className={`min-h-8 box-border inline-flex items-center justify-center border border-white/30 bg-white/80 px-3 py-1.5 text-xs leading-none text-black shadow-[0_1px_4px_rgba(0,0,0,0.1)] backdrop-blur-md transition-colors dark:border-white/10 dark:bg-white/[0.06] dark:text-zinc-200 dark:shadow-[0_1px_3px_rgba(0,0,0,0.45)] ${glassBarHoverClass} rounded-[7px]`}
+            className={`min-h-8 box-border inline-flex items-center justify-center border border-white/30 bg-white/80 px-2.5 py-1.5 text-[11px] leading-none text-black shadow-[0_1px_4px_rgba(0,0,0,0.1)] backdrop-blur-md transition-colors dark:border-white/10 dark:bg-white/[0.06] dark:text-zinc-200 dark:shadow-[0_1px_3px_rgba(0,0,0,0.45)] ${glassBarHoverClass} rounded-[7px] sm:px-3 sm:text-xs`}
           >
             Today
           </button>
@@ -1000,7 +1000,7 @@ export default function CalendarPage() {
             type="button"
             onClick={() => openForm(ymd(cursor))}
             data-testid="new-booking-button"
-            className={`min-h-8 box-border inline-flex items-center justify-center gap-1.5 border border-white/30 bg-white/80 px-3 py-1.5 text-xs leading-none text-black shadow-[0_1px_4px_rgba(0,0,0,0.1)] backdrop-blur-md transition-colors dark:border-white/10 dark:bg-white/[0.06] dark:text-zinc-200 dark:shadow-[0_1px_3px_rgba(0,0,0,0.45)] ${glassBarHoverClass} rounded-[7px]`}
+            className={`min-h-8 box-border inline-flex items-center justify-center gap-1 border border-white/30 bg-white/80 px-2.5 py-1.5 text-[11px] leading-none text-black shadow-[0_1px_4px_rgba(0,0,0,0.1)] backdrop-blur-md transition-colors dark:border-white/10 dark:bg-white/[0.06] dark:text-zinc-200 dark:shadow-[0_1px_3px_rgba(0,0,0,0.45)] ${glassBarHoverClass} rounded-[7px] sm:gap-1.5 sm:px-3 sm:text-xs`}
           >
             <Plus className="w-4 h-4 shrink-0" strokeWidth={1.5} />
             New
@@ -1024,9 +1024,9 @@ export default function CalendarPage() {
       </div>
 
       {/* ── View mode + calendar toggles (shared button style) ── */}
-      <div className="flex shrink-0 items-center justify-between flex-wrap gap-4">
+      <div className="no-scrollbar flex shrink-0 items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1">
         <div
-          className="min-h-8 box-border inline-flex select-none items-center gap-2.5 rounded-[7px] border border-gray-200/95 bg-[#FCFCFC] px-2.5 py-1.5 text-xs leading-none dark:border-white/10 dark:bg-white/[0.04] sm:gap-3 sm:px-3"
+          className="min-h-8 box-border inline-flex shrink-0 select-none items-center gap-2.5 rounded-[7px] border border-gray-200/95 bg-[#FCFCFC] px-2.5 py-1.5 text-xs leading-none dark:border-white/10 dark:bg-white/[0.04] sm:gap-3 sm:px-3"
           role="tablist"
           aria-label="Calendar view"
         >
@@ -1057,7 +1057,7 @@ export default function CalendarPage() {
           })}
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex shrink-0 gap-2">
           {calendars.map((c) => {
             const on = enabledCalIds.has(c.id);
             return (
@@ -1071,10 +1071,7 @@ export default function CalendarPage() {
                     : "text-neutral-400 dark:bg-transparent dark:text-zinc-500"
                 }`}
               >
-                <span
-                  className="w-2.5 h-2.5 rounded-full"
-                  style={{ background: on ? c.color : "#ccc" }}
-                />
+                <span className="w-2.5 h-2.5 rounded-full" style={{ background: on ? c.color : "#ccc" }} />
                 {c.name}
               </button>
             );

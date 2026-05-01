@@ -159,8 +159,8 @@ function RequestCard({
     t = t.replace(/\s*\n+\s*/g, " ").trim();
     t = t.replace(/^Google Calendar ·\s*/i, "").trim();
     t = t.replace(/^studio\s+7\s+miami\s*[·\-–—@|:]\s*/i, "").trim();
-    t = t.replace(/\s*\(\s*studio\s+7\s+miami\s*\)/gi, "").trim();
-    t = t.replace(/\s*\(\s*studio\s+7\s*\)/gi, "").trim();
+    // Hard remove any parenthetical containing "Studio 7" (never show).
+    t = t.replace(/\s*\(\s*[^)]*studio\s*7[^)]*\)\s*/gi, " ").trim();
     t = t.replace(/\s+at\s+studio\s+7\s+miami\b/gi, "").trim();
     t = t.replace(/\s*[@·,;|]\s*studio\s+7\s+miami\b/gi, "").trim();
     let prev;
@@ -173,15 +173,15 @@ function RequestCard({
     return t;
   };
 
-  const notesText = isPhotobooth ? stripVenueFromText(b.notes) : b.notes;
+  const notesText = stripVenueFromText(b.notes);
 
   return (
     <div
       className={cn("overflow-hidden", compact ? "p-3 mb-2" : "p-4", pageCardClass)}
       data-testid={`request-card-${b.id}`}
     >
-      <div className={cn("flex items-start", compact ? "gap-2" : "gap-4", "flex-col sm:flex-row")}>
-        <div className={cn("min-w-0 flex-1", compact ? "space-y-1.5" : "space-y-2")}>
+      <div className={cn("flex items-start", compact ? "gap-2" : "gap-4", "flex-col sm:flex-row", "text-left")}>
+        <div className={cn("min-w-0 flex-1 text-left", compact ? "space-y-1.5" : "space-y-2")}>
           <div className="flex items-center gap-2">
             <div className={cn("flex min-w-0 flex-1 flex-nowrap items-center gap-2")}>
               <StatusBadge status={b.status} compact={compact} />
@@ -200,18 +200,18 @@ function RequestCard({
           </div>
           <div
             className={cn(
-              "font-semibold text-slate-900 dark:text-white",
+              "font-semibold text-left text-slate-900 dark:text-white",
               compact ? "text-[13px] leading-snug sm:text-sm" : "text-xl"
             )}
           >
             {fmtRequestDisplayDate(b.date)} · {fmtTimeShort(b.start_time)}–{fmtTimeShort(b.end_time)}
           </div>
           {canModerate && b.member_name && (
-            <div className={cn("text-slate-500 dark:text-neutral-400", compact ? "text-xs leading-snug" : "text-sm")}>
+            <div className={cn("text-left text-slate-500 dark:text-neutral-400", compact ? "text-xs leading-snug" : "text-sm")}>
               <button
                 type="button"
                 className={cn(
-                  "font-medium text-slate-800 md:hover:underline dark:text-zinc-200",
+                  "font-medium text-left text-slate-800 md:hover:underline dark:text-zinc-200",
                   compact && "text-xs"
                 )}
                 onClick={() =>
@@ -234,7 +234,7 @@ function RequestCard({
           {notesText && (
             <div
               className={cn(
-                "border-slate-200 text-slate-700 dark:border-white/20 dark:text-neutral-300",
+                "border-slate-200 text-left text-slate-700 dark:border-white/20 dark:text-neutral-300",
                 compact ? "border-l pl-2 text-xs leading-snug" : "border-l-2 pl-3 text-sm"
               )}
             >
