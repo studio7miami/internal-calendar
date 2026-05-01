@@ -162,6 +162,9 @@ function RequestCard({
     // Hard remove any parenthetical containing "Studio 7" (never show).
     // Some sources may use full-width parentheses （ ）.
     t = t.replace(/\s*[（(]\s*[^）)]*studio\s*7[^）)]*[)）]\s*/gi, " ").trim();
+    // Also remove any remaining bare venue mentions (sometimes imported without parentheses).
+    t = t.replace(/\bstudio\s*7\s*miami\b/gi, " ").trim();
+    t = t.replace(/\bstudio\s*7\b/gi, " ").trim();
     t = t.replace(/\s+at\s+studio\s+7\s+miami\b/gi, "").trim();
     t = t.replace(/\s*[@·,;|]\s*studio\s+7\s+miami\b/gi, "").trim();
     let prev;
@@ -170,6 +173,9 @@ function RequestCard({
       t = t.replace(/\s*(?:@|·|\||—|-)\s*studio\s+7\s+miami\s*$/i, "").trim();
     } while (t !== prev);
     if (/^studio\s+7\s+miami$/i.test(t)) return "";
+    // Cleanup leftover empty parens / punctuation after removals.
+    t = t.replace(/[（(]\s*[)）]/g, " ").trim();
+    t = t.replace(/\s*[:·\-–—]\s*$/g, "").trim();
     t = t.replace(/\s{2,}/g, " ").trim();
     return t;
   };
