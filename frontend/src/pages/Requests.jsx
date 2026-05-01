@@ -91,8 +91,8 @@ function FieldCircle({ colorHex, title, compact }) {
       title={title}
       aria-hidden
       className={cn(
-        "shrink-0 self-center rounded-full ring-1 ring-black/10 dark:ring-white/15",
-        compact ? "h-2 w-2" : "h-2.5 w-2.5"
+        "inline-block shrink-0 self-center rounded-full ring-1 ring-black/10 dark:ring-white/15",
+        compact ? "h-2.5 w-2.5" : "h-2.5 w-2.5"
       )}
       style={{
         backgroundColor: base,
@@ -177,9 +177,13 @@ function RequestCard({
 
   return (
     <div
-      className={cn("overflow-hidden", compact ? "p-3 mb-2" : "p-4", pageCardClass)}
+      className={cn("relative overflow-hidden", compact ? "p-3 mb-2" : "p-4", pageCardClass)}
       data-testid={`request-card-${b.id}`}
     >
+      {/* Calendar account indicator (top-right) */}
+      <div className={cn("absolute right-3 top-3", compact && "right-2.5 top-2.5")}>
+        <FieldCircle colorHex={color} title={calTitle} compact={false} />
+      </div>
       <div className={cn("flex items-start", compact ? "gap-2" : "gap-4", "flex-col sm:flex-row", "text-left")}>
         <div className={cn("min-w-0 flex-1 text-left", compact ? "space-y-1.5" : "space-y-2")}>
           <div className="flex items-center gap-2">
@@ -194,25 +198,22 @@ function RequestCard({
                 {calTitle}
               </span>
             </div>
-            <div className="ml-auto shrink-0">
-              <FieldCircle colorHex={color} title={calTitle} compact={compact} />
-            </div>
           </div>
           <div
             className={cn(
               "font-semibold text-left text-slate-900 dark:text-white",
-              compact ? "text-[13px] leading-snug sm:text-sm" : "text-xl"
+              compact ? "text-[10px] leading-snug sm:text-xs" : "text-xs leading-snug sm:text-base"
             )}
           >
             {fmtRequestDisplayDate(b.date)} · {fmtTimeShort(b.start_time)}–{fmtTimeShort(b.end_time)}
           </div>
           {canModerate && b.member_name && (
-            <div className={cn("text-left text-slate-500 dark:text-neutral-400", compact ? "text-xs leading-snug" : "text-sm")}>
+            <div className={cn("text-left text-slate-500 dark:text-neutral-400", "text-xs leading-snug")}>
               <button
                 type="button"
                 className={cn(
                   "font-medium text-left text-slate-800 md:hover:underline dark:text-zinc-200",
-                  compact && "text-xs"
+                  "text-xs"
                 )}
                 onClick={() =>
                   setProfileMember({
@@ -228,17 +229,17 @@ function RequestCard({
                 {b.member_name}
               </button>
               <span className="text-slate-400 dark:text-zinc-600"> · </span>
-              <span className="text-slate-700 tabular-nums dark:text-zinc-400">{b.member_email}</span>
+              <span className="text-xs text-slate-700 tabular-nums dark:text-zinc-400">{b.member_email}</span>
             </div>
           )}
           {notesText && (
             <div
               className={cn(
-                "border-slate-200 text-left text-slate-700 dark:border-white/20 dark:text-neutral-300",
-                compact ? "border-l pl-2 text-xs leading-snug" : "border-l-2 pl-3 text-sm"
+                "text-left text-slate-600 dark:text-neutral-400",
+                compact ? "text-xs leading-snug" : "text-xs leading-snug"
               )}
             >
-              {notesText}
+              <span className="font-medium">Notes:</span> <span>{notesText}</span>
             </div>
           )}
           {b.approval_message && (
