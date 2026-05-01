@@ -70,7 +70,8 @@ export default function BookingForm({
   const [end, setEnd] = useState(defaultEnd || "11:00");
   const [notes, setNotes] = useState("");
   const [memberId, setMemberId] = useState("");
-  const [recurring, setRecurring] = useState(false);
+  const [recurFreq, setRecurFreq] = useState("none"); // none | daily | weekly | monthly | yearly
+  const [recurUntil, setRecurUntil] = useState("");
   // Admins only create manual bookings (no request submission).
   const [mode, setMode] = useState(isAdmin || canManualBook ? "manual" : "request");
   const [err, setErr] = useState("");
@@ -93,7 +94,8 @@ export default function BookingForm({
       setEnd(normTime(editingBooking.end_time));
       setNotes(editingBooking.notes ?? "");
       setMemberId("");
-      setRecurring(false);
+      setRecurFreq("none");
+      setRecurUntil("");
       setErr("");
       return;
     }
@@ -103,7 +105,8 @@ export default function BookingForm({
     setEnd(defaultEnd || "11:00");
     setNotes("");
     setMemberId("");
-    setRecurring(false);
+    setRecurFreq("none");
+    setRecurUntil("");
     setErr("");
     setMode(isAdmin || canManualBook ? "manual" : "request");
   }, [open, editMode, editingBooking, defaultDate, defaultStart, defaultEnd, calendars, canManualBook, isAdmin]);
@@ -115,6 +118,44 @@ export default function BookingForm({
     const m = String(d.getMonth() + 1).padStart(2, "0");
     const dd = String(d.getDate()).padStart(2, "0");
     return `${y}-${m}-${dd}`;
+  };
+
+  const daysInMonth = (y, m1to12) => new Date(y, m1to12, 0).getDate();
+
+  const addMonths = (ymdStr, months) => {
+    const d = new Date(`${ymdStr}T00:00:00`);
+    const day = d.getDate();
+    const target = new Date(d.getFullYear(), d.getMonth() + months, 1);
+    const dim = daysInMonth(target.getFullYear(), target.getMonth() + 1);
+    target.setDate(Math.min(day, dim));
+    const y = target.getFullYear();
+    const m = String(target.getMonth() + 1).padStart(2, "0");
+    const dd = String(target.getDate()).padStart(2, "0");
+    return `${y}-${m}-${dd}`;
+  };
+
+  const addYears = (ymdStr, years) => addMonths(ymdStr, years * 12);
+
+  const buildRecurrenceDates = () => {
+    if (!date) return [];
+    if (!recurFreq || recurFreq === "none") return [date];
+    if (!recurUntil) return [date];
+    if (recurUntil < date) return [date];
+
+    const dates = [];
+    let cur = date;
+    const max = 366 * 5; // safety cap
+    for (let i = 0; i < max; i++) {
+      dates.push(cur);
+      if (cur === recurUntil) break;
+      if (recurFreq === "daily") cur = addDays(cur, 1);
+      else if (recurFreq === "weekly") cur = addDays(cur, 7);
+      else if (recurFreq === "monthly") cur = addMonths(cur, 1);
+      else if (recurFreq === "yearly") cur = addYears(cur, 1);
+      else break;
+      if (cur > recurUntil) break;
+    }
+    return dates;
   };
 
   const handleDeleteBooking = async () => {
@@ -153,7 +194,7 @@ export default function BookingForm({
           end_time: end,
           notes,
         };
-        const dates = recurring ? [0, 7, 14, 21].map((delta) => addDays(date, delta)) : [date];
+        const dates = buildRecurrenceDates();
         for (const d of dates) {
           const payload = { ...basePayload, date: d };
           if ((isAdmin || canManualBook) && mode === "manual") {
@@ -291,7 +332,7 @@ export default function BookingForm({
         </Popover>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-2 gap-3">
         <div className="min-w-0 overflow-hidden">
           <label className="label-tech block mb-1">Start</label>
           <Input
@@ -317,16 +358,76 @@ export default function BookingForm({
       </div>
 
       {!editMode && (
-        <label className="flex select-none items-center gap-2 text-sm text-slate-700 dark:text-zinc-300">
-          <input
-            type="checkbox"
-            className="h-4 w-4"
-            checked={recurring}
-            onChange={(e) => setRecurring(e.target.checked)}
-            data-testid="booking-recurring-checkbox"
-          />
-          Recurring (weekly, 4 weeks)
-        </label>
+        <div className="space-y-2" data-testid="booking-recurring-section">
+          <div className="label-tech">RECURRING</div>
+          <select
+            value={recurFreq}
+            onChange={(e) => {
+              const v = e.target.value;
+              setRecurFreq(v);
+              if (v === "none") setRecurUntil("");
+              else if (!recurUntil || recurUntil < date) setRecurUntil(date);
+            }}
+            className={fieldClass}
+            data-testid="booking-recurring-frequency"
+          >
+            <option value="none">Never</option>
+            <option value="daily">Every day</option>
+            <option value="monthly">Every month</option>
+            <option value="weekly">Every week</option>
+            <option value="yearly">Every year</option>
+          </select>
+
+          {recurFreq !== "none" && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  data-testid="booking-recurring-until-button"
+                  className={cn(
+                    "flex w-full h-10 items-center justify-between px-3 text-sm",
+                    "border border-gray-200/95 dark:border-white/20 bg-white dark:bg-zinc-900/50",
+                    "text-slate-900 dark:text-white transition-colors hover:bg-slate-50/80 dark:hover:bg-zinc-800/50",
+                    "focus:outline-none focus:ring-1 focus:ring-slate-400/30 dark:focus:ring-white/20",
+                    r7
+                  )}
+                >
+                  <span className={recurUntil ? "text-slate-900 dark:text-white" : "text-slate-400 dark:text-neutral-500"}>
+                    {recurUntil
+                      ? new Date(recurUntil + "T00:00:00").toLocaleDateString(undefined, {
+                          weekday: "short",
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })
+                      : "Select end date"}
+                  </span>
+                  <CalendarIcon className="h-4 w-4 text-slate-500 dark:text-neutral-400" strokeWidth={1.5} />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-auto rounded-[7px] border border-gray-200/95 bg-white p-0 text-slate-900 shadow-md dark:border-white/20 dark:bg-zinc-900 dark:text-white"
+                sideOffset={4}
+                align="start"
+              >
+                <CalendarPicker
+                  mode="single"
+                  selected={recurUntil ? new Date(recurUntil + "T00:00:00") : undefined}
+                  onSelect={(d) => {
+                    if (!d) return;
+                    const y = d.getFullYear();
+                    const m = String(d.getMonth() + 1).padStart(2, "0");
+                    const dd = String(d.getDate()).padStart(2, "0");
+                    const next = `${y}-${m}-${dd}`;
+                    setRecurUntil(next);
+                  }}
+                  initialFocus
+                  className="text-slate-900 dark:text-white"
+                />
+              </PopoverContent>
+            </Popover>
+          )}
+        </div>
       )}
 
       <div>
