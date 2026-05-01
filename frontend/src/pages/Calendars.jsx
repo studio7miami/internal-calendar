@@ -4,11 +4,11 @@ import { api, formatApiError } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Switch } from "../components/ui/switch";
-import { Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import ColorWheel from "../components/app/ColorWheel";
 import { pageTitleClass, pageCardClass, pageInputClass, pageBtnPrimaryClass, pageBtnOutlineClass } from "../lib/pageTheme";
 import { cn } from "@/lib/utils";
-import { weekRowsFromSlots, slotsFromWeekRows } from "../lib/availability";
+import { normHm, weekRowsFromSlots, slotsFromWeekRows } from "../lib/availability";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +16,75 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+
+function hmToMinutes(hm) {
+  const s = normHm(hm);
+  const [h, m] = s.split(":").map((x) => Number(x));
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return 0;
+  return Math.max(0, Math.min(24 * 60 - 1, h * 60 + m));
+}
+
+function minutesToHm(totalMinutes) {
+  const t = ((totalMinutes % (24 * 60)) + 24 * 60) % (24 * 60);
+  const hh = Math.floor(t / 60);
+  const mm = t % 60;
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
+function hmAddMinutes(hm, delta) {
+  return minutesToHm(hmToMinutes(hm) + delta);
+}
+
+function formatHm12(hm) {
+  const t = hmToMinutes(hm);
+  if (t === 0) return "12:00 am";
+  const h24 = Math.floor(t / 60);
+  const m = t % 60;
+  const isAm = h24 < 12;
+  let h12 = h24 % 12;
+  if (h12 === 0) h12 = 12;
+  const mm = String(m).padStart(2, "0");
+  return `${h12}:${mm} ${isAm ? "am" : "pm"}`;
+}
+
+function ScheduleTimeStepper({ value, disabled, onChange, label }) {
+  const step = 15;
+  return (
+    <div
+      className={cn(
+        "flex h-9 items-stretch overflow-hidden rounded-[7px] border border-gray-200/95 bg-white text-slate-900 shadow-sm dark:border-white/20 dark:bg-zinc-900/50 dark:text-white",
+        disabled && "opacity-50"
+      )}
+      aria-label={label}
+    >
+      <div className="flex min-w-[6.75rem] flex-1 flex-col justify-center px-2">
+        <div className="text-[11px] font-medium tabular-nums leading-none">{formatHm12(value)}</div>
+        <div className="mt-0.5 text-[9px] uppercase tracking-wide text-slate-400 dark:text-zinc-500">24h {normHm(value)}</div>
+      </div>
+      <div className="flex w-7 flex-col border-l border-gray-200/95 dark:border-white/15">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => onChange(hmAddMinutes(value, step))}
+          className="flex flex-1 items-center justify-center hover:bg-slate-900/5 disabled:cursor-not-allowed dark:hover:bg-white/[0.06]"
+          aria-label="Increase time"
+        >
+          <ChevronUp className="h-3.5 w-3.5" strokeWidth={1.75} />
+        </button>
+        <div className="h-px bg-gray-200/95 dark:bg-white/10" />
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => onChange(hmAddMinutes(value, -step))}
+          className="flex flex-1 items-center justify-center hover:bg-slate-900/5 disabled:cursor-not-allowed dark:hover:bg-white/[0.06]"
+          aria-label="Decrease time"
+        >
+          <ChevronDown className="h-3.5 w-3.5" strokeWidth={1.75} />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function CalendarsAdmin({ embedded = false }) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -507,30 +576,28 @@ export default function CalendarsAdmin({ embedded = false }) {
                         />
                         {row.label}
                       </label>
-                      <Input
-                        type="time"
+                      <ScheduleTimeStepper
                         disabled={!row.enabled}
                         value={row.start}
-                        onChange={(e) =>
+                        label={`${row.label} start time`}
+                        onChange={(next) =>
                           setWeekRowsState((prev) => {
                             const base = prev || weekRowsFromSlots(c.availability_weekly);
-                            return base.map((r) => (r.weekday === row.weekday ? { ...r, start: e.target.value } : r));
+                            return base.map((r) => (r.weekday === row.weekday ? { ...r, start: next } : r));
                           })
                         }
-                        className={cn(pageInputClass, "h-9 w-[7.5rem] text-xs", !row.enabled && "opacity-50")}
                       />
                       <span className="text-[10px] text-slate-400">to</span>
-                      <Input
-                        type="time"
+                      <ScheduleTimeStepper
                         disabled={!row.enabled}
                         value={row.end}
-                        onChange={(e) =>
+                        label={`${row.label} end time`}
+                        onChange={(next) =>
                           setWeekRowsState((prev) => {
                             const base = prev || weekRowsFromSlots(c.availability_weekly);
-                            return base.map((r) => (r.weekday === row.weekday ? { ...r, end: e.target.value } : r));
+                            return base.map((r) => (r.weekday === row.weekday ? { ...r, end: next } : r));
                           })
                         }
-                        className={cn(pageInputClass, "h-9 w-[7.5rem] text-xs", !row.enabled && "opacity-50")}
                       />
                     </div>
                   ))}
