@@ -125,23 +125,25 @@ def build_invite_email_html(*, invite_link: str, org_name: str) -> str:
     <meta name="color-scheme" content="light dark" />
     <meta name="supported-color-schemes" content="light dark" />
     <style>
-      .s7-logo-dark {{
+      /* Default to the inverted (dark) logo for maximum client compatibility (Gmail mobile ignores prefers-color-scheme). */
+      .s7-logo-light {{
         display: none !important;
         mso-hide: all !important;
+      }}
+      .s7-logo-dark {{
+        display: block !important;
       }}
       .s7-footer {{
         color: #161616 !important;
       }}
-      @media (prefers-color-scheme: dark) {{
+      /* If a client supports system theme detection, swap to the normal logo in light mode. */
+      @media (prefers-color-scheme: light) {{
         .s7-logo-light {{
-          display: none !important;
-          mso-hide: all !important;
-        }}
-        .s7-logo-dark {{
           display: block !important;
         }}
-        .s7-footer {{
-          color: {fg} !important;
+        .s7-logo-dark {{
+          display: none !important;
+          mso-hide: all !important;
         }}
       }}
 
@@ -261,7 +263,7 @@ def _text_body(invite_link: str, org_name: str) -> str:
         "Welcome.\n\n"
         f"You've been added to the {org_name} team calendar.\n"
         "This is where you'll see availability, request time in\n"
-        "the space, and stay connected with your bookings here.\n\n"
+        "the space, and stay connected with your bookings.\n\n"
         "Tap below to set up your account (open this link):\n"
         f"{invite_link}\n\n"
         "This link is valid for 7 days and can only be used once.\n"
