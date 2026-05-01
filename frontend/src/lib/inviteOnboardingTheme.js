@@ -13,7 +13,7 @@ export const invitePageShellClass =
 export const inviteCardClass = "w-full max-w-md";
 
 export const inviteEyebrowClass = "label-tech";
-/** Same visual as form field labels (Email, Full name, …). */ 
+/** Same visual as form field labels (Email, Full name, …). */
 export const inviteTitleClass = "label-tech block mb-1";
 
 export const inviteLoadingTextClass = "mt-6 text-sm text-slate-500 dark:text-zinc-500";
