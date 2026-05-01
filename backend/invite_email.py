@@ -156,13 +156,16 @@ def build_invite_email_html(*, invite_link: str, org_name: str) -> str:
                   Tap below to set up your account.
                 </div>
 
-                <div style="text-align:center;margin:0 0 22px;">
-                  <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto;">
+                <div style="text-align:left;margin:0 0 22px;">
+                  <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="left" style="margin:0;">
                     <tr>
-                      <td align="center" style="border:1px solid {fg};border-radius:7px;background:{bg};">
+                      <td
+                        align="left"
+                        style="border:1px solid rgba(247,247,247,0.07);border-radius:7px;background-color:#F7F7F7;background:rgba(247,247,247,0.07);"
+                      >
                         <a
                           href="{href}"
-                          style="display:inline-block;padding:12px 18px;background:{bg};color:{fg};text-decoration:none;border-radius:7px;font-size:14px;font-weight:700;letter-spacing:0.2px;"
+                          style="display:inline-block;padding:12px 18px;background-color:#F7F7F7;background:rgba(247,247,247,0.07);color:#161616;text-decoration:none;border-radius:7px;font-size:14px;font-weight:700;letter-spacing:0.2px;"
                         >
                           Accept invite →
                         </a>
