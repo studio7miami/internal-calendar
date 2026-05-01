@@ -124,7 +124,7 @@ function StatusBadge({ status, compact }) {
     <span
       className={cn(
         "label-tech border rounded-[7px]",
-        compact ? "px-1.5 py-0.5 text-[10px] uppercase tracking-wide" : "px-2 py-0.5",
+        compact ? "px-1.5 py-0.5 text-xs uppercase tracking-wide" : "px-2 py-0.5",
         map[status] || map.pending
       )}
     >
@@ -192,7 +192,7 @@ function RequestCard({
               <span
                 className={cn(
                   "label-tech min-w-0 flex-1 truncate text-left text-slate-600 dark:text-neutral-400",
-                  compact && "text-[10px] uppercase tracking-wide"
+                  compact && "text-xs uppercase tracking-wide"
                 )}
               >
                 {calTitle}
