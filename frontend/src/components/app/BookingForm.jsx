@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "../ui/drawer";
 import { Button } from "../ui/button";
@@ -108,6 +108,7 @@ export default function BookingForm({
   const [recurFreq, setRecurFreq] = useState("none"); // none | daily | weekly | monthly | yearly
   const [recurUntil, setRecurUntil] = useState("");
   const [recurUntilOpen, setRecurUntilOpen] = useState(false);
+  const recurUntilAnchorRef = useRef(null);
   // Admins only create manual bookings (no request submission).
   const [mode, setMode] = useState(isAdmin || canManualBook ? "manual" : "request");
   const [err, setErr] = useState("");
@@ -148,6 +149,16 @@ export default function BookingForm({
     setErr("");
     setMode(isAdmin || canManualBook ? "manual" : "request");
   }, [open, editMode, editingBooking, defaultDate, defaultStart, defaultEnd, calendars, canManualBook, isAdmin]);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    if (!recurUntilOpen) return;
+    // In the mobile drawer, ensure the inline calendar scrolls into view.
+    const t = setTimeout(() => {
+      recurUntilAnchorRef.current?.scrollIntoView?.({ block: "nearest" });
+    }, 0);
+    return () => clearTimeout(t);
+  }, [isMobile, recurUntilOpen]);
 
   const addDays = (ymdStr, days) => {
     const d = new Date(`${ymdStr}T00:00:00`);
@@ -355,13 +366,24 @@ export default function BookingForm({
             </button>
           </PopoverTrigger>
           <PopoverContent
-            className="w-auto rounded-[7px] border border-gray-200/95 bg-white p-0 text-slate-900 shadow-md dark:border-white/20 dark:bg-zinc-900 dark:text-white"
+            className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] rounded-[7px] border border-gray-200/95 bg-white p-0 text-slate-900 shadow-md dark:border-white/20 dark:bg-zinc-900 dark:text-white"
             sideOffset={4}
             align="start"
           >
             <CalendarPicker
               mode="single"
               selected={date ? new Date(date + "T00:00:00") : undefined}
+              classNames={{
+                months: "w-full",
+                month: "w-full space-y-4",
+                table: "w-full border-collapse space-y-1",
+                head_row: "flex w-full",
+                head_cell: "flex-1 text-center text-muted-foreground rounded-md font-normal text-[0.8rem]",
+                row: "flex w-full mt-2",
+                cell:
+                  "relative flex-1 p-0 text-center text-sm focus-within:relative focus-within:z-20 [&:has([aria-selected])]:bg-accent [&:has([aria-selected].day-outside)]:bg-accent/50 [&:has([aria-selected].day-range-end)]:rounded-r-md [&:has([aria-selected])]:rounded-md",
+                day: "h-9 w-full p-0 font-normal aria-selected:opacity-100",
+              }}
               onSelect={(d) => {
                 if (!d) return;
                 const y = d.getFullYear();
@@ -370,7 +392,7 @@ export default function BookingForm({
                 setDate(`${y}-${m}-${dd}`);
               }}
               initialFocus
-              className="text-slate-900 dark:text-white"
+              className="w-full text-slate-900 dark:text-white"
             />
           </PopoverContent>
         </Popover>
@@ -436,63 +458,52 @@ export default function BookingForm({
           {recurFreq !== "none" && (
             <div className="space-y-2">
               <div className="label-tech">END DATE</div>
-              <button
-                type="button"
-                data-testid="booking-recurring-until-button"
-                onClick={() => setRecurUntilOpen((v) => !v)}
-                className={cn(
-                  "flex w-full h-10 items-center justify-between px-3 text-sm",
-                  "border border-gray-200/95 dark:border-white/20 bg-white dark:bg-zinc-900/50",
-                  "text-slate-900 dark:text-white transition-colors hover:bg-slate-50/80 dark:hover:bg-zinc-800/50",
-                  "focus:outline-none focus:ring-1 focus:ring-slate-400/30 dark:focus:ring-white/20",
-                  r7
-                )}
-              >
-                <span className={recurUntil ? "text-slate-900 dark:text-white" : "text-slate-400 dark:text-neutral-500"}>
-                  {recurUntil
-                    ? new Date(recurUntil + "T00:00:00").toLocaleDateString(undefined, {
-                        weekday: "short",
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      })
-                    : "Select end date"}
-                </span>
-                <CalendarIcon className="h-4 w-4 text-slate-500 dark:text-neutral-400" strokeWidth={1.5} />
-              </button>
+              {isMobile ? (
+                <>
+                  <button
+                    type="button"
+                    data-testid="booking-recurring-until-button"
+                    onClick={() => setRecurUntilOpen((v) => !v)}
+                    className={cn(
+                      "flex w-full h-10 items-center justify-between px-3 text-sm",
+                      "border border-gray-200/95 dark:border-white/20 bg-white dark:bg-zinc-900/50",
+                      "text-slate-900 dark:text-white transition-colors hover:bg-slate-50/80 dark:hover:bg-zinc-800/50",
+                      "focus:outline-none focus:ring-1 focus:ring-slate-400/30 dark:focus:ring-white/20",
+                      r7
+                    )}
+                  >
+                    <span className={recurUntil ? "text-slate-900 dark:text-white" : "text-slate-400 dark:text-neutral-500"}>
+                      {recurUntil
+                        ? new Date(recurUntil + "T00:00:00").toLocaleDateString(undefined, {
+                            weekday: "short",
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })
+                        : "Select end date"}
+                    </span>
+                    <CalendarIcon className="h-4 w-4 text-slate-500 dark:text-neutral-400" strokeWidth={1.5} />
+                  </button>
 
-              {recurUntilOpen &&
-                (isMobile ? (
-                  <div className="w-full overflow-hidden rounded-[7px] border border-gray-200/95 bg-white p-0 text-slate-900 shadow-md dark:border-white/20 dark:bg-zinc-900 dark:text-white">
-                    <CalendarPicker
-                      mode="single"
-                      selected={recurUntil ? new Date(recurUntil + "T00:00:00") : undefined}
-                      onSelect={(d) => {
-                        if (!d) return;
-                        const y = d.getFullYear();
-                        const m = String(d.getMonth() + 1).padStart(2, "0");
-                        const dd = String(d.getDate()).padStart(2, "0");
-                        const next = `${y}-${m}-${dd}`;
-                        setRecurUntil(next);
-                        setRecurUntilOpen(false);
-                      }}
-                      initialFocus
-                      className="text-slate-900 dark:text-white"
-                    />
-                  </div>
-                ) : (
-                  <Popover open={recurUntilOpen} onOpenChange={setRecurUntilOpen}>
-                    <PopoverTrigger asChild>
-                      <span />
-                    </PopoverTrigger>
-                    <PopoverContent
-                      className="z-[60] w-auto rounded-[7px] border border-gray-200/95 bg-white p-0 text-slate-900 shadow-md dark:border-white/20 dark:bg-zinc-900 dark:text-white"
-                      sideOffset={4}
-                      align="start"
+                  {recurUntilOpen && (
+                    <div
+                      ref={recurUntilAnchorRef}
+                      className="w-full overflow-hidden rounded-[7px] border border-gray-200/95 bg-white p-0 text-slate-900 shadow-md dark:border-white/20 dark:bg-zinc-900 dark:text-white"
                     >
                       <CalendarPicker
                         mode="single"
                         selected={recurUntil ? new Date(recurUntil + "T00:00:00") : undefined}
+                        classNames={{
+                          months: "w-full",
+                          month: "w-full space-y-4",
+                          table: "w-full border-collapse space-y-1",
+                          head_row: "flex w-full",
+                          head_cell: "flex-1 text-center text-muted-foreground rounded-md font-normal text-[0.8rem]",
+                          row: "flex w-full mt-2",
+                          cell:
+                            "relative flex-1 p-0 text-center text-sm focus-within:relative focus-within:z-20 [&:has([aria-selected])]:bg-accent [&:has([aria-selected].day-outside)]:bg-accent/50 [&:has([aria-selected].day-range-end)]:rounded-r-md [&:has([aria-selected])]:rounded-md",
+                          day: "h-9 w-full p-0 font-normal aria-selected:opacity-100",
+                        }}
                         onSelect={(d) => {
                           if (!d) return;
                           const y = d.getFullYear();
@@ -505,9 +516,70 @@ export default function BookingForm({
                         initialFocus
                         className="text-slate-900 dark:text-white"
                       />
-                    </PopoverContent>
-                  </Popover>
-                ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <Popover open={recurUntilOpen} onOpenChange={setRecurUntilOpen} modal={false}>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      data-testid="booking-recurring-until-button"
+                      className={cn(
+                        "flex w-full h-10 items-center justify-between px-3 text-sm",
+                        "border border-gray-200/95 dark:border-white/20 bg-white dark:bg-zinc-900/50",
+                        "text-slate-900 dark:text-white transition-colors hover:bg-slate-50/80 dark:hover:bg-zinc-800/50",
+                        "focus:outline-none focus:ring-1 focus:ring-slate-400/30 dark:focus:ring-white/20",
+                        r7
+                      )}
+                    >
+                      <span className={recurUntil ? "text-slate-900 dark:text-white" : "text-slate-400 dark:text-neutral-500"}>
+                        {recurUntil
+                          ? new Date(recurUntil + "T00:00:00").toLocaleDateString(undefined, {
+                              weekday: "short",
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            })
+                          : "Select end date"}
+                      </span>
+                      <CalendarIcon className="h-4 w-4 text-slate-500 dark:text-neutral-400" strokeWidth={1.5} />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    className="z-[60] w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] rounded-[7px] border border-gray-200/95 bg-white p-0 text-slate-900 shadow-md dark:border-white/20 dark:bg-zinc-900 dark:text-white"
+                    sideOffset={4}
+                    align="start"
+                  >
+                    <CalendarPicker
+                      mode="single"
+                      selected={recurUntil ? new Date(recurUntil + "T00:00:00") : undefined}
+                      classNames={{
+                        months: "w-full",
+                        month: "w-full space-y-4",
+                        table: "w-full border-collapse space-y-1",
+                        head_row: "flex w-full",
+                        head_cell: "flex-1 text-center text-muted-foreground rounded-md font-normal text-[0.8rem]",
+                        row: "flex w-full mt-2",
+                        cell:
+                          "relative flex-1 p-0 text-center text-sm focus-within:relative focus-within:z-20 [&:has([aria-selected])]:bg-accent [&:has([aria-selected].day-outside)]:bg-accent/50 [&:has([aria-selected].day-range-end)]:rounded-r-md [&:has([aria-selected])]:rounded-md",
+                        day: "h-9 w-full p-0 font-normal aria-selected:opacity-100",
+                      }}
+                      onSelect={(d) => {
+                        if (!d) return;
+                        const y = d.getFullYear();
+                        const m = String(d.getMonth() + 1).padStart(2, "0");
+                        const dd = String(d.getDate()).padStart(2, "0");
+                        const next = `${y}-${m}-${dd}`;
+                        setRecurUntil(next);
+                        setRecurUntilOpen(false);
+                      }}
+                      initialFocus
+                      className="w-full text-slate-900 dark:text-white"
+                    />
+                  </PopoverContent>
+                </Popover>
+              )}
             </div>
           )}
         </div>
@@ -596,13 +668,13 @@ export default function BookingForm({
   if (isMobile) {
     return (
       <Drawer open={open} onOpenChange={(v) => !v && onClose()}>
-        <DrawerContent className={cn("p-0", calSurface)}>
+        <DrawerContent className={cn("p-0 max-h-[calc(100dvh-3.5rem)] overflow-hidden", calSurface)}>
           <DrawerHeader>
             <DrawerTitle className="text-left font-['Manrope',system-ui,sans-serif] text-2xl font-semibold text-slate-900 dark:text-white">
               {formTitle}
             </DrawerTitle>
           </DrawerHeader>
-          <div className="px-4 pb-6">{Form}</div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">{Form}</div>
         </DrawerContent>
       </Drawer>
     );
