@@ -3,17 +3,18 @@
  * Light theme aligned with Calendar / Members (`pageTheme` cards, #FCFCFC, slate text).
  */
 
-import { pageBtnPrimaryClass, pageInputClass, pageTitleClass } from "./pageTheme";
+import { pageBtnOutlineClass, pageBtnPrimaryClass, pageInputClass } from "./pageTheme";
 
 /** Full-page shell — same family as main app content (Calendar area) */
 export const invitePageShellClass =
-  "min-h-screen flex items-center justify-center p-6 bg-[#FCFCFC] text-slate-900 dark:bg-[#0b0b0c] dark:text-zinc-200";
+  "h-dvh min-h-dvh overflow-hidden flex items-center justify-center p-4 sm:p-6 bg-[#FCFCFC] text-slate-900 dark:bg-[#0b0b0c] dark:text-zinc-200";
 
 /** Constrains width of invite form + headings */
 export const inviteCardClass = "w-full max-w-md";
 
 export const inviteEyebrowClass = "label-tech";
-export const inviteTitleClass = pageTitleClass;
+/** Same visual as form field labels (Email, Full name, …). */ 
+export const inviteTitleClass = "label-tech block mb-1";
 
 export const inviteLoadingTextClass = "mt-6 text-sm text-slate-500 dark:text-zinc-500";
 
@@ -29,6 +30,9 @@ export const inviteInputDisabledClass = `${pageInputClass} h-11 min-h-11 text-ba
 
 /** Primary CTA — same as Calendar / Members actions */
 export const inviteSubmitButtonClass = `w-full h-11 min-h-11 box-border ${pageBtnPrimaryClass}`;
+
+/** Secondary actions (step back); matches card borders + toolbar outline affordance */
+export const inviteBackButtonClass = `h-11 min-h-11 box-border ${pageBtnOutlineClass}`;
 
 /**
  * Magic link callout (Members + preview). Card-like, light — matches `pageCardClass` feel.
