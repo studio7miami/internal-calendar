@@ -175,6 +175,8 @@ function RequestCard({
     if (/^studio\s+7\s+miami$/i.test(t)) return "";
     // Cleanup leftover empty parens / punctuation after removals.
     t = t.replace(/[（(]\s*[)）]/g, " ").trim();
+    // Remove any leading/trailing separators left behind by venue stripping.
+    t = t.replace(/^\s*(?:@|·|\||—|-|:|,|;)\s*/g, "").trim();
     t = t.replace(/\s*[:·\-–—]\s*$/g, "").trim();
     t = t.replace(/\s{2,}/g, " ").trim();
     return t;
