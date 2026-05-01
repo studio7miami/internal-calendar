@@ -150,16 +150,38 @@ function RequestCard({
   const color = cal?.color || "#64748b";
   const needsPay = Boolean(b?.payment_required && b?.payment_status !== "paid" && b?.stripe_checkout_url && b?.status === "approved");
   const paid = Boolean(b?.payment_status === "paid");
+  const isPhotobooth = /photobooth/i.test(String(cal?.name || ""));
+
+  const stripVenueFromText = (s) => {
+    if (!s) return "";
+    let t = String(s).trim();
+    t = t.replace(/^Google Calendar ·\s*/i, "").trim();
+    t = t.replace(/^studio\s+7\s+miami\s*[·\-–—@|:]\s*/i, "").trim();
+    t = t.replace(/\s*\(\s*studio\s+7\s+miami\s*\)/gi, "").trim();
+    t = t.replace(/\s*\(\s*studio\s+7\s*\)/gi, "").trim();
+    t = t.replace(/\s+at\s+studio\s+7\s+miami\b/gi, "").trim();
+    t = t.replace(/\s*[@·,;|]\s*studio\s+7\s+miami\b/gi, "").trim();
+    let prev;
+    do {
+      prev = t;
+      t = t.replace(/\s*(?:@|·|\||—|-)\s*studio\s+7\s+miami\s*$/i, "").trim();
+    } while (t !== prev);
+    if (/^studio\s+7\s+miami$/i.test(t)) return "";
+    t = t.replace(/\s{2,}/g, " ").trim();
+    return t;
+  };
+
+  const notesText = isPhotobooth ? stripVenueFromText(b.notes) : b.notes;
 
   return (
     <div
       className={cn("overflow-hidden", compact ? "p-3 mb-2" : "p-4", pageCardClass)}
       data-testid={`request-card-${b.id}`}
     >
-      <div className={cn("flex flex-wrap items-start", compact ? "gap-2" : "gap-4")}>
+      <div className={cn("flex items-start", compact ? "gap-2" : "gap-4", "flex-col sm:flex-row")}>
         <div className={cn("min-w-0 flex-1", compact ? "space-y-1.5" : "space-y-2")}>
           <div className="flex items-center justify-between gap-2">
-            <div className={cn("flex min-w-0 flex-wrap items-center", compact ? "gap-1.5" : "gap-2")}>
+            <div className={cn("flex min-w-0 flex-nowrap items-center", compact ? "gap-1.5" : "gap-2")}>
               <StatusBadge status={b.status} compact={compact} />
               <span
                 className={cn(
@@ -175,7 +197,7 @@ function RequestCard({
           <div
             className={cn(
               "font-semibold text-slate-900 dark:text-white",
-              compact ? "text-sm leading-snug" : "text-xl"
+              compact ? "text-[13px] leading-snug sm:text-sm" : "text-xl"
             )}
           >
             {fmtRequestDisplayDate(b.date)} · {fmtTimeShort(b.start_time)}–{fmtTimeShort(b.end_time)}
@@ -205,14 +227,14 @@ function RequestCard({
               <span className="text-slate-700 tabular-nums dark:text-zinc-400">{b.member_email}</span>
             </div>
           )}
-          {b.notes && (
+          {notesText && (
             <div
               className={cn(
                 "border-slate-200 text-slate-700 dark:border-white/20 dark:text-neutral-300",
                 compact ? "border-l pl-2 text-xs leading-snug" : "border-l-2 pl-3 text-sm"
               )}
             >
-              {b.notes}
+              {notesText}
             </div>
           )}
           {b.approval_message && (
