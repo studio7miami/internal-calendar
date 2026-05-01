@@ -63,7 +63,7 @@ function fmtTimeLabel(hhmm) {
 const TIME_OPTIONS = (() => {
   const out = [];
   for (let h = 0; h < 24; h++) {
-    for (let m = 0; m < 60; m += 15) {
+    for (let m = 0; m < 60; m += 30) {
       out.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
     }
   }
@@ -429,8 +429,9 @@ export default function BookingForm({
             </SelectContent>
           </Select>
 
-          {recurFreq !== "none" &&
-            (
+          {recurFreq !== "none" && (
+            <div className="space-y-2">
+              <div className="label-tech">END DATE</div>
               <Popover modal={false}>
                 <PopoverTrigger asChild>
                   <button
@@ -458,7 +459,7 @@ export default function BookingForm({
                   </button>
                 </PopoverTrigger>
                 <PopoverContent
-                  className="w-auto rounded-[7px] border border-gray-200/95 bg-white p-0 text-slate-900 shadow-md dark:border-white/20 dark:bg-zinc-900 dark:text-white"
+                  className="z-[60] w-auto rounded-[7px] border border-gray-200/95 bg-white p-0 text-slate-900 shadow-md dark:border-white/20 dark:bg-zinc-900 dark:text-white"
                   sideOffset={4}
                   align="start"
                 >
@@ -478,7 +479,8 @@ export default function BookingForm({
                   />
                 </PopoverContent>
               </Popover>
-            )}
+            </div>
+          )}
         </div>
       )}
 
