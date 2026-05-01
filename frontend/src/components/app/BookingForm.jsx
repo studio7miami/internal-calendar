@@ -332,7 +332,7 @@ export default function BookingForm({
         </Popover>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 min-[380px]:grid-cols-2">
         <div className="min-w-0 overflow-hidden">
           <label className="label-tech block mb-1">Start</label>
           <Input
