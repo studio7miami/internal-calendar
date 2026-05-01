@@ -1,12 +1,18 @@
 import React, { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "../ui/drawer";
-import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Calendar as CalendarPicker } from "../ui/calendar";
 import { Calendar as CalendarIcon } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 import { api, formatApiError } from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
 import { cn } from "@/lib/utils";
@@ -19,6 +25,14 @@ const calSurface =
 const fieldClass =
   `h-10 w-full px-3 text-sm text-slate-900 placeholder:text-slate-400 border border-gray-200/95 dark:border-white/20 bg-white dark:bg-zinc-900/50 dark:text-white dark:placeholder:text-neutral-500 ` +
   `${r7} focus:outline-none focus:ring-1 focus:ring-slate-400/30 dark:focus:ring-white/20`;
+
+const selectTriggerClass = cn(
+  fieldClass,
+  "flex items-center justify-between shadow-sm",
+  "focus:outline-none focus:ring-1 focus:ring-slate-400/30 dark:focus:ring-white/20"
+);
+
+const SELF_MEMBER_VALUE = "__self__";
 
 const chipToggle = (on) =>
   cn(
@@ -34,6 +48,27 @@ function normTime(t) {
   const s = String(t);
   return s.length >= 5 ? s.slice(0, 5) : s;
 }
+
+function fmtTimeLabel(hhmm) {
+  const s = normTime(hhmm);
+  const [hhRaw, mmRaw] = s.split(":");
+  const hh = Number(hhRaw);
+  const mm = Number(mmRaw);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return s;
+  const ampm = hh >= 12 ? "PM" : "AM";
+  const h12 = ((hh + 11) % 12) + 1;
+  return `${h12}:${String(mm).padStart(2, "0")} ${ampm}`;
+}
+
+const TIME_OPTIONS = (() => {
+  const out = [];
+  for (let h = 0; h < 24; h++) {
+    for (let m = 0; m < 60; m += 15) {
+      out.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
+    }
+  }
+  return out;
+})();
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = React.useState(
@@ -247,44 +282,50 @@ export default function BookingForm({
 
       <div>
         <label className="label-tech block mb-1">Calendar</label>
-        <select
-          value={calendarId}
-          onChange={(e) => setCalendarId(e.target.value)}
-          required
-          disabled={editMode}
-          data-testid="booking-calendar-select"
-          className={cn(fieldClass, editMode && "cursor-not-allowed opacity-70")}
-        >
-          {calendars.map((c) => (
-            <option key={c.id} value={c.id} className="text-slate-900 dark:bg-zinc-900">
-              {c.name}
-            </option>
-          ))}
-        </select>
+        <Select value={String(calendarId || "")} onValueChange={setCalendarId} disabled={editMode}>
+          <SelectTrigger
+            data-testid="booking-calendar-select"
+            className={cn(selectTriggerClass, editMode && "cursor-not-allowed opacity-70")}
+          >
+            <SelectValue placeholder="Select calendar" />
+          </SelectTrigger>
+          <SelectContent>
+            {calendars.map((c) => (
+              <SelectItem key={c.id} value={String(c.id)}>
+                {c.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {canManualBook && mode === "manual" && !editMode && (
         <div>
           <label className="label-tech block mb-1">Assign member</label>
-          <select
-            value={memberId}
-            onChange={(e) => setMemberId(e.target.value)}
-            data-testid="booking-member-select"
-            className={fieldClass}
+          <Select
+            value={memberId ? String(memberId) : SELF_MEMBER_VALUE}
+            onValueChange={(v) => setMemberId(v === SELF_MEMBER_VALUE ? "" : v)}
           >
-            <option value="">{user?.name || "Admin"} (self)</option>
-            {members.filter((m) => m.role === "member").map((m) => (
-              <option key={m.id} value={m.id} className="text-slate-900 dark:bg-zinc-900">
-                {m.name} · {m.email}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger data-testid="booking-member-select" className={selectTriggerClass}>
+              <SelectValue placeholder={`${user?.name || "Admin"} (self)`} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={SELF_MEMBER_VALUE}>{user?.name || "Admin"} (self)</SelectItem>
+              {members
+                .filter((m) => m.role === "member")
+                .map((m) => (
+                  <SelectItem key={m.id} value={String(m.id)}>
+                    {m.name} · {m.email}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
         </div>
       )}
 
       <div>
         <label className="label-tech block mb-1">Date</label>
-        <Popover>
+        <Popover modal={false}>
           <PopoverTrigger asChild>
             <button
               type="button"
@@ -335,61 +376,62 @@ export default function BookingForm({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="min-w-0 overflow-hidden">
           <label className="label-tech block mb-1">Start</label>
-          <Input
-            type="time"
-            value={start}
-            onChange={(e) => setStart(e.target.value)}
-            required
-            data-testid="booking-start-input"
-            className={cn("min-w-0 shadow-sm", fieldClass, "md:text-sm")}
-          />
+          <Select value={String(normTime(start))} onValueChange={setStart}>
+            <SelectTrigger data-testid="booking-start-input" className={cn(selectTriggerClass, "md:text-sm")}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TIME_OPTIONS.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {fmtTimeLabel(t)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="min-w-0 overflow-hidden">
           <label className="label-tech block mb-1">End</label>
-          <Input
-            type="time"
-            value={end}
-            onChange={(e) => setEnd(e.target.value)}
-            required
-            data-testid="booking-end-input"
-            className={cn("min-w-0 shadow-sm", fieldClass, "md:text-sm")}
-          />
+          <Select value={String(normTime(end))} onValueChange={setEnd}>
+            <SelectTrigger data-testid="booking-end-input" className={cn(selectTriggerClass, "md:text-sm")}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TIME_OPTIONS.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {fmtTimeLabel(t)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
       {!editMode && (
         <div className="space-y-2" data-testid="booking-recurring-section">
           <div className="label-tech">RECURRING</div>
-          <select
-            value={recurFreq}
-            onChange={(e) => {
-              const v = e.target.value;
+          <Select
+            value={String(recurFreq || "none")}
+            onValueChange={(v) => {
               setRecurFreq(v);
               if (v === "none") setRecurUntil("");
               else if (!recurUntil || recurUntil < date) setRecurUntil(date);
             }}
-            className={fieldClass}
-            data-testid="booking-recurring-frequency"
           >
-            <option value="none">Never</option>
-            <option value="daily">Every day</option>
-            <option value="monthly">Every month</option>
-            <option value="weekly">Every week</option>
-            <option value="yearly">Every year</option>
-          </select>
+            <SelectTrigger data-testid="booking-recurring-frequency" className={selectTriggerClass}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Never</SelectItem>
+              <SelectItem value="daily">Every day</SelectItem>
+              <SelectItem value="monthly">Every month</SelectItem>
+              <SelectItem value="weekly">Every week</SelectItem>
+              <SelectItem value="yearly">Every year</SelectItem>
+            </SelectContent>
+          </Select>
 
           {recurFreq !== "none" &&
-            (isMobile ? (
-              <Input
-                type="date"
-                value={recurUntil || ""}
-                min={date || undefined}
-                onChange={(e) => setRecurUntil(e.target.value)}
-                data-testid="booking-recurring-until-date"
-                className={fieldClass}
-              />
-            ) : (
-              <Popover>
+            (
+              <Popover modal={false}>
                 <PopoverTrigger asChild>
                   <button
                     type="button"
@@ -436,7 +478,7 @@ export default function BookingForm({
                   />
                 </PopoverContent>
               </Popover>
-            ))}
+            )}
         </div>
       )}
 
