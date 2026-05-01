@@ -501,7 +501,7 @@ export default function CalendarPage() {
     const todayKey = ymd(new Date());
 
     return (
-      <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col basis-0 -mx-1 px-1 sm:mx-0 sm:px-0">
+      <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col basis-0">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col basis-0 overflow-hidden rounded-[7px] bg-white/[0.15] dark:bg-white/[0.02]">
           <div className="grid min-w-0 shrink-0 grid-cols-7">
             {[
@@ -960,71 +960,75 @@ export default function CalendarPage() {
 
   return (
     <div
-      className="flex min-h-0 min-w-0 flex-1 flex-col basis-0 gap-4 overflow-hidden"
+      className="flex min-h-0 min-w-0 flex-1 flex-col basis-0 gap-4 overflow-hidden -mx-1 px-1 sm:mx-0 sm:px-0"
       data-testid="calendar-page"
     >
-      <div className="flex shrink-0 flex-wrap items-start gap-x-4 gap-y-2">
+      <div className="flex shrink-0 flex-col items-start gap-2 sm:flex-row sm:items-start sm:gap-4">
         <div className="min-w-0 flex-1">
           <div className="label-tech">Calendar</div>
           <h1 className={cn(pageTitleClass, "whitespace-nowrap overflow-hidden text-ellipsis")}>{title}</h1>
         </div>
-        <div className="no-scrollbar ml-auto flex h-9 max-w-full items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
-          <button
-            type="button"
-            onClick={() => setCursor(new Date())}
-            data-testid="today-button"
-            className={`min-h-8 box-border inline-flex items-center justify-center border border-white/30 bg-white/80 px-2.5 py-1.5 text-[11px] leading-none text-black shadow-[0_1px_4px_rgba(0,0,0,0.1)] backdrop-blur-md transition-colors dark:border-white/10 dark:bg-white/[0.06] dark:text-zinc-200 dark:shadow-[0_1px_3px_rgba(0,0,0,0.45)] ${glassBarHoverClass} rounded-[7px] sm:px-3 sm:text-xs`}
-          >
-            Today
-          </button>
-
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            data-testid="nav-prev-button"
-            className={`min-h-8 w-8 p-0 inline-flex items-center justify-center border border-white/30 bg-white/80 text-black shadow-[0_1px_4px_rgba(0,0,0,0.1)] backdrop-blur-md transition-colors dark:border-white/10 dark:bg-white/[0.06] dark:text-zinc-200 dark:shadow-[0_1px_3px_rgba(0,0,0,0.45)] ${glassBarHoverClass} rounded-[7px]`}
-          >
-            <ChevronLeft className="h-4 w-4" strokeWidth={1.5} />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => navigate(1)}
-            data-testid="nav-next-button"
-            className={`min-h-8 w-8 p-0 inline-flex items-center justify-center border border-white/30 bg-white/80 text-black shadow-[0_1px_4px_rgba(0,0,0,0.1)] backdrop-blur-md transition-colors dark:border-white/10 dark:bg-white/[0.06] dark:text-zinc-200 dark:shadow-[0_1px_3px_rgba(0,0,0,0.45)] ${glassBarHoverClass} rounded-[7px]`}
-          >
-            <ChevronRight className="h-4 w-4" strokeWidth={1.5} />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => openForm(ymd(cursor))}
-            data-testid="new-booking-button"
-            className={`min-h-8 box-border inline-flex items-center justify-center gap-1 border border-white/30 bg-white/80 px-2.5 py-1.5 text-[11px] leading-none text-black shadow-[0_1px_4px_rgba(0,0,0,0.1)] backdrop-blur-md transition-colors dark:border-white/10 dark:bg-white/[0.06] dark:text-zinc-200 dark:shadow-[0_1px_3px_rgba(0,0,0,0.45)] ${glassBarHoverClass} rounded-[7px] sm:gap-1.5 sm:px-3 sm:text-xs`}
-          >
-            <Plus className="w-4 h-4 shrink-0" strokeWidth={1.5} />
-            New
-          </button>
-
-          {isAdmin && (
+        <div className="no-scrollbar flex h-9 w-full max-w-full items-center overflow-x-auto pb-1 -mx-1 px-1 sm:ml-auto sm:w-auto">
+          <div className="flex items-center gap-1.5">
             <button
               type="button"
-              onClick={() => {
-                setAdminAllCursor(new Date(cursor));
-                setAdminAllOpen(true);
-              }}
-              title="All bookings by week, month, or year"
-              data-testid="admin-all-bookings-button"
-              className={cn(toolbarBtnClass, "px-2.5 sm:px-3")}
+              onClick={() => navigate(-1)}
+              data-testid="nav-prev-button"
+              className={`min-h-8 w-8 p-0 inline-flex items-center justify-center border border-white/30 bg-white/80 text-black shadow-[0_1px_4px_rgba(0,0,0,0.1)] backdrop-blur-md transition-colors dark:border-white/10 dark:bg-white/[0.06] dark:text-zinc-200 dark:shadow-[0_1px_3px_rgba(0,0,0,0.45)] ${glassBarHoverClass} rounded-[7px]`}
             >
-              View all
+              <ChevronLeft className="h-4 w-4" strokeWidth={1.5} />
             </button>
-          )}
+
+            <button
+              type="button"
+              onClick={() => setCursor(new Date())}
+              data-testid="today-button"
+              className={`min-h-8 box-border inline-flex items-center justify-center border border-white/30 bg-white/80 px-2.5 py-1.5 text-[11px] leading-none text-black shadow-[0_1px_4px_rgba(0,0,0,0.1)] backdrop-blur-md transition-colors dark:border-white/10 dark:bg-white/[0.06] dark:text-zinc-200 dark:shadow-[0_1px_3px_rgba(0,0,0,0.45)] ${glassBarHoverClass} rounded-[7px] sm:px-3 sm:text-xs`}
+            >
+              Today
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate(1)}
+              data-testid="nav-next-button"
+              className={`min-h-8 w-8 p-0 inline-flex items-center justify-center border border-white/30 bg-white/80 text-black shadow-[0_1px_4px_rgba(0,0,0,0.1)] backdrop-blur-md transition-colors dark:border-white/10 dark:bg-white/[0.06] dark:text-zinc-200 dark:shadow-[0_1px_3px_rgba(0,0,0,0.45)] ${glassBarHoverClass} rounded-[7px]`}
+            >
+              <ChevronRight className="h-4 w-4" strokeWidth={1.5} />
+            </button>
+          </div>
+
+          <div className="ml-auto flex items-center gap-1.5 pl-2">
+            <button
+              type="button"
+              onClick={() => openForm(ymd(cursor))}
+              data-testid="new-booking-button"
+              className={`min-h-8 box-border inline-flex items-center justify-center gap-1 border border-white/30 bg-white/80 px-2.5 py-1.5 text-[11px] leading-none text-black shadow-[0_1px_4px_rgba(0,0,0,0.1)] backdrop-blur-md transition-colors dark:border-white/10 dark:bg-white/[0.06] dark:text-zinc-200 dark:shadow-[0_1px_3px_rgba(0,0,0,0.45)] ${glassBarHoverClass} rounded-[7px] sm:gap-1.5 sm:px-3 sm:text-xs`}
+            >
+              <Plus className="w-4 h-4 shrink-0" strokeWidth={1.5} />
+              New
+            </button>
+
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => {
+                  setAdminAllCursor(new Date(cursor));
+                  setAdminAllOpen(true);
+                }}
+                title="All bookings by week, month, or year"
+                data-testid="admin-all-bookings-button"
+                className={cn(toolbarBtnClass, "px-2.5 sm:px-3")}
+              >
+                View all
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* ── View mode + calendar toggles (shared button style) ── */}
-      <div className="no-scrollbar flex shrink-0 items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+      {/* ── View mode + calendar accounts (same row) ── */}
+      <div className="no-scrollbar flex shrink-0 items-center gap-2 overflow-x-auto pb-1">
         <div
           className="min-h-8 box-border inline-flex shrink-0 select-none items-center gap-2.5 rounded-[7px] border border-gray-200/95 bg-[#FCFCFC] px-2.5 py-1.5 text-xs leading-none dark:border-white/10 dark:bg-white/[0.04] sm:gap-3 sm:px-3"
           role="tablist"
@@ -1057,7 +1061,7 @@ export default function CalendarPage() {
           })}
         </div>
 
-        <div className="flex shrink-0 gap-2">
+        <div className="ml-auto flex shrink-0 gap-2">
           {calendars.map((c) => {
             const on = enabledCalIds.has(c.id);
             return (
