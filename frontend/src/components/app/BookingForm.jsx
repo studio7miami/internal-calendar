@@ -332,7 +332,7 @@ export default function BookingForm({
         </Popover>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 min-[380px]:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="min-w-0 overflow-hidden">
           <label className="label-tech block mb-1">Start</label>
           <Input
@@ -378,55 +378,65 @@ export default function BookingForm({
             <option value="yearly">Every year</option>
           </select>
 
-          {recurFreq !== "none" && (
-            <Popover>
-              <PopoverTrigger asChild>
-                <button
-                  type="button"
-                  data-testid="booking-recurring-until-button"
-                  className={cn(
-                    "flex w-full h-10 items-center justify-between px-3 text-sm",
-                    "border border-gray-200/95 dark:border-white/20 bg-white dark:bg-zinc-900/50",
-                    "text-slate-900 dark:text-white transition-colors hover:bg-slate-50/80 dark:hover:bg-zinc-800/50",
-                    "focus:outline-none focus:ring-1 focus:ring-slate-400/30 dark:focus:ring-white/20",
-                    r7
-                  )}
+          {recurFreq !== "none" &&
+            (isMobile ? (
+              <Input
+                type="date"
+                value={recurUntil || ""}
+                min={date || undefined}
+                onChange={(e) => setRecurUntil(e.target.value)}
+                data-testid="booking-recurring-until-date"
+                className={fieldClass}
+              />
+            ) : (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    data-testid="booking-recurring-until-button"
+                    className={cn(
+                      "flex w-full h-10 items-center justify-between px-3 text-sm",
+                      "border border-gray-200/95 dark:border-white/20 bg-white dark:bg-zinc-900/50",
+                      "text-slate-900 dark:text-white transition-colors hover:bg-slate-50/80 dark:hover:bg-zinc-800/50",
+                      "focus:outline-none focus:ring-1 focus:ring-slate-400/30 dark:focus:ring-white/20",
+                      r7
+                    )}
+                  >
+                    <span className={recurUntil ? "text-slate-900 dark:text-white" : "text-slate-400 dark:text-neutral-500"}>
+                      {recurUntil
+                        ? new Date(recurUntil + "T00:00:00").toLocaleDateString(undefined, {
+                            weekday: "short",
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })
+                        : "Select end date"}
+                    </span>
+                    <CalendarIcon className="h-4 w-4 text-slate-500 dark:text-neutral-400" strokeWidth={1.5} />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-auto rounded-[7px] border border-gray-200/95 bg-white p-0 text-slate-900 shadow-md dark:border-white/20 dark:bg-zinc-900 dark:text-white"
+                  sideOffset={4}
+                  align="start"
                 >
-                  <span className={recurUntil ? "text-slate-900 dark:text-white" : "text-slate-400 dark:text-neutral-500"}>
-                    {recurUntil
-                      ? new Date(recurUntil + "T00:00:00").toLocaleDateString(undefined, {
-                          weekday: "short",
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                        })
-                      : "Select end date"}
-                  </span>
-                  <CalendarIcon className="h-4 w-4 text-slate-500 dark:text-neutral-400" strokeWidth={1.5} />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent
-                className="w-auto rounded-[7px] border border-gray-200/95 bg-white p-0 text-slate-900 shadow-md dark:border-white/20 dark:bg-zinc-900 dark:text-white"
-                sideOffset={4}
-                align="start"
-              >
-                <CalendarPicker
-                  mode="single"
-                  selected={recurUntil ? new Date(recurUntil + "T00:00:00") : undefined}
-                  onSelect={(d) => {
-                    if (!d) return;
-                    const y = d.getFullYear();
-                    const m = String(d.getMonth() + 1).padStart(2, "0");
-                    const dd = String(d.getDate()).padStart(2, "0");
-                    const next = `${y}-${m}-${dd}`;
-                    setRecurUntil(next);
-                  }}
-                  initialFocus
-                  className="text-slate-900 dark:text-white"
-                />
-              </PopoverContent>
-            </Popover>
-          )}
+                  <CalendarPicker
+                    mode="single"
+                    selected={recurUntil ? new Date(recurUntil + "T00:00:00") : undefined}
+                    onSelect={(d) => {
+                      if (!d) return;
+                      const y = d.getFullYear();
+                      const m = String(d.getMonth() + 1).padStart(2, "0");
+                      const dd = String(d.getDate()).padStart(2, "0");
+                      const next = `${y}-${m}-${dd}`;
+                      setRecurUntil(next);
+                    }}
+                    initialFocus
+                    className="text-slate-900 dark:text-white"
+                  />
+                </PopoverContent>
+              </Popover>
+            ))}
         </div>
       )}
 
