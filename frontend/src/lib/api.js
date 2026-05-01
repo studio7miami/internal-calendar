@@ -1,39 +1,60 @@
 import axios from "axios";
+import { createMockApi } from "./mockApi";
 
-const API_BASE = `${process.env.REACT_APP_BACKEND_URL}/api`;
+function normalizeApiBase() {
+  const raw = String(process.env.REACT_APP_BACKEND_URL || "").trim();
+  // If not set, default to same-origin. This prevents production from ever trying localhost.
+  if (!raw) return "/api";
 
-export const api = axios.create({
-  baseURL: API_BASE,
-});
+  // Remove trailing slashes for consistent joining.
+  const origin = raw.replace(/\/+$/, "");
 
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("s7_token");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+  // Allow passing full base including /api.
+  if (origin.endsWith("/api")) return origin;
 
-api.interceptors.response.use(
-  (r) => r,
-  (err) => {
-    if (err?.response?.status === 401) {
-      // If an older in-flight request got 401 after a new login set a new token, do not
-      // wipe the session (would look like "can't sign in" even when login returned 200).
-      const sent = (err?.config?.headers?.Authorization || "").replace(/^Bearer\s+/i, "");
-      const now = localStorage.getItem("s7_token");
-      if (now && sent && sent !== now) {
-        err._staleAuthFailure = true;
-        return Promise.reject(err);
+  return `${origin}/api`;
+}
+
+const API_BASE = normalizeApiBase();
+
+const MOCK_MODE = String(process.env.REACT_APP_MOCK_API || "") === "1";
+
+export const api = MOCK_MODE
+  ? createMockApi()
+  : axios.create({
+      baseURL: API_BASE,
+    });
+
+if (!MOCK_MODE) {
+  api.interceptors.request.use((config) => {
+    const token = localStorage.getItem("s7_token");
+    if (token) config.headers.Authorization = `Bearer ${token}`;
+    return config;
+  });
+
+  api.interceptors.response.use(
+    (r) => r,
+    (err) => {
+      if (err?.response?.status === 401) {
+        // If an older in-flight request got 401 after a new login set a new token, do not
+        // wipe the session (would look like "can't sign in" even when login returned 200).
+        const sent = (err?.config?.headers?.Authorization || "").replace(/^Bearer\s+/i, "");
+        const now = localStorage.getItem("s7_token");
+        if (now && sent && sent !== now) {
+          err._staleAuthFailure = true;
+          return Promise.reject(err);
+        }
+        const path = window.location.pathname;
+        if (!path.startsWith("/login") && !path.startsWith("/invite")) {
+          localStorage.removeItem("s7_token");
+          localStorage.removeItem("s7_user");
+          window.location.href = "/login";
+        }
       }
-      const path = window.location.pathname;
-      if (!path.startsWith("/login") && !path.startsWith("/invite")) {
-        localStorage.removeItem("s7_token");
-        localStorage.removeItem("s7_user");
-        window.location.href = "/login";
-      }
+      return Promise.reject(err);
     }
-    return Promise.reject(err);
-  }
-);
+  );
+}
 
 export function formatApiError(detail) {
   if (detail == null) return "Something went wrong.";
