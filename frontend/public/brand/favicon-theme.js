@@ -1,10 +1,10 @@
 /* Studio 7 favicon theme sync (public asset; no bundler).
    - Reads app theme from localStorage key "theme" (light|dark) OR <html class="dark">.
    - Uses /brand/favicon.png as the source art and swaps a data:image/svg+xml favicon.
-   - Default art is a black palm on a light canvas; invert for dark mode so it reads on dark UI chrome.
+   - Art is a white palm on a dark canvas; invert in light mode so it reads on light UI chrome.
 */
 (function () {
-  var PNG_PATH = "/brand/favicon.png?v=3";
+  var PNG_PATH = "/brand/favicon.png?v=4";
   var cachedB64 = null;
 
   function getTheme() {
@@ -47,7 +47,7 @@
 
   function buildSvgDataUrl(theme) {
     if (!cachedB64) throw new Error("favicon png not loaded yet");
-    var invert = theme === "dark";
+    var invert = theme === "light";
     var filterBlock =
       '<defs><filter id="inv" color-interpolation-filters="sRGB">' +
       '<feColorMatrix type="matrix" values="-1 0 0 0 1 0 -1 0 0 1 0 0 -1 0 1 0 0 0 1 0"/>' +
