@@ -144,6 +144,18 @@ def build_invite_email_html(*, invite_link: str, org_name: str) -> str:
           color: {fg} !important;
         }}
       }}
+
+      /* Outlook.com / some web clients */
+      [data-ogsc] .s7-logo-light {{
+        display: none !important;
+        mso-hide: all !important;
+      }}
+      [data-ogsc] .s7-logo-dark {{
+        display: block !important;
+      }}
+      [data-ogsc] .s7-footer {{
+        color: {fg} !important;
+      }}
     </style>
     <title>{org_e}</title>
   </head>
@@ -189,27 +201,34 @@ def build_invite_email_html(*, invite_link: str, org_name: str) -> str:
                   Tap below to set up your account.
                 </div>
 
-                <div style="text-align:left;margin:0 0 12px;">
-                  <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="left" style="margin:0;">
-                    <tr>
-                      <td
-                        align="left"
-                        style="border:1px solid {fg};border-radius:7px;background:{bg};"
-                      >
-                        <a
-                          href="{href}"
-                          style="display:inline-block;padding:12px 18px;background:{bg};color:{fg};text-decoration:none;border-radius:7px;font-size:14px;font-weight:700;letter-spacing:0.2px;"
-                        >
-                          Accept invite →
-                        </a>
-                      </td>
-                    </tr>
-                  </table>
-                <br></div>
-
-                <div style="font-size:12px;line-height:1.5;color:{fg};margin:0;text-align:center;">
-                  This link is valid for 7 days and can only be used once.
-                </div></br>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:0;">
+                  <tr>
+                    <td align="left" style="padding:0 0 10px;">
+                      <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="left" style="margin:0;">
+                        <tr>
+                          <td
+                            align="left"
+                            style="border:1px solid {fg};border-radius:7px;background:{bg};"
+                          >
+                            <a
+                              href="{href}"
+                              style="display:inline-block;padding:12px 18px;background:{bg};color:{fg};text-decoration:none;border-radius:7px;font-size:14px;font-weight:700;letter-spacing:0.2px;"
+                            >
+                              Accept invite →
+                            </a>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td align="center" style="padding:0;">
+                      <div style="font-size:12px;line-height:1.5;color:{fg};margin:0;text-align:center;">
+                        This link is valid for 7 days and can only be used once.
+                      </div>
+                    </td>
+                  </tr>
+                </table>
               </td>
             </tr>
             <tr>
