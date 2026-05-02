@@ -18,7 +18,7 @@ create table if not exists public.users (
   created_at timestamptz not null default now()
 );
 
-comment on table public.users is 'Application users (not Supabase Auth). Password + MFA handled in API.';
+comment on table public.users is 'Application users (not Supabase Auth). Password handled in API.';
 
 -- ---------- Invites ----------
 create table if not exists public.invites (
