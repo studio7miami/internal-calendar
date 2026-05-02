@@ -172,25 +172,6 @@ def create_token(user_id: str, email: str, role: str) -> str:
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
 
 
-def create_mfa_login_token(user_id: str) -> str:
-    return jwt.encode(
-        {
-            "sub": user_id,
-            "typ": "mfa_login",
-            "exp": datetime.now(timezone.utc) + timedelta(minutes=10),
-        },
-        JWT_SECRET,
-        algorithm=JWT_ALG,
-    )
-
-
-def parse_mfa_login_token(token: str) -> str:
-    payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
-    if payload.get("typ") != "mfa_login":
-        raise ValueError("invalid mfa token type")
-    return str(payload["sub"])
-
-
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -264,11 +245,6 @@ def _is_integration_test_account_email(email: Optional[str]) -> bool:
     return email.lower().endswith("@studio7test.com")
 
 
-MFA_OTP_TTL_LOGIN = timedelta(minutes=10)
-MFA_OTP_TTL_SETUP = timedelta(minutes=10)
-MFA_OTP_TTL_DISABLE = timedelta(minutes=10)
-
-
 def _parse_utc(ts: Any) -> Optional[datetime]:
     if ts is None:
         return None
@@ -281,22 +257,6 @@ def _parse_utc(ts: Any) -> Optional[datetime]:
         except Exception:
             return None
     return None
-
-
-def _mfa_otp_expired(row: dict) -> bool:
-    exp = _parse_utc(row.get("mfa_otp_expires"))
-    if not exp:
-        return True
-    return datetime.now(timezone.utc) > exp
-
-
-def _hash_mfa_otp(user_id: str, purpose: str, code: str) -> str:
-    msg = f"{purpose}:{user_id}:{code}".encode()
-    return hmac.new(JWT_SECRET.encode(), msg, hashlib.sha256).hexdigest()
-
-
-def _gen_mfa_code() -> str:
-    return f"{secrets.randbelow(1_000_000):06d}"
 
 
 def _normalize_phone_e164(raw: Optional[str]) -> str:
@@ -318,26 +278,6 @@ def _normalize_phone_e164(raw: Optional[str]) -> str:
     raise ValueError("Enter a valid phone number including area code")
 
 
-def _mask_email(email: str) -> str:
-    if not email or "@" not in email:
-        return "***"
-    u, d = email.split("@", 1)
-    if len(u) <= 2:
-        return f"***@{d}"
-    return f"{u[0]}***{u[-1]}@{d}"
-
-
-def _mask_phone(phone: Optional[str]) -> str:
-    if not phone or len(phone) < 4:
-        return "***"
-    return "***" + phone[-4:]
-
-
-def _deliver_mfa_stub(user_id: str, channel: str, email: str, phone_e164: Optional[str], code: str) -> None:
-    dest = email if channel == "email" else (phone_e164 or "")
-    logger.info("[MFA stub] channel=%s dest=%s user_id=%s code=%s", channel, dest, user_id, code)
-
-
 async def get_current_user(request: Request) -> dict:
     auth = request.headers.get("Authorization", "")
     if not auth.startswith("Bearer "):
@@ -349,7 +289,7 @@ async def get_current_user(request: Request) -> dict:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
-    # Use * so auth works before 002_users_2fa_password.sql is applied (totp_* columns optional).
+    # Use * so auth works even if optional columns weren't added.
     res = supabase.table("users").select("*").eq("id", payload["sub"]).single().execute()
     if not res.data:
         raise HTTPException(status_code=401, detail="User not found")
@@ -413,13 +353,6 @@ def can_access_members_page(u: dict, p: dict) -> bool:
 
 
 def _auth_user_out(user: dict) -> dict:
-    mfa_on = bool(user.get("totp_enabled")) and user.get("mfa_channel") in ("email", "phone")
-    purpose = user.get("mfa_otp_purpose")
-    pending_setup = (
-        bool(user.get("mfa_otp_hash"))
-        and purpose == "setup"
-        and not _mfa_otp_expired(user)
-    )
     out = {
         "id": user["id"],
         "email": user["email"],
@@ -427,10 +360,6 @@ def _auth_user_out(user: dict) -> dict:
         "role": user.get("role", "member"),
         "is_disabled": bool(user.get("is_disabled")),
         "created_at": user.get("created_at"),
-        "mfa_enabled": mfa_on,
-        "mfa_setup_pending": bool(pending_setup and not mfa_on),
-        "mfa_channel": user.get("mfa_channel"),
-        "mfa_pending_channel": user.get("mfa_pending_channel"),
         "phone_e164": user.get("phone_e164"),
         "sauce": user.get("sauce"),
     }
@@ -580,35 +509,11 @@ class AdminUserProfilePatchIn(BaseModel):
 class MePhonePatchIn(BaseModel):
     phone_e164: str
     password: str
-    mfa_code: Optional[str] = None
 
 
 class VisibleCalendarsIn(BaseModel):
     # null = unrestricted (all active calendars). [] = no calendars.
     visible_calendar_ids: Optional[list[str]] = None
-
-
-class MfaLoginIn(BaseModel):
-    mfa_token: str
-    code: str
-
-
-class MfaCodeIn(BaseModel):
-    code: str
-
-
-class MfaSetupStartIn(BaseModel):
-    channel: str  # "email" | "phone"
-    phone_e164: Optional[str] = None
-
-
-class MfaDisableSendIn(BaseModel):
-    password: str
-
-
-class MfaDisableIn(BaseModel):
-    password: str
-    code: str
 
 
 class PasswordChangeIn(BaseModel):
@@ -690,231 +595,11 @@ async def login(data: LoginIn):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if user.get("is_disabled"):
         raise HTTPException(status_code=403, detail="This account has been disabled. Please contact the admin.")
-    mfa_on = bool(user.get("totp_enabled")) and user.get("mfa_channel") in ("email", "phone")
-    if mfa_on:
-        channel = str(user.get("mfa_channel"))
-        if channel == "phone" and not (user.get("phone_e164") or "").strip():
-            raise HTTPException(
-                status_code=500,
-                detail="Two-factor is set to phone but no phone number is on file. Contact an admin.",
-            )
-        uid = user["id"]
-        code = _gen_mfa_code()
-        exp = datetime.now(timezone.utc) + MFA_OTP_TTL_LOGIN
-        supabase.table("users").update({
-            "mfa_otp_hash": _hash_mfa_otp(uid, "login", code),
-            "mfa_otp_expires": exp.isoformat(),
-            "mfa_otp_purpose": "login",
-        }).eq("id", uid).execute()
-        _deliver_mfa_stub(
-            uid,
-            channel,
-            str(user.get("email") or ""),
-            user.get("phone_e164") if channel == "phone" else None,
-            code,
-        )
-        hint = _mask_email(str(user.get("email") or "")) if channel == "email" else _mask_phone(user.get("phone_e164"))
-        return {
-            "mfa_required": True,
-            "mfa_token": create_mfa_login_token(uid),
-            "mfa_sent_via": channel,
-            "mfa_sent_hint": hint,
-        }
     token = create_token(user["id"], user["email"], user["role"])
     return {
         "token": token,
         "user": _auth_user_out(user),
     }
-
-
-@api.post("/auth/login/mfa")
-async def login_mfa(data: MfaLoginIn):
-    try:
-        uid = parse_mfa_login_token(data.mfa_token)
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Verification step expired. Sign in again.")
-    except (jwt.InvalidTokenError, ValueError):
-        raise HTTPException(status_code=401, detail="Invalid verification step")
-    res = supabase.table("users").select("*").eq("id", uid).execute()
-    if not res.data:
-        raise HTTPException(status_code=401, detail="User not found")
-    user = res.data[0]
-    if user.get("is_disabled"):
-        raise HTTPException(status_code=403, detail="This account has been disabled. Please contact the admin.")
-    if not user.get("totp_enabled") or user.get("mfa_channel") not in ("email", "phone"):
-        raise HTTPException(status_code=400, detail="Two-factor authentication is not active for this account")
-    code = (data.code or "").strip().replace(" ", "")
-    if len(code) < 6:
-        raise HTTPException(status_code=400, detail="Enter the 6-digit code we sent you")
-    if user.get("mfa_otp_purpose") != "login" or not user.get("mfa_otp_hash") or _mfa_otp_expired(user):
-        raise HTTPException(status_code=401, detail="Code expired. Sign in again with your password.")
-    if _hash_mfa_otp(uid, "login", code) != user.get("mfa_otp_hash"):
-        raise HTTPException(status_code=401, detail="Invalid code")
-    supabase.table("users").update({
-        "mfa_otp_hash": None,
-        "mfa_otp_expires": None,
-        "mfa_otp_purpose": None,
-    }).eq("id", uid).execute()
-    token = create_token(user["id"], user["email"], user["role"])
-    fr = supabase.table("users").select("*").eq("id", uid).limit(1).execute()
-    row = fr.data[0] if fr.data else user
-    return {
-        "token": token,
-        "user": _auth_user_out(row),
-    }
-
-
-@api.post("/auth/mfa/setup")
-async def mfa_setup(body: MfaSetupStartIn, user: dict = Depends(get_current_user)):
-    if user.get("totp_enabled") and user.get("mfa_channel") in ("email", "phone"):
-        raise HTTPException(status_code=400, detail="Turn off 2FA before changing how you receive codes")
-    ch = (body.channel or "").lower().strip()
-    if ch not in ("email", "phone"):
-        raise HTTPException(status_code=400, detail="Choose email or phone for verification codes")
-    phone_norm: Optional[str] = None
-    if ch == "phone":
-        try:
-            phone_norm = _normalize_phone_e164(body.phone_e164)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
-    uid = user["id"]
-    code = _gen_mfa_code()
-    exp = datetime.now(timezone.utc) + MFA_OTP_TTL_SETUP
-    upd: dict[str, Any] = {
-        "mfa_otp_hash": _hash_mfa_otp(uid, "setup", code),
-        "mfa_otp_expires": exp.isoformat(),
-        "mfa_otp_purpose": "setup",
-        "mfa_pending_channel": ch,
-        "totp_pending_secret": None,
-    }
-    if ch == "phone":
-        upd["phone_e164"] = phone_norm
-    supabase.table("users").update(upd).eq("id", uid).execute()
-    fr = supabase.table("users").select("email,phone_e164").eq("id", uid).limit(1).execute()
-    row = fr.data[0] if fr.data else user
-    em = str(row.get("email") or user.get("email") or "")
-    ph = row.get("phone_e164") if ch == "phone" else None
-    _deliver_mfa_stub(uid, ch, em, ph if ch == "phone" else None, code)
-    hint = _mask_email(em) if ch == "email" else _mask_phone(row.get("phone_e164"))
-    return {"channel": ch, "sent_hint": hint}
-
-
-@api.post("/auth/mfa/enable")
-async def mfa_enable(data: MfaCodeIn, user: dict = Depends(get_current_user)):
-    res = supabase.table("users").select(
-        "mfa_otp_hash,mfa_otp_expires,mfa_otp_purpose,mfa_pending_channel,totp_enabled"
-    ).eq("id", user["id"]).execute()
-    if not res.data:
-        raise HTTPException(status_code=404, detail="User not found")
-    row = res.data[0]
-    if row.get("mfa_otp_purpose") != "setup" or not row.get("mfa_otp_hash") or _mfa_otp_expired(row):
-        raise HTTPException(
-            status_code=400,
-            detail="Start set-up again and request a new code — this one expired or was not sent.",
-        )
-    code = (data.code or "").strip().replace(" ", "")
-    if len(code) < 6:
-        raise HTTPException(status_code=400, detail="Enter the 6-digit code")
-    uid = user["id"]
-    if _hash_mfa_otp(uid, "setup", code) != row.get("mfa_otp_hash"):
-        raise HTTPException(status_code=400, detail="Code does not match.")
-    ch = row.get("mfa_pending_channel")
-    if ch not in ("email", "phone"):
-        raise HTTPException(status_code=400, detail="Invalid set-up state. Start over.")
-    supabase.table("users").update({
-        "totp_enabled": True,
-        "mfa_channel": ch,
-        "mfa_pending_channel": None,
-        "mfa_otp_hash": None,
-        "mfa_otp_expires": None,
-        "mfa_otp_purpose": None,
-        "totp_secret": None,
-        "totp_pending_secret": None,
-    }).eq("id", user["id"]).execute()
-    fr = supabase.table("users").select("*").eq("id", user["id"]).limit(1).execute()
-    rows = fr.data or []
-    if not rows:
-        raise HTTPException(status_code=500, detail="User record not found after 2FA enable")
-    return {"ok": True, "user": _auth_user_out(rows[0])}
-
-
-@api.post("/auth/mfa/cancel")
-async def mfa_cancel(user: dict = Depends(get_current_user)):
-    supabase.table("users").update({
-        "totp_pending_secret": None,
-        "mfa_otp_hash": None,
-        "mfa_otp_expires": None,
-        "mfa_otp_purpose": None,
-        "mfa_pending_channel": None,
-    }).eq("id", user["id"]).execute()
-    return {"ok": True}
-
-
-@api.post("/auth/mfa/disable/send-code")
-async def mfa_disable_send_code(data: MfaDisableSendIn, user: dict = Depends(get_current_user)):
-    res = supabase.table("users").select(
-        "password_hash,totp_enabled,mfa_channel,email,phone_e164"
-    ).eq("id", user["id"]).execute()
-    if not res.data:
-        raise HTTPException(status_code=404, detail="User not found")
-    row = res.data[0]
-    if not row.get("totp_enabled") or row.get("mfa_channel") not in ("email", "phone"):
-        raise HTTPException(status_code=400, detail="Two-factor authentication is not enabled")
-    if not verify_pw(data.password, row.get("password_hash", "")):
-        raise HTTPException(status_code=400, detail="Incorrect password")
-    uid = user["id"]
-    channel = str(row.get("mfa_channel"))
-    if channel == "phone" and not (row.get("phone_e164") or "").strip():
-        raise HTTPException(status_code=400, detail="No phone number on file for this account")
-    code = _gen_mfa_code()
-    exp = datetime.now(timezone.utc) + MFA_OTP_TTL_DISABLE
-    supabase.table("users").update({
-        "mfa_otp_hash": _hash_mfa_otp(uid, "disable", code),
-        "mfa_otp_expires": exp.isoformat(),
-        "mfa_otp_purpose": "disable",
-    }).eq("id", uid).execute()
-    _deliver_mfa_stub(
-        uid,
-        channel,
-        str(row.get("email") or ""),
-        row.get("phone_e164") if channel == "phone" else None,
-        code,
-    )
-    hint = _mask_email(str(row.get("email") or "")) if channel == "email" else _mask_phone(row.get("phone_e164"))
-    return {"ok": True, "mfa_sent_via": channel, "mfa_sent_hint": hint}
-
-
-@api.post("/auth/mfa/disable")
-async def mfa_disable(data: MfaDisableIn, user: dict = Depends(get_current_user)):
-    res = supabase.table("users").select(
-        "password_hash,totp_enabled,mfa_channel,mfa_otp_hash,mfa_otp_expires,mfa_otp_purpose"
-    ).eq("id", user["id"]).execute()
-    if not res.data:
-        raise HTTPException(status_code=404, detail="User not found")
-    row = res.data[0]
-    if not row.get("totp_enabled") or row.get("mfa_channel") not in ("email", "phone"):
-        raise HTTPException(status_code=400, detail="Two-factor authentication is not enabled")
-    if not verify_pw(data.password, row.get("password_hash", "")):
-        raise HTTPException(status_code=400, detail="Incorrect password")
-    code = (data.code or "").strip().replace(" ", "")
-    if len(code) < 6:
-        raise HTTPException(status_code=400, detail="Enter the 6-digit code")
-    uid = user["id"]
-    if row.get("mfa_otp_purpose") != "disable" or not row.get("mfa_otp_hash") or _mfa_otp_expired(row):
-        raise HTTPException(status_code=400, detail='Request a new code with "Send verification code".')
-    if _hash_mfa_otp(uid, "disable", code) != row.get("mfa_otp_hash"):
-        raise HTTPException(status_code=400, detail="Invalid code")
-    supabase.table("users").update({
-        "totp_enabled": False,
-        "mfa_channel": None,
-        "totp_secret": None,
-        "totp_pending_secret": None,
-        "mfa_otp_hash": None,
-        "mfa_otp_expires": None,
-        "mfa_otp_purpose": None,
-        "mfa_pending_channel": None,
-    }).eq("id", user["id"]).execute()
-    return {"ok": True}
 
 
 @api.post("/auth/password/change")
@@ -937,77 +622,20 @@ async def me(user: dict = Depends(get_current_user)):
     return _auth_user_out(user)
 
 
-@api.post("/auth/me/phone/send-code")
-async def me_phone_send_code(data: MfaDisableSendIn, user: dict = Depends(get_current_user)):
-    """When 2FA is on, send a 6-digit code to email/SMS before PATCH /auth/me/phone."""
-    res = supabase.table("users").select(
-        "password_hash,totp_enabled,mfa_channel,email,phone_e164"
-    ).eq("id", user["id"]).execute()
-    if not res.data:
-        raise HTTPException(status_code=404, detail="User not found")
-    row = res.data[0]
-    if not row.get("totp_enabled") or row.get("mfa_channel") not in ("email", "phone"):
-        raise HTTPException(
-            status_code=400,
-            detail="Two-factor is off — save your new phone with your password only (no code needed).",
-        )
-    if not verify_pw(data.password, row.get("password_hash", "")):
-        raise HTTPException(status_code=400, detail="Incorrect password")
-    uid = user["id"]
-    channel = str(row.get("mfa_channel"))
-    if channel == "phone" and not (row.get("phone_e164") or "").strip():
-        raise HTTPException(status_code=400, detail="No phone number on file for this account")
-    code = _gen_mfa_code()
-    exp = datetime.now(timezone.utc) + MFA_OTP_TTL_DISABLE
-    supabase.table("users").update({
-        "mfa_otp_hash": _hash_mfa_otp(uid, "phone_change", code),
-        "mfa_otp_expires": exp.isoformat(),
-        "mfa_otp_purpose": "phone_change",
-    }).eq("id", uid).execute()
-    _deliver_mfa_stub(
-        uid,
-        channel,
-        str(row.get("email") or ""),
-        row.get("phone_e164") if channel == "phone" else None,
-        code,
-    )
-    hint = _mask_email(str(row.get("email") or "")) if channel == "email" else _mask_phone(row.get("phone_e164"))
-    return {"ok": True, "mfa_sent_via": channel, "mfa_sent_hint": hint}
-
-
 @api.patch("/auth/me/phone")
 async def me_phone_patch(data: MePhonePatchIn, user: dict = Depends(get_current_user)):
     try:
         phone_norm = _normalize_phone_e164(data.phone_e164)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    res = supabase.table("users").select(
-        "password_hash,totp_enabled,mfa_channel,mfa_otp_hash,mfa_otp_expires,mfa_otp_purpose"
-    ).eq("id", user["id"]).execute()
+    res = supabase.table("users").select("password_hash").eq("id", user["id"]).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="User not found")
     row = res.data[0]
     uid = str(user["id"])
-    mfa_on = bool(row.get("totp_enabled")) and row.get("mfa_channel") in ("email", "phone")
-    if mfa_on:
-        code = (data.mfa_code or "").strip().replace(" ", "")
-        if len(code) < 6:
-            raise HTTPException(status_code=400, detail="Enter the 6-digit code sent to your email or phone")
-        if row.get("mfa_otp_purpose") != "phone_change" or not row.get("mfa_otp_hash") or _mfa_otp_expired(row):
-            raise HTTPException(status_code=400, detail='Request a new code with "Send verification code" first.')
-        if _hash_mfa_otp(uid, "phone_change", code) != row.get("mfa_otp_hash"):
-            raise HTTPException(status_code=400, detail="Invalid code")
-        if not verify_pw(data.password, row.get("password_hash", "")):
-            raise HTTPException(status_code=400, detail="Incorrect password")
-    else:
-        if not verify_pw(data.password, row.get("password_hash", "")):
-            raise HTTPException(status_code=400, detail="Incorrect password")
-    supabase.table("users").update({
-        "phone_e164": phone_norm,
-        "mfa_otp_hash": None,
-        "mfa_otp_expires": None,
-        "mfa_otp_purpose": None,
-    }).eq("id", uid).execute()
+    if not verify_pw(data.password, row.get("password_hash", "")):
+        raise HTTPException(status_code=400, detail="Incorrect password")
+    supabase.table("users").update({"phone_e164": phone_norm}).eq("id", uid).execute()
     fr = supabase.table("users").select("*").eq("id", uid).limit(1).execute()
     rows = fr.data or []
     if not rows:
