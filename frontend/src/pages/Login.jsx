@@ -18,9 +18,6 @@ export default function Login() {
   const passwordRef = React.useRef(null);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [mfaToken, setMfaToken] = useState(null);
-  const [mfaCode, setMfaCode] = useState("");
-  const [mfaHint, setMfaHint] = useState(null);
   const [slide, setSlide] = useState(0);
 
   const effectivePasswordValue = password || passwordRef.current?.value || "";
@@ -55,16 +52,6 @@ export default function Login() {
     setSubmitting(true);
     try {
       const { data } = await api.post("/auth/login", { email, password });
-      if (data.mfa_required && data.mfa_token) {
-        setMfaToken(data.mfa_token);
-        setMfaCode("");
-        setMfaHint(
-          data.mfa_sent_hint
-            ? { via: data.mfa_sent_via || "email", hint: data.mfa_sent_hint }
-            : null
-        );
-        return;
-      }
       if (data.token && data.user) {
         loginWithToken(data.token, data.user);
         return;
@@ -75,33 +62,6 @@ export default function Login() {
     } finally {
       setSubmitting(false);
     }
-  };
-
-  const submitMfa = async (e) => {
-    e.preventDefault();
-    setError("");
-    setSubmitting(true);
-    try {
-      const { data } = await api.post("/auth/login/mfa", { mfa_token: mfaToken, code: mfaCode });
-      if (data.token && data.user) {
-        setMfaToken(null);
-        setMfaHint(null);
-        loginWithToken(data.token, data.user);
-        return;
-      }
-      setError("Unexpected response");
-    } catch (err) {
-      setError(formatApiError(err?.response?.data?.detail) || "Verification failed");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const backToPassword = () => {
-    setMfaToken(null);
-    setMfaCode("");
-    setMfaHint(null);
-    setError("");
   };
 
   const fieldClass = cn(pageInputClass, "h-11 min-h-11 text-base md:text-sm");
@@ -150,63 +110,6 @@ export default function Login() {
 
       {/* Form side */}
       <div className="flex items-center justify-center p-6 sm:p-12">
-        {mfaToken ? (
-          <form onSubmit={submitMfa} className="w-full max-w-sm space-y-6" data-testid="login-mfa-form">
-            <div>
-              <div className="label-tech">Two-step verification</div>
-              <h2 className={cn(pageTitleClass, "mt-2")}>Check your {mfaHint?.via === "phone" ? "phone" : "email"}</h2>
-              <p className={pageSubtextClass}>
-                {mfaHint?.hint
-                  ? `We sent a 6-digit code (${mfaHint.via === "phone" ? "SMS" : "email"}) to ${mfaHint.hint}.`
-                  : "We sent a 6-digit code to your email or phone on file. Enter it below."}
-              </p>
-            </div>
-            <div>
-              <label className="label-tech mb-1 block">6-digit code</label>
-              <Input
-                type="text"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                value={mfaCode}
-                onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                required
-                autoFocus
-                maxLength={6}
-                placeholder="000000"
-                data-testid="login-mfa-input"
-                className={fieldClass + " text-center text-lg tracking-widest"}
-              />
-            </div>
-            {error && (
-              <div
-                className="rounded-[7px] border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200"
-                data-testid="login-mfa-error"
-              >
-                {error}
-              </div>
-            )}
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={backToPassword}
-                className="h-11 w-full sm:flex-1 border border-slate-200/90 dark:border-white/15"
-                data-testid="login-mfa-back"
-              >
-                Back
-              </Button>
-              <Button
-                type="submit"
-                variant="ghost"
-                disabled={submitting}
-                className={cn("h-11 w-full sm:flex-1", pageBtnPrimaryClass)}
-                data-testid="login-mfa-submit"
-              >
-                {submitting ? "Verifying…" : "Verify and sign in →"}
-              </Button>
-            </div>
-          </form>
-        ) : (
         <form onSubmit={submit} className="w-full max-w-sm space-y-6" data-testid="login-form">
           <div>
             <div className="mb-6 md:hidden">
@@ -293,7 +196,6 @@ export default function Login() {
 
           <div className="label-tech border-t border-gray-200/90 pt-4 text-slate-500 dark:text-neutral-500">Invite only</div>
         </form>
-        )}
       </div>
     </div>
   );
