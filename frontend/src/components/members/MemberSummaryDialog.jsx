@@ -28,7 +28,7 @@ function roleDisplayText(member, viewer, isSelf) {
 }
 
 /**
- * Admins can edit role (others), phone, and sauce. Members can update their own phone (password; + code if 2FA is on).
+ * Admins can edit role (others), phone, and sauce. Members can update their own phone (password).
  */
 export default function MemberSummaryDialog({
   open,
@@ -45,7 +45,6 @@ export default function MemberSummaryDialog({
   const [draftPhone, setDraftPhone] = useState("");
   const [draftSauce, setDraftSauce] = useState("");
   const [selfPassword, setSelfPassword] = useState("");
-  const [selfMfaCode, setSelfMfaCode] = useState("");
   const [profileMsg, setProfileMsg] = useState("");
   const [profileErr, setProfileErr] = useState("");
 
@@ -67,14 +66,11 @@ export default function MemberSummaryDialog({
   const adminCanEditProfile = isAdmin && member?.id && !disableEdits;
   const memberEditsOwnPhone = !isAdmin && isSelf && member?.id && !disableEdits;
 
-  const mfaOn = !!(viewer?.mfa_enabled && (viewer?.mfa_channel === "email" || viewer?.mfa_channel === "phone"));
-
   useEffect(() => {
     if (!open || !member) return;
     setDraftPhone(member.phone_e164 || member.member_phone_e164 || "");
     setDraftSauce(member.sauce ?? member.member_sauce ?? "");
     setSelfPassword("");
-    setSelfMfaCode("");
     setProfileMsg("");
     setProfileErr("");
   }, [open, member]);
@@ -136,25 +132,6 @@ export default function MemberSummaryDialog({
     }
   };
 
-  const sendPhoneMfaCode = async () => {
-    if (!memberEditsOwnPhone || !mfaOn) return;
-    setProfileErr("");
-    setProfileMsg("");
-    if (!selfPassword.trim()) {
-      setProfileErr("Enter your password to send a code.");
-      return;
-    }
-    setBusy(true);
-    try {
-      await api.post("/auth/me/phone/send-code", { password: selfPassword });
-      setProfileMsg(`Code sent (${viewer.mfa_channel === "phone" ? "SMS" : "email"}).`);
-    } catch (e) {
-      setProfileErr(formatApiError(e?.response?.data?.detail) || "Could not send code");
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const saveSelfPhone = async () => {
     if (!memberEditsOwnPhone) return;
     setBusy(true);
@@ -165,7 +142,6 @@ export default function MemberSummaryDialog({
         phone_e164: draftPhone.trim(),
         password: selfPassword,
       };
-      if (mfaOn) payload.mfa_code = selfMfaCode.replace(/\s/g, "");
       await api.patch("/auth/me/phone", payload);
       setProfileMsg("Phone number updated.");
       await refreshAuth?.();
@@ -275,34 +251,6 @@ export default function MemberSummaryDialog({
                     data-testid="member-self-password"
                   />
                 </div>
-                {mfaOn && (
-                  <>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      disabled={busy}
-                      onClick={sendPhoneMfaCode}
-                      className={cn("h-9 w-full text-xs", pageBtnOutlineClass)}
-                    >
-                      Send verification code
-                    </Button>
-                    <div>
-                      <label className="label-tech mb-1 block text-slate-500 dark:text-zinc-500" htmlFor="member-self-mfa">
-                        6-digit code
-                      </label>
-                      <Input
-                        id="member-self-mfa"
-                        inputMode="numeric"
-                        autoComplete="one-time-code"
-                        value={selfMfaCode}
-                        onChange={(e) => setSelfMfaCode(e.target.value)}
-                        className={cn(pageInputClass, "md:text-sm")}
-                        placeholder="From email or SMS"
-                        data-testid="member-self-mfa-code"
-                      />
-                    </div>
-                  </>
-                )}
                 <Field label="What&apos;s your sauce">{formatSauceLabel(sauceVal)}</Field>
               </>
             ) : (
