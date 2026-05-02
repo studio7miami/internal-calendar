@@ -120,8 +120,6 @@ export function buildPreviewMe(role) {
       is_disabled: false,
       visible_calendar_ids: null,
       permissions: { ...EFF_ADMIN },
-      mfa_enabled: false,
-      mfa_setup_pending: false,
     };
   }
   if (role === "manager") {
@@ -133,8 +131,6 @@ export function buildPreviewMe(role) {
       is_disabled: false,
       visible_calendar_ids: null,
       permissions: { ...EFF_MANAGER },
-      mfa_enabled: false,
-      mfa_setup_pending: false,
     };
   }
   return {
@@ -145,7 +141,5 @@ export function buildPreviewMe(role) {
     is_disabled: false,
     visible_calendar_ids: [PREVIEW_CALENDAR_IDS.miami],
     permissions: { ...EFF_MEMBER },
-    mfa_enabled: false,
-    mfa_setup_pending: false,
   };
 }
