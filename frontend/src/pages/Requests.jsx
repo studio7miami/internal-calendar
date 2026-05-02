@@ -86,31 +86,19 @@ function rgbaFromHex(hex, alpha) {
 function FieldCircle({ colorHex, title, compact }) {
   const base = colorHex || "#64748b";
   const glow = compact ? `0 0 8px 1px ${rgbaFromHex(base, 0.45)}` : `0 0 12px 2px ${rgbaFromHex(base, 0.55)}`;
-  const dot = "h-2.5 w-2.5";
-  /* Wrapper gives room for Tailwind `animate-ping` scale (same pattern as notification dots). */
-  const wrap = "h-3.5 w-3.5";
   return (
     <span
-      className={cn("relative inline-flex shrink-0 items-center justify-center self-center", wrap)}
       title={title}
-    >
-      <span
-        aria-hidden
-        className={cn(
-          "absolute left-1/2 top-1/2 z-0 -translate-x-1/2 -translate-y-1/2 rounded-full animate-ping motion-reduce:animate-none",
-          dot
-        )}
-        style={{ backgroundColor: base, opacity: 0.5 }}
-      />
-      <span
-        aria-hidden
-        className={cn("relative z-[1] rounded-full ring-1 ring-black/10 dark:ring-white/15", dot)}
-        style={{
-          backgroundColor: base,
-          boxShadow: glow,
-        }}
-      />
-    </span>
+      aria-hidden
+      className={cn(
+        "inline-block shrink-0 self-center rounded-full ring-1 ring-black/10 dark:ring-white/15",
+        compact ? "h-2.5 w-2.5" : "h-2.5 w-2.5"
+      )}
+      style={{
+        backgroundColor: base,
+        boxShadow: glow,
+      }}
+    />
   );
 }
 
@@ -198,7 +186,7 @@ function RequestCard({
 
   return (
     <div
-      className={cn("relative", compact ? "p-3 mb-2" : "p-4", pageCardClass)}
+      className={cn("relative overflow-hidden", compact ? "p-3 mb-2" : "p-4", pageCardClass)}
       data-testid={`request-card-${b.id}`}
     >
       {/* Calendar account indicator (top-right) */}
