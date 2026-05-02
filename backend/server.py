@@ -400,6 +400,12 @@ ALLOWED_SAUCES = frozenset(
 )
 
 
+def _default_admin_sauce() -> str:
+    """Used when seeding / backfilling the bootstrap admin row (`users.sauce`)."""
+    raw = (os.environ.get("ADMIN_DEFAULT_SAUCE") or "photography").strip().lower()
+    return raw if raw in ALLOWED_SAUCES else "photography"
+
+
 # ---------- Models ----------
 class RegisterIn(BaseModel):
     invite_token: str
@@ -536,6 +542,7 @@ async def startup():
             "role": "admin",
             "password_hash": hash_pw(admin_password),
             "created_at": now_iso(),
+            "sauce": _default_admin_sauce(),
         }).execute()
         logger.info(f"Seeded admin {admin_email}")
     else:
@@ -543,6 +550,15 @@ async def startup():
         if not verify_pw(admin_password, existing_user.get("password_hash", "")):
             supabase.table("users").update({"password_hash": hash_pw(admin_password)}).eq("email", admin_email).execute()
             logger.info(f"Admin password updated for {admin_email}")
+
+    # Legacy rows: admin was created before `sauce` existed or column was null.
+    try:
+        sauce_row = supabase.table("users").select("sauce").eq("email", admin_email).limit(1).execute()
+        if sauce_row.data and not (sauce_row.data[0].get("sauce") or "").strip():
+            supabase.table("users").update({"sauce": _default_admin_sauce()}).eq("email", admin_email).execute()
+            logger.info("Backfilled default sauce for admin %s", admin_email)
+    except Exception as e:
+        logger.warning("Could not backfill admin sauce (run supabase/008_users_sauce.sql if missing): %s", e)
 
     try:
         app.state.google_inbound_task = asyncio.create_task(google_inbound_sync.google_inbound_background_loop(supabase))
