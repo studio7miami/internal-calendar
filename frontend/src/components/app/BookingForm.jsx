@@ -119,8 +119,7 @@ export default function BookingForm({
   const canCancelBooking =
     editMode &&
     (editingBooking.is_own ||
-      p.delete_any_booking ||
-      (p.create_manual_booking && !editingBooking.is_own));
+      p.delete_any_booking);
 
   React.useEffect(() => {
     if (!open) return;
