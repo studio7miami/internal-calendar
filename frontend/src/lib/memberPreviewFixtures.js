@@ -19,7 +19,7 @@ const DEFS = [
   { key: "approve_deny_requests", label: "View and approve / deny requests" },
   { key: "view_members_directory", label: "View team list" },
   { key: "assign_member_calendars", label: "Assign calendars to members" },
-  { key: "delete_any_booking", label: "Delete or cancel any booking" },
+  { key: "delete_any_booking", label: "Edit or cancel any booking" },
 ];
 
 const EFF_MEMBER = {
@@ -120,6 +120,7 @@ export function buildPreviewMe(role) {
       is_disabled: false,
       visible_calendar_ids: null,
       permissions: { ...EFF_ADMIN },
+      sauce: "photography",
     };
   }
   if (role === "manager") {
@@ -131,6 +132,7 @@ export function buildPreviewMe(role) {
       is_disabled: false,
       visible_calendar_ids: null,
       permissions: { ...EFF_MANAGER },
+      sauce: "videography",
     };
   }
   return {
@@ -141,5 +143,6 @@ export function buildPreviewMe(role) {
     is_disabled: false,
     visible_calendar_ids: [PREVIEW_CALENDAR_IDS.miami],
     permissions: { ...EFF_MEMBER },
+    sauce: "artist",
   };
 }
