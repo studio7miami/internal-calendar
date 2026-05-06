@@ -153,18 +153,23 @@ function chipLabel(b, calendar) {
   return `Booked · ${who}`;
 }
 
-function BookingChip({ b, calendar, showBookingDetails, onManageOwn, onMemberProfile }) {
+function BookingChip({ b, calendar, showBookingDetails, onManageBooking, onMemberProfile, staffCanManageAnyBooking }) {
   const isOwn = b.is_own;
   // Calendar only shows approved bookings, but keep styling defensive.
   const isPending = b.status === "pending";
   const canSeeDetail = showBookingDetails;
-  const canManageOwn = isOwn && b.status === "approved";
-  const canNameProfile = Boolean(canSeeDetail && b.member_id && onMemberProfile && !canManageOwn);
+  const approved = b.status === "approved";
+  const canManageOwn = isOwn && approved;
+  const canStaffManage = Boolean(staffCanManageAnyBooking && approved);
+  const canManageBooking = canManageOwn || canStaffManage;
+  const canNameProfile = Boolean(
+    canSeeDetail && b.member_id && onMemberProfile && !canManageBooking
+  );
 
   const onClick = (e) => {
-    if (!canManageOwn || !onManageOwn) return;
+    if (!canManageBooking || !onManageBooking) return;
     e.stopPropagation();
-    onManageOwn();
+    onManageBooking();
   };
 
   if (canSeeDetail) {
@@ -178,8 +183,11 @@ function BookingChip({ b, calendar, showBookingDetails, onManageOwn, onMemberPro
       opacity: isPending ? 0.9 : 1,
     };
     const label = `${timeBit}${sub}`;
+    const manageTitle = canStaffManage && !canManageOwn
+      ? "Click to reschedule or cancel (admin)"
+      : "Click to reschedule or cancel";
 
-    if (canManageOwn) {
+    if (canManageBooking) {
       return (
         <button
           type="button"
@@ -190,7 +198,7 @@ function BookingChip({ b, calendar, showBookingDetails, onManageOwn, onMemberPro
             "md:hover:brightness-110"
           )}
           style={chipStyle}
-          title="Click to reschedule or cancel"
+          title={manageTitle}
         >
           {isPending ? "⏳ " : ""}
           {label}
@@ -248,13 +256,13 @@ function BookingChip({ b, calendar, showBookingDetails, onManageOwn, onMemberPro
       data-testid={`booking-chip-${b.id}`}
       className={cn(
         "truncate rounded-[7px] border border-slate-900/15 px-2 py-1.5 text-left text-[10px] leading-tight booked-stripe-light text-slate-600 dark:border-white/14 dark:text-neutral-300 dark:booked-stripe",
-        canManageOwn && "cursor-pointer touch-manipulation md:hover:brightness-110 md:dark:hover:brightness-110"
+        canManageBooking && "cursor-pointer touch-manipulation md:hover:brightness-110 md:dark:hover:brightness-110"
       )}
       style={{
         borderLeftColor: calendar?.color || "#333",
         borderLeftWidth: 3,
       }}
-      title={canManageOwn ? "Your booking — click to reschedule or cancel" : "Booked"}
+      title={canManageBooking ? "Your booking — click to reschedule or cancel" : "Booked"}
     >
       Booked
     </button>
@@ -288,6 +296,8 @@ export default function CalendarPage() {
   const showBookingDetails = user?.role === "admin" || user?.role === "manager";
   const canFetchMembers = isAdmin || !!user?.permissions?.view_members_directory;
   const canManualBook = isAdmin || !!user?.permissions?.create_manual_booking;
+  /** Admins always; managers only if Role permissions → Edit or cancel any booking. */
+  const staffCanManageAnyBooking = isAdmin || !!user?.permissions?.delete_any_booking;
   const canRequestBooking = !!user?.permissions?.create_request;
   const calendarTodayYmd = ymd(new Date());
   const dayPanelAllowRequest = Boolean(
@@ -476,7 +486,8 @@ export default function CalendarPage() {
   }, [dayPanelYmd]);
 
   const openEditBooking = (b) => {
-    if (!b?.is_own) return;
+    if (!b?.id) return;
+    if (!b.is_own && !staffCanManageAnyBooking) return;
     if (b.status !== "pending" && b.status !== "approved") return;
     setEditingBooking(b);
     setSelectedYmd(b.date);
@@ -645,7 +656,17 @@ export default function CalendarPage() {
                                           : `${fmtTimeShort(b.start_time)}–${fmtTimeShort(b.end_time)} · Booked`;
                                         return (
                                           <li key={b.id} className="text-xs leading-snug text-slate-600 dark:text-zinc-400">
-                                            {line}
+                                            {staffCanManageAnyBooking && b.status === "approved" ? (
+                                              <button
+                                                type="button"
+                                                className="w-full cursor-pointer rounded-sm text-left underline-offset-2 md:hover:underline"
+                                                onClick={() => openEditBooking(b)}
+                                              >
+                                                {line}
+                                              </button>
+                                            ) : (
+                                              line
+                                            )}
                                           </li>
                                         );
                                       })}
@@ -757,7 +778,8 @@ export default function CalendarPage() {
                               b={b}
                               calendar={calendarMap[b.calendar_id]}
                               showBookingDetails={showBookingDetails}
-                              onManageOwn={() => openEditBooking(b)}
+                              staffCanManageAnyBooking={staffCanManageAnyBooking}
+                              onManageBooking={() => openEditBooking(b)}
                               onMemberProfile={openProfileFromBooking}
                             />
                           ))}
@@ -782,7 +804,8 @@ export default function CalendarPage() {
                           b={b}
                           calendar={calendarMap[b.calendar_id]}
                           showBookingDetails={showBookingDetails}
-                          onManageOwn={() => openEditBooking(b)}
+                          staffCanManageAnyBooking={staffCanManageAnyBooking}
+                          onManageBooking={() => openEditBooking(b)}
                           onMemberProfile={openProfileFromBooking}
                         />
                       ))}
@@ -1112,7 +1135,9 @@ export default function CalendarPage() {
                     const label = chipLabel(b, cal);
                     const detailLine = `${fmtTimeShort(b.start_time)}–${fmtTimeShort(b.end_time)}`;
                     const showText = showBookingDetails;
-                    const canManageOwn = b.is_own && b.status === "approved";
+                    const canManageBooking =
+                      (b.is_own && b.status === "approved") ||
+                      (staffCanManageAnyBooking && b.status === "approved");
                     return (
                       <li
                         key={b.id}
@@ -1137,7 +1162,7 @@ export default function CalendarPage() {
                             <div className="mt-0.5 text-xs text-slate-600 dark:text-zinc-400">Booked</div>
                           )}
                         </div>
-                        {canManageOwn && (
+                        {canManageBooking && (
                           <Button
                             type="button"
                             variant="ghost"
@@ -1195,7 +1220,9 @@ export default function CalendarPage() {
                     const label = chipLabel(b, cal);
                     const detailLine = `${fmtTimeShort(b.start_time)}–${fmtTimeShort(b.end_time)}`;
                     const showText = showBookingDetails;
-                    const canManageOwn = b.is_own && b.status === "approved";
+                    const canManageBooking =
+                      (b.is_own && b.status === "approved") ||
+                      (staffCanManageAnyBooking && b.status === "approved");
                     return (
                       <li
                         key={b.id}
@@ -1220,7 +1247,7 @@ export default function CalendarPage() {
                             <div className="mt-0.5 text-xs text-slate-600 dark:text-zinc-400">Booked</div>
                           )}
                         </div>
-                        {canManageOwn && (
+                        {canManageBooking && (
                           <Button
                             type="button"
                             variant="ghost"
