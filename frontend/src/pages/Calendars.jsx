@@ -559,9 +559,9 @@ export default function CalendarsAdmin({ embedded = false }) {
                   {(weekRowsState || weekRowsFromSlots(c.availability_weekly)).map((row) => (
                     <div
                       key={row.weekday}
-                      className="flex flex-wrap items-center gap-2 border-b border-slate-100 pb-2 last:border-0 last:pb-0 dark:border-white/5"
+                      className="flex flex-col gap-2 border-b border-slate-100 pb-2 last:border-0 last:pb-0 dark:border-white/5 sm:flex-row sm:items-center sm:gap-2"
                     >
-                      <label className="flex min-w-[7rem] cursor-pointer items-center gap-2 text-xs text-slate-800 dark:text-zinc-200">
+                      <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-800 dark:text-zinc-200 sm:min-w-[7rem]">
                         <input
                           type="checkbox"
                           checked={row.enabled}
@@ -575,29 +575,31 @@ export default function CalendarsAdmin({ embedded = false }) {
                         />
                         {row.label}
                       </label>
-                      <ScheduleTimeStepper
-                        disabled={!row.enabled}
-                        value={row.start}
-                        label={`${row.label} start time`}
-                        onChange={(next) =>
-                          setWeekRowsState((prev) => {
-                            const base = prev || weekRowsFromSlots(c.availability_weekly);
-                            return base.map((r) => (r.weekday === row.weekday ? { ...r, start: next } : r));
-                          })
-                        }
-                      />
-                      <span className="text-[10px] text-slate-400">to</span>
-                      <ScheduleTimeStepper
-                        disabled={!row.enabled}
-                        value={row.end}
-                        label={`${row.label} end time`}
-                        onChange={(next) =>
-                          setWeekRowsState((prev) => {
-                            const base = prev || weekRowsFromSlots(c.availability_weekly);
-                            return base.map((r) => (r.weekday === row.weekday ? { ...r, end: next } : r));
-                          })
-                        }
-                      />
+                      <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+                        <ScheduleTimeStepper
+                          disabled={!row.enabled}
+                          value={row.start}
+                          label={`${row.label} start time`}
+                          onChange={(next) =>
+                            setWeekRowsState((prev) => {
+                              const base = prev || weekRowsFromSlots(c.availability_weekly);
+                              return base.map((r) => (r.weekday === row.weekday ? { ...r, start: next } : r));
+                            })
+                          }
+                        />
+                        <span className="text-[10px] text-slate-400">to</span>
+                        <ScheduleTimeStepper
+                          disabled={!row.enabled}
+                          value={row.end}
+                          label={`${row.label} end time`}
+                          onChange={(next) =>
+                            setWeekRowsState((prev) => {
+                              const base = prev || weekRowsFromSlots(c.availability_weekly);
+                              return base.map((r) => (r.weekday === row.weekday ? { ...r, end: next } : r));
+                            })
+                          }
+                        />
+                      </div>
                     </div>
                   ))}
                 </div>
