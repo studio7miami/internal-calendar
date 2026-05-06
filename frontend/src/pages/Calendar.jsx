@@ -150,23 +150,15 @@ function chipLabel(b, calendar) {
     return t ? `Booked · ${t}` : "Booked";
   }
   const who = b.member_name ? b.member_name.split(" ")[0] : "Member";
-  const n = (calendar?.name || "").trim().toLowerCase();
-  const calName = calendar?.name || "";
-  if (n === "studio 7 miami") return who;
-  if (/photobooth/i.test(calName)) {
-    const note = stripVenueFromBookingDetail(b.notes?.trim() || "");
-    return note ? `${who} · Photobooth · ${note}` : `${who} · Photobooth`;
-  }
-  const note = stripVenueFromBookingDetail(b.notes?.trim() || "");
-  if (note) return note;
-  return calendar?.name || "Booking";
+  return `Booked · ${who}`;
 }
 
 function BookingChip({ b, calendar, showBookingDetails, onManageOwn, onMemberProfile }) {
   const isOwn = b.is_own;
+  // Calendar only shows approved bookings, but keep styling defensive.
   const isPending = b.status === "pending";
   const canSeeDetail = showBookingDetails;
-  const canManageOwn = isOwn && (b.status === "pending" || b.status === "approved");
+  const canManageOwn = isOwn && b.status === "approved";
   const canNameProfile = Boolean(canSeeDetail && b.member_id && onMemberProfile && !canManageOwn);
 
   const onClick = (e) => {
@@ -178,7 +170,7 @@ function BookingChip({ b, calendar, showBookingDetails, onManageOwn, onMemberPro
   if (canSeeDetail) {
     const color = calendar?.color || "#FAFAFA";
     const sub = chipLabel(b, calendar);
-    const timeBit = `${fmtTimeShort(b.start_time)} · `;
+    const timeBit = `${fmtTimeShort(b.start_time)}–${fmtTimeShort(b.end_time)} · `;
     const chipStyle = {
       background: isPending ? rgba(color, 0.16) : rgba(color, 0.22),
       borderColor: isPending ? rgba(color, 0.34) : rgba(color, 0.46),
@@ -318,7 +310,8 @@ export default function CalendarPage() {
     if (!user) return;
     try {
       const { data } = await api.get("/bookings");
-      setBookings(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      setBookings(list.filter((b) => b?.status === "approved"));
     } catch {
       setBookings([]);
     }
@@ -342,7 +335,10 @@ export default function CalendarPage() {
       const secondaries = [api.get("/bookings")];
       if (canFetchMembers) secondaries.push(api.get("/users"));
       const results = await Promise.all(secondaries);
-      setBookings(Array.isArray(results[0].data) ? results[0].data : []);
+      {
+        const list = Array.isArray(results[0].data) ? results[0].data : [];
+        setBookings(list.filter((b) => b?.status === "approved"));
+      }
       if (canFetchMembers && results[1]) {
         setMembers(Array.isArray(results[1].data) ? results[1].data : []);
       } else if (!canFetchMembers) {
@@ -395,7 +391,7 @@ export default function CalendarPage() {
   /** Admin overview: every calendar, ignores toolbar toggles. */
   const adminAllBookings = useMemo(() => {
     if (!isAdmin) return [];
-    return (bookings || []).filter((b) => b.status === "approved" || b.status === "pending");
+    return (bookings || []).filter((b) => b.status === "approved");
   }, [bookings, isAdmin]);
 
   const adminAllInRange = useMemo(() => {
@@ -943,9 +939,8 @@ export default function CalendarPage() {
                   <div className="min-w-0 flex-1 text-xs">
                     <div className="font-medium text-slate-900 dark:text-zinc-100">{cal?.name || "Calendar"}</div>
                     <div className="mt-0.5 text-slate-600 dark:text-zinc-400">
-                      {fmtTimeShort(b.start_time)}–{fmtTimeShort(b.end_time)}
-                      {showBookingDetails ? ` · ${chipLabel(b, cal)}` : " · Booked"}{" "}
-                      <span className="text-slate-400 dark:text-zinc-500">({b.status})</span>
+                      {fmtTimeShort(b.start_time)}–{fmtTimeShort(b.end_time)} ·{" "}
+                      {showBookingDetails ? chipLabel(b, cal) : "Booked"}
                     </div>
                   </div>
                 </div>
@@ -1117,7 +1112,7 @@ export default function CalendarPage() {
                     const label = chipLabel(b, cal);
                     const detailLine = `${fmtTimeShort(b.start_time)}–${fmtTimeShort(b.end_time)}`;
                     const showText = showBookingDetails;
-                    const canManageOwn = b.is_own && (b.status === "pending" || b.status === "approved");
+                    const canManageOwn = b.is_own && b.status === "approved";
                     return (
                       <li
                         key={b.id}
@@ -1200,7 +1195,7 @@ export default function CalendarPage() {
                     const label = chipLabel(b, cal);
                     const detailLine = `${fmtTimeShort(b.start_time)}–${fmtTimeShort(b.end_time)}`;
                     const showText = showBookingDetails;
-                    const canManageOwn = b.is_own && (b.status === "pending" || b.status === "approved");
+                    const canManageOwn = b.is_own && b.status === "approved";
                     return (
                       <li
                         key={b.id}

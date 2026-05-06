@@ -60,9 +60,9 @@ const ROLE_PERMISSION_HELP_SECTIONS = [
           "Can add a booking that's instantly confirmed — no request, no approval needed. It goes straight onto the calendar.",
       },
       {
-        title: "Delete or cancel any booking",
+        title: "Edit or cancel any booking",
         intent:
-          "Can remove any booking from the calendar — not just their own. Permanent action.",
+          "Can edit or remove any booking from the calendar — not just their own. Permanent action.",
       },
     ],
   },
