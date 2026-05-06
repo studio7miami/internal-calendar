@@ -4,8 +4,25 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
-import asyncio
 import os
+
+# Fail fast with a clear message (uvicorn --reload often buries KeyError under asyncio frames).
+_env_required = (
+    "SUPABASE_URL",
+    "SUPABASE_SERVICE_KEY",
+    "JWT_SECRET",
+    "ADMIN_EMAIL",
+    "ADMIN_PASSWORD",
+)
+_env_missing = [k for k in _env_required if not (os.getenv(k) or "").strip()]
+if _env_missing:
+    raise RuntimeError(
+        "Missing required environment variables: "
+        + ", ".join(_env_missing)
+        + ". Copy backend/.env.example to backend/.env and set them (then restart the API)."
+    )
+
+import asyncio
 import re
 import uuid
 import hmac
@@ -1509,12 +1526,11 @@ def _can_user_modify_booking(user: dict, perms: dict, b: dict) -> bool:
     if b.get("status") not in ("pending", "approved"):
         return False
     if str(b.get("source") or "") == "google_external":
-        return permissions.has(perms, "delete_any_booking") or permissions.has(perms, "create_manual_booking")
+        # External mirrors should only be removable by staff.
+        return permissions.has(perms, "delete_any_booking")
     if str(b.get("member_id")) == str(user["id"]):
         return True
     if permissions.has(perms, "delete_any_booking"):
-        return True
-    if permissions.has(perms, "create_manual_booking"):
         return True
     return False
 
@@ -1747,7 +1763,8 @@ async def patch_booking(booking_id: str, data: BookingUpdateIn, user: dict = Dep
         updates["notes"] = raw["notes"] if raw["notes"] is not None else ""
 
     is_owner = str(b.get("member_id")) == str(user["id"])
-    can_staff = permissions.has(p, "delete_any_booking") or permissions.has(p, "create_manual_booking")
+    # Moving someone else's booking between calendars is staff-only.
+    can_staff = permissions.has(p, "delete_any_booking")
     if "calendar_id" in raw and raw["calendar_id"] is not None and str(raw["calendar_id"]) != str(b.get("calendar_id")):
         if not can_staff:
             raise HTTPException(status_code=403, detail="Only staff can move a booking to another calendar")
