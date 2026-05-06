@@ -15,7 +15,7 @@ PERMISSION_DEFINITIONS: Tuple[Tuple[str, str], ...] = (
     ("approve_deny_requests", "View and approve / deny requests"),
     ("view_members_directory", "View team list"),
     ("assign_member_calendars", "Assign calendars to members"),
-    ("delete_any_booking", "Delete or cancel any booking"),
+    ("delete_any_booking", "Edit or cancel any booking"),
 )
 
 PERMISSION_KEYS = [k for k, _ in PERMISSION_DEFINITIONS]
