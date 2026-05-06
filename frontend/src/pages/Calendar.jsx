@@ -125,32 +125,23 @@ function MonthDayEventPills({ entries }) {
 }
 
 
-/** Strip redundant venue from titles/notes in booking detail lines (popover, day panel, chips). */
-function stripVenueFromBookingDetail(s) {
-  if (!s) return "";
-  let t = s.trim();
-  t = t.replace(/^Google Calendar ·\s*/i, "").trim();
-  t = t.replace(/^studio\s+7\s+miami\s*[·\-–—@|:]\s*/i, "").trim();
-  t = t.replace(/\s*\(\s*studio\s+7\s+miami\s*\)/gi, "").trim();
-  t = t.replace(/\s+at\s+studio\s+7\s+miami\b/gi, "").trim();
-  t = t.replace(/\s*[@·,;|]\s*studio\s+7\s+miami\b/gi, "").trim();
-  let prev;
-  do {
-    prev = t;
-    t = t.replace(/\s*(?:@|·|\||—|-)\s*studio\s+7\s+miami\s*$/i, "").trim();
-  } while (t !== prev);
-  if (/^studio\s+7\s+miami$/i.test(t)) return "";
-  t = t.replace(/\s{2,}/g, " ").trim();
-  return t;
+function normBookingHm(t) {
+  const s = String(t || "").trim();
+  return s.length >= 5 ? s.slice(0, 5) : s;
 }
 
-function chipLabel(b, calendar) {
-  if (b.source === "google_external") {
-    const t = stripVenueFromBookingDetail(b.external_title || b.notes || "");
-    return t ? `Booked · ${t}` : "Booked";
-  }
-  const who = b.member_name ? b.member_name.split(" ")[0] : "Member";
+/** "Booked · Seven" — always member first name (never raw notes / synthetic tails from Google sync). */
+function chipLabel(b, _calendar) {
+  void _calendar;
+  const raw = ((b.member_name || "") + "").trim();
+  const who = raw ? raw.split(/\s+/)[0] : "Member";
   return `Booked · ${who}`;
+}
+
+/** Full month-popover / preview line: "3 PM–5:30 PM · Booked · Seven" */
+function bookingPreviewLine(b) {
+  const range = `${fmtTimeShort(normBookingHm(b.start_time))}–${fmtTimeShort(normBookingHm(b.end_time))}`;
+  return `${range} · ${chipLabel(b)}`;
 }
 
 function BookingChip({ b, calendar, showBookingDetails, onManageBooking, onMemberProfile, staffCanManageAnyBooking }) {
@@ -175,7 +166,7 @@ function BookingChip({ b, calendar, showBookingDetails, onManageBooking, onMembe
   if (canSeeDetail) {
     const color = calendar?.color || "#FAFAFA";
     const sub = chipLabel(b, calendar);
-    const timeBit = `${fmtTimeShort(b.start_time)}–${fmtTimeShort(b.end_time)} · `;
+    const timeBit = `${fmtTimeShort(normBookingHm(b.start_time))}–${fmtTimeShort(normBookingHm(b.end_time))} · `;
     const chipStyle = {
       background: isPending ? rgba(color, 0.16) : rgba(color, 0.22),
       borderColor: isPending ? rgba(color, 0.34) : rgba(color, 0.46),
@@ -652,8 +643,8 @@ export default function CalendarPage() {
                                       {list.map((b) => {
                                         const show = showBookingDetails;
                                         const line = show
-                                          ? `${fmtTimeShort(b.start_time)}–${fmtTimeShort(b.end_time)} · ${chipLabel(b, cal)}`
-                                          : `${fmtTimeShort(b.start_time)}–${fmtTimeShort(b.end_time)} · Booked`;
+                                          ? bookingPreviewLine(b)
+                                          : `${fmtTimeShort(normBookingHm(b.start_time))}–${fmtTimeShort(normBookingHm(b.end_time))} · Booked`;
                                         return (
                                           <li key={b.id} className="text-xs leading-snug text-slate-600 dark:text-zinc-400">
                                             {staffCanManageAnyBooking && b.status === "approved" ? (
@@ -962,8 +953,14 @@ export default function CalendarPage() {
                   <div className="min-w-0 flex-1 text-xs">
                     <div className="font-medium text-slate-900 dark:text-zinc-100">{cal?.name || "Calendar"}</div>
                     <div className="mt-0.5 text-slate-600 dark:text-zinc-400">
-                      {fmtTimeShort(b.start_time)}–{fmtTimeShort(b.end_time)} ·{" "}
-                      {showBookingDetails ? chipLabel(b, cal) : "Booked"}
+                      {showBookingDetails ? (
+                        bookingPreviewLine(b)
+                      ) : (
+                        <>
+                          {fmtTimeShort(normBookingHm(b.start_time))}–{fmtTimeShort(normBookingHm(b.end_time))}
+                          {" · Booked"}
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1133,7 +1130,7 @@ export default function CalendarPage() {
                   {dayPanelBookings.map((b) => {
                     const cal = calendarMap[b.calendar_id];
                     const label = chipLabel(b, cal);
-                    const detailLine = `${fmtTimeShort(b.start_time)}–${fmtTimeShort(b.end_time)}`;
+                    const detailLine = `${fmtTimeShort(normBookingHm(b.start_time))}–${fmtTimeShort(normBookingHm(b.end_time))}`;
                     const showText = showBookingDetails;
                     const canManageBooking =
                       (b.is_own && b.status === "approved") ||
@@ -1218,7 +1215,7 @@ export default function CalendarPage() {
                   {dayPanelBookings.map((b) => {
                     const cal = calendarMap[b.calendar_id];
                     const label = chipLabel(b, cal);
-                    const detailLine = `${fmtTimeShort(b.start_time)}–${fmtTimeShort(b.end_time)}`;
+                    const detailLine = `${fmtTimeShort(normBookingHm(b.start_time))}–${fmtTimeShort(normBookingHm(b.end_time))}`;
                     const showText = showBookingDetails;
                     const canManageBooking =
                       (b.is_own && b.status === "approved") ||
