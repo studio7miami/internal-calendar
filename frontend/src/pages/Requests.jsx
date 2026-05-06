@@ -26,6 +26,17 @@ import MemberSummaryDialog from "../components/members/MemberSummaryDialog";
 
 const PREVIEW_LIMIT = 7;
 
+/** Pending queue: earliest submission first (FIFO), then member name. */
+function sortPendingByReceivedThenMember(a, b) {
+  const ca = String(a.created_at || "");
+  const cb = String(b.created_at || "");
+  const byTime = ca.localeCompare(cb);
+  if (byTime !== 0) return byTime;
+  const na = String(a.member_name || a.member_email || "");
+  const nb = String(b.member_name || b.member_email || "");
+  return na.localeCompare(nb);
+}
+
 function ymd(d) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -360,7 +371,7 @@ export default function Requests() {
   const [allRequestsOpen, setAllRequestsOpen] = useState(false);
   const [allReqGranularity, setAllReqGranularity] = useState("week");
   const [allReqCursor, setAllReqCursor] = useState(() => new Date());
-  const [statusTab, setStatusTab] = useState("all"); // all | approved | denied
+  const [statusTab, setStatusTab] = useState("pending"); // pending | approved | denied
 
   const canModerate = !!user?.permissions?.approve_deny_requests;
 
@@ -421,22 +432,25 @@ export default function Requests() {
   };
 
   const filteredItems = useMemo(() => {
+    if (statusTab === "pending") return items.filter((x) => x.status === "pending");
     if (statusTab === "approved") return items.filter((x) => x.status === "approved");
     if (statusTab === "denied") return items.filter((x) => x.status === "denied");
     return items;
   }, [items, statusTab]);
 
   const byRecent = useMemo(() => {
-    // Sort by requested booking date (newest → oldest), then start time.
-    return filteredItems
-      .slice()
-      .sort(
-        (a, b) =>
-          String(b.date || "").localeCompare(String(a.date || "")) ||
-          String(a.start_time || "").localeCompare(String(b.start_time || "")) ||
-          String(b.created_at || "").localeCompare(String(a.created_at || ""))
-      );
-  }, [filteredItems]);
+    const list = filteredItems.slice();
+    if (statusTab === "pending") {
+      return list.sort(sortPendingByReceivedThenMember);
+    }
+    // Approved / denied: sort by booking date (newest → oldest), then time, then submission time.
+    return list.sort(
+      (a, b) =>
+        String(b.date || "").localeCompare(String(a.date || "")) ||
+        String(a.start_time || "").localeCompare(String(b.start_time || "")) ||
+        String(b.created_at || "").localeCompare(String(a.created_at || ""))
+    );
+  }, [filteredItems, statusTab]);
 
   const previewRequests = useMemo(() => byRecent.slice(0, PREVIEW_LIMIT), [byRecent]);
 
@@ -458,13 +472,15 @@ export default function Requests() {
     return list.filter((x) => x.date >= `${y}-01-01` && x.date <= `${y}-12-31`);
   }, [filteredItems, allReqGranularity, allReqCursor]);
 
-  const requestsInRangeSorted = useMemo(
-    () =>
-      requestsInRange
-        .slice()
-        .sort((a, b) => a.date.localeCompare(b.date) || String(a.start_time).localeCompare(String(b.start_time))),
-    [requestsInRange]
-  );
+  const requestsInRangeSorted = useMemo(() => {
+    const slice = requestsInRange.slice();
+    if (statusTab === "pending") {
+      return slice.sort(sortPendingByReceivedThenMember);
+    }
+    return slice.sort(
+      (a, b) => a.date.localeCompare(b.date) || String(a.start_time).localeCompare(String(b.start_time))
+    );
+  }, [requestsInRange, statusTab]);
 
   const requestsRangeTitle = useMemo(() => {
     if (allReqGranularity === "week") {
@@ -656,7 +672,7 @@ export default function Requests() {
             aria-label="Request status filter"
           >
             {[
-              { id: "all", label: "All" },
+              { id: "pending", label: "Pending" },
               { id: "approved", label: "Approved" },
               { id: "denied", label: "Denied" },
             ].map(({ id, label }) => {
@@ -711,7 +727,16 @@ export default function Requests() {
         </div>
       )}
 
-      {items.length > 0 && requestListBody(previewRequests)}
+      {items.length > 0 && previewRequests.length === 0 && (
+        <p
+          className="rounded-[7px] border border-dashed border-gray-200/90 bg-white/50 px-4 py-8 text-center text-sm text-slate-600 dark:border-white/20 dark:bg-zinc-900/30 dark:text-zinc-400"
+          data-testid="requests-tab-empty"
+        >
+          No {statusTab} requests right now.
+        </p>
+      )}
+
+      {items.length > 0 && previewRequests.length > 0 && requestListBody(previewRequests)}
 
       {allRequestsDialog}
 
