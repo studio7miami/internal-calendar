@@ -40,10 +40,16 @@ def oauth_client_configured() -> bool:
 
 
 def oauth_redirect_uri() -> str:
-    return os.environ.get(
+    raw = os.environ.get(
         "GOOGLE_OAUTH_REDIRECT_URI",
         "http://127.0.0.1:8000/api/integrations/google/callback",
     ).strip()
+    # Guard against accidental copy/paste of multiple tokens (e.g. "<uri> <frontend_url>").
+    # Google will percent-encode the space and our callback route becomes "/%20https://...".
+    if not raw:
+        return "http://127.0.0.1:8000/api/integrations/google/callback"
+    cleaned = raw.split()[0].strip()
+    return cleaned or "http://127.0.0.1:8000/api/integrations/google/callback"
 
 
 def calendar_timezone() -> str:
@@ -316,19 +322,29 @@ async def delete_calendar_event(
     token_owner_id: str,
     calendar_google_id: Optional[str],
     google_event_id: Optional[str],
-) -> None:
-    if not calendar_google_id or not google_event_id or str(google_event_id).startswith("gcal_mock_"):
-        return
+) -> bool:
+    """Delete event on Google Calendar. True if removed, already gone, or nothing to do; False on error."""
+    ge = str(google_event_id or "").strip()
+    cg = str(calendar_google_id or "").strip()
+    if not ge or ge.startswith("gcal_mock_"):
+        return True
+    if not cg:
+        logger.warning("delete event: missing calendar id for event %s", ge)
+        return False
     token = await get_access_token_for_owner(supabase, token_owner_id)
     if not token:
-        return
-    cal_enc = quote(str(calendar_google_id), safe="")
-    eid_enc = quote(str(google_event_id), safe="")
+        return False
+    cal_enc = quote(str(cg), safe="")
+    eid_enc = quote(str(ge), safe="")
     url = f"https://www.googleapis.com/calendar/v3/calendars/{cal_enc}/events/{eid_enc}"
     async with httpx.AsyncClient(timeout=30.0) as client:
         r = await client.delete(url, headers={"Authorization": f"Bearer {token}"})
-    if r.status_code not in (200, 204):
-        logger.warning("delete event failed: %s %s", r.status_code, r.text[:400])
+    if r.status_code in (200, 204):
+        return True
+    if r.status_code == 404:
+        return True
+    logger.warning("delete event failed: %s %s", r.status_code, r.text[:400])
+    return False
 
 
 async def push_booking_to_google(
@@ -357,12 +373,13 @@ async def remove_booking_from_google(
     calendar_google_id: Optional[str],
     google_event_id: Optional[str],
     acting_user_id: str,
-) -> None:
+) -> bool:
     owner = pick_google_token_owner_id(supabase, str(acting_user_id))
     if not owner:
         logger.info("[GCAL] delete skipped (no tokens): %s", google_event_id)
-        return
+        return False
     try:
-        await delete_calendar_event(supabase, owner, calendar_google_id, google_event_id)
+        return await delete_calendar_event(supabase, owner, calendar_google_id, google_event_id)
     except Exception:
         logger.exception("Google Calendar delete failed")
+        return False

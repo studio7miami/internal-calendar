@@ -30,7 +30,7 @@ import hashlib
 import secrets
 import logging
 from datetime import datetime, timezone, timedelta
-from typing import Any, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 import permissions
 import invite_email
@@ -406,8 +406,8 @@ async def gcal_delete_event(
     calendar_google_id: Optional[str],
     google_event_id: Optional[str],
     acting_user_id: str,
-) -> None:
-    await google_calendar_client.remove_booking_from_google(
+) -> bool:
+    return await google_calendar_client.remove_booking_from_google(
         supabase, calendar_google_id, google_event_id, str(acting_user_id)
     )
 
@@ -1304,6 +1304,48 @@ async def google_sync_inbound_now(_admin: dict = Depends(require_admin)):
     return stats
 
 
+@api.post("/internal/webhooks/supabase-booking-deleted")
+async def supabase_booking_deleted_webhook(req: Request):
+    """
+    When a row is removed directly from Supabase (Table Editor / SQL), the API delete handler does not run.
+    Configure a Database Webhook on `public.bookings` DELETE to POST here so the Google event is removed too.
+
+    Headers: `X-Studio7-Internal-Secret` must match INTERNAL_GOOGLE_DELETE_SECRET.
+    Body: Supabase webhook JSON with `old_record` containing `calendar_id` and `google_event_id`.
+    """
+    expected = (os.environ.get("INTERNAL_GOOGLE_DELETE_SECRET") or "").strip()
+    if not expected or req.headers.get("x-studio7-internal-secret") != expected:
+        raise HTTPException(status_code=404, detail="Not found")
+    try:
+        payload: Dict[str, Any] = await req.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    old = payload.get("old_record")
+    if not isinstance(old, dict):
+        return {"ok": True, "skipped": "no_old_record"}
+    geid = str(old.get("google_event_id") or "").strip()
+    calendar_id = str(old.get("calendar_id") or "").strip()
+    if not geid or geid.startswith("gcal_mock_"):
+        return {"ok": True, "skipped": "no_google_event"}
+    if not calendar_id:
+        return {"ok": True, "skipped": "no_calendar_id"}
+    cal_res = supabase.table("calendars").select("google_calendar_id").eq("id", calendar_id).limit(1).execute()
+    cal_row = cal_res.data[0] if cal_res.data else None
+    cal_gid = str((cal_row or {}).get("google_calendar_id") or "").strip()
+    if not cal_gid:
+        raise HTTPException(
+            status_code=400,
+            detail="Calendar has no google_calendar_id; cannot delete event on Google.",
+        )
+    owner = google_inbound_sync.resolve_sync_token_owner(supabase)
+    if not owner:
+        raise HTTPException(status_code=503, detail="No Google OAuth tokens (connect Google as an admin).")
+    ok = await google_calendar_client.delete_calendar_event(supabase, owner, cal_gid, geid)
+    if not ok:
+        raise HTTPException(status_code=502, detail="Google Calendar delete failed.")
+    return {"ok": True}
+
+
 def _normalize_hex_color(value: Optional[str], fallback: str) -> str:
     s = (value or "").strip()
     if re.match(r"^#[0-9A-Fa-f]{6}$", s):
@@ -1807,12 +1849,20 @@ async def patch_booking(booking_id: str, data: BookingUpdateIn, user: dict = Dep
     if row.get("status") == "approved":
         cal_res = supabase.table("calendars").select("*").eq("id", row["calendar_id"]).execute()
         cal = cal_res.data[0] if cal_res.data else {}
-        if row.get("google_event_id"):
-            await gcal_delete_event(
-                cal.get("google_calendar_id"),
-                row.get("google_event_id"),
-                str(user["id"]),
-            )
+        geid = str(row.get("google_event_id") or "").strip()
+        cal_gid = str(cal.get("google_calendar_id") or "").strip()
+        if geid and not geid.startswith("gcal_mock_"):
+            if not cal_gid:
+                raise HTTPException(
+                    status_code=400,
+                    detail="This calendar is not linked to Google Calendar; cannot sync schedule changes.",
+                )
+            ok_del = await gcal_delete_event(cal_gid, geid, str(user["id"]))
+            if not ok_del:
+                raise HTTPException(
+                    status_code=502,
+                    detail="Could not remove the previous event from Google Calendar. Check the Google connection and try again.",
+                )
         gid = await gcal_push_event(cal.get("google_calendar_id"), row, str(user["id"]))
         supabase.table("bookings").update({"google_event_id": gid}).eq("id", booking_id).execute()
         row = {**row, "google_event_id": gid}
@@ -2080,12 +2130,20 @@ async def delete_booking(booking_id: str, user: dict = Depends(get_current_user)
     _assert_calendar_in_scope(user, p, b.get("calendar_id", ""))
     cal_res = supabase.table("calendars").select("*").eq("id", b["calendar_id"]).execute()
     cal = cal_res.data[0] if cal_res.data else {}
-    if str(b.get("source") or "") != "google_external":
-        await gcal_delete_event(
-            cal.get("google_calendar_id"),
-            b.get("google_event_id"),
-            str(user["id"]),
-        )
+    geid = str(b.get("google_event_id") or "").strip()
+    cal_gid = str(cal.get("google_calendar_id") or "").strip()
+    if geid and not geid.startswith("gcal_mock_"):
+        if not cal_gid:
+            raise HTTPException(
+                status_code=400,
+                detail="This calendar is not linked to Google Calendar, but this booking still references a Google event. Fix the calendar’s Google mapping, then try again.",
+            )
+        ok_del = await gcal_delete_event(cal_gid, geid, str(user["id"]))
+        if not ok_del:
+            raise HTTPException(
+                status_code=502,
+                detail="Could not delete the event on Google Calendar. Confirm Google is connected under Profile and try again.",
+            )
     supabase.table("bookings").delete().eq("id", booking_id).execute()
     return {"ok": True}
 
