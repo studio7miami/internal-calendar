@@ -1654,6 +1654,31 @@ def _calendar_has_booking_conflict(
     return False
 
 
+def _first_name_only(full_name: str) -> str:
+    s = (full_name or "").strip()
+    if not s:
+        return ""
+    return s.split()[0]
+
+
+def _member_calendar_conflict_message(member_id: Any, acting_user: dict) -> str:
+    """Human copy when a slot collides with another approved/pending booking on that calendar."""
+    name = ""
+    if member_id is not None and str(member_id) == str(acting_user.get("id")):
+        name = str(acting_user.get("name") or "").strip()
+    elif member_id:
+        try:
+            r = supabase.table("users").select("name").eq("id", str(member_id)).limit(1).execute()
+            if r.data:
+                name = str(r.data[0].get("name") or "").strip()
+        except Exception:
+            pass
+    first = _first_name_only(name) if name else ""
+    if not first:
+        first = "Member"
+    return f"{first}, this time conflicts with another booking on the calendar. Choose another time."
+
+
 def _can_user_modify_booking(user: dict, perms: dict, b: dict) -> bool:
     if b.get("status") not in ("pending", "approved"):
         return False
@@ -1819,7 +1844,10 @@ async def create_request(data: BookingRequestIn, user: dict = Depends(get_curren
             detail="That time is outside this calendar's available hours. Pick another slot or ask an admin.",
         )
     if _calendar_has_booking_conflict(data.calendar_id, data.date, data.start_time, data.end_time):
-        raise HTTPException(status_code=400, detail="This time overlaps another booking on that calendar.")
+        raise HTTPException(
+            status_code=400,
+            detail=_member_calendar_conflict_message(user["id"], user),
+        )
     booking = {
         "id": str(uuid.uuid4()),
         "calendar_id": data.calendar_id,
@@ -1988,11 +2016,17 @@ async def patch_booking(booking_id: str, data: BookingUpdateIn, user: dict = Dep
                     detail="That time is outside this calendar's available hours.",
                 )
             if _calendar_has_booking_conflict(str(merged.get("calendar_id", b["calendar_id"])), d, st, et, exclude_booking_id=booking_id):
-                raise HTTPException(status_code=400, detail="This time overlaps another booking on that calendar.")
+                raise HTTPException(
+                    status_code=400,
+                    detail=_member_calendar_conflict_message(merged.get("member_id"), user),
+                )
         elif can_staff and _calendar_has_booking_conflict(
             str(merged.get("calendar_id", b["calendar_id"])), d, st, et, exclude_booking_id=booking_id
         ):
-            raise HTTPException(status_code=400, detail="This time overlaps another booking on that calendar.")
+            raise HTTPException(
+                status_code=400,
+                detail=_member_calendar_conflict_message(merged.get("member_id"), user),
+            )
 
     if updates and (time_related or "member_id" in updates):
         updates["reminder_24h_sent_at"] = None
@@ -2040,9 +2074,12 @@ async def create_manual(data: ManualBookingIn, user: dict = Depends(get_current_
     _assert_calendar_in_scope(user, p, data.calendar_id)
     if not _booking_times_valid(data.date, data.start_time, data.end_time):
         raise HTTPException(status_code=400, detail="End time must be after start time")
-    if _calendar_has_booking_conflict(data.calendar_id, data.date, data.start_time, data.end_time):
-        raise HTTPException(status_code=400, detail="This time overlaps another booking on that calendar.")
     member_id = data.member_id or user["id"]
+    if _calendar_has_booking_conflict(data.calendar_id, data.date, data.start_time, data.end_time):
+        raise HTTPException(
+            status_code=400,
+            detail=_member_calendar_conflict_message(member_id, user),
+        )
     booking = {
         "id": str(uuid.uuid4()),
         "calendar_id": data.calendar_id,
@@ -2073,6 +2110,17 @@ async def approve_booking(booking_id: str, data: ApproveDenyIn, admin: dict = De
     _assert_calendar_in_scope(admin, p, b.get("calendar_id", ""))
     if b["status"] != "pending":
         raise HTTPException(status_code=400, detail="Booking not pending")
+    if _calendar_has_booking_conflict(
+        str(b.get("calendar_id", "")),
+        str(b.get("date", "")),
+        str(b.get("start_time", "")),
+        str(b.get("end_time", "")),
+        exclude_booking_id=booking_id,
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=_member_calendar_conflict_message(b.get("member_id"), admin),
+        )
     cal_res = supabase.table("calendars").select("*").eq("id", b["calendar_id"]).execute()
     cal = cal_res.data[0] if cal_res.data else {}
     gid = await gcal_push_event(cal.get("google_calendar_id"), b, str(admin["id"]))
