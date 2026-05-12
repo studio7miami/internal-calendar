@@ -13,6 +13,7 @@ Logo: INVITE_EMAIL_LOGO_URL, else FRONTEND_URL/brand/logo.png when FRONTEND_URL 
 else API_PUBLIC_ORIGIN + /api/public/brand-logo.png (serves frontend build/public brand/logo.png).
 Header logo links to TRANSACTIONAL_EMAIL_SITE_URL, else FRONTEND_URL (non-local), else https://team.studio7.miami.
 Invite magic-link card matches booking emails: off-white panel #FCFCFC, border #212121 @ 7%, CTA pill #F7F7F7 with same border.
+Inbox list previews: hidden preheader + short HTML <title>; logo imgs use empty alt (link has aria-label) so snippets lead with real greeting/body, not repeated org names.
 
 Booking outcome copy (accepted / denied) — preview without sending:
   - Swagger: /docs → Authorize (admin JWT) → GET /api/admin/email-preview/booking-decision (fmt=html; decision=approved is the accept path)
@@ -226,7 +227,20 @@ def _transactional_email_outer_close() -> str:
 </html>"""
 
 
-def _transactional_email_logo_row(*, org_e: str) -> str:
+def _transactional_email_preheader_row(*, text_e: str) -> str:
+    """Hidden first row so inbox previews start with real copy (not title + duplicate logo alts). `text_e` must be HTML-escaped."""
+    return f"""            <tr>
+              <td style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;" aria-hidden="true">
+                {text_e}
+              </td>
+            </tr>
+"""
+
+
+def _transactional_email_logo_row(*, org_name: str) -> str:
+    """Logo block; both images use empty alt so inbox previews are not prefixed with duplicate org names. Link keeps aria-label for accessibility."""
+    org_raw = (org_name or "").strip() or "Studio 7 Miami"
+    aria_label = html.escape(org_raw, quote=True)
     raw_light = resolve_invite_logo_url()
     raw_dark = _logo_dark_variant_url(raw_light)
     logo_src = raw_light.replace("&", "&amp;")
@@ -234,21 +248,24 @@ def _transactional_email_logo_row(*, org_e: str) -> str:
     site = _transactional_email_site_url().replace('"', "%22")
     return f"""            <tr>
               <td align="center" style="padding:0 0 18px;background:transparent;">
-                <a href="{site}" style="display:inline-block;text-decoration:none;border:0;" target="_blank" rel="noopener noreferrer">
+                <a href="{site}" aria-label="{aria_label}" style="display:inline-block;text-decoration:none;border:0;" target="_blank" rel="noopener noreferrer">
                   <img
                     src="{logo_src}"
-                    alt="{org_e}"
+                    alt=""
                     width="150"
                     border="0"
                     class="s7-logo-light"
+                    role="presentation"
                     style="display:block;max-width:150px;height:auto;width:100%;"
                   />
                   <img
                     src="{logo_dark_src}"
-                    alt="{org_e}"
+                    alt=""
                     width="150"
                     border="0"
                     class="s7-logo-dark"
+                    aria-hidden="true"
+                    role="presentation"
                     style="display:block;max-width:150px;height:auto;width:100%;"
                   />
                 </a>
@@ -280,12 +297,15 @@ def build_invite_email_html(*, invite_link: str, org_name: str) -> str:
     cta_ff = _INVITE_CTA_FONT_FAMILY
     fg = EMAIL_TEXT
     ff = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
-    head = _transactional_email_head(page_title_e=org_e, extra_head=_INVITE_EMAIL_MANROPE_HEAD)
-    logo = _transactional_email_logo_row(org_e=org_e)
+    head = _transactional_email_head(page_title_e=html.escape("Welcome"), extra_head=_INVITE_EMAIL_MANROPE_HEAD)
+    preheader_row = _transactional_email_preheader_row(
+        text_e=html.escape("Welcome — you've been added to the team calendar. Tap below to set up your account.")
+    )
+    logo = _transactional_email_logo_row(org_name=org_name)
     return f"""<!DOCTYPE html>
 <html lang="en">
 {head}
-{_transactional_email_outer_open()}{logo}
+{_transactional_email_outer_open()}{preheader_row}{logo}
             <tr>
               <td
                 style="background:{card_bg};border:1px solid {card_bdr};border-radius:12px;padding:28px 22px;color:{fg};font-family:{ff};"
@@ -605,7 +625,6 @@ def build_booking_decision_bodies(
         )
 
     lead_html = "<br />".join(html.escape(p) for p in (lead_plain or "").split("\n"))
-    org_e = html.escape(org)
     card_bg = BOOKING_DECISION_CARD_BG
     card_bdr = BOOKING_DECISION_CARD_BORDER
     fg = EMAIL_TEXT
@@ -644,12 +663,19 @@ def build_booking_decision_bodies(
 {msg_p}                <p style="margin:14px 0 0;font-size:15px;line-height:1.5;color:{fg};">Feel free to check the calendar for another time that works.</p>
 """
 
-    head = _transactional_email_head(page_title_e=org_e)
-    logo = _transactional_email_logo_row(org_e=org_e)
+    if decision == "approved":
+        head_title = html.escape("Booking confirmed")
+        preheader_plain = f"Hey {member_display} — Your booking has been confirmed."
+    else:
+        head_title = html.escape("Booking update")
+        preheader_plain = f"Hey {member_display} — This one couldn't be locked in this time."
+    head = _transactional_email_head(page_title_e=head_title)
+    preheader_row = _transactional_email_preheader_row(text_e=html.escape(preheader_plain))
+    logo = _transactional_email_logo_row(org_name=org)
     html_body = f"""<!DOCTYPE html>
 <html lang="en">
 {head}
-{_transactional_email_outer_open()}{logo}
+{_transactional_email_outer_open()}{preheader_row}{logo}
             <tr>
               <td style="background:{card_bg};border:1px solid {card_bdr};border-radius:12px;padding:28px 22px;color:{fg};font-family:{ff};">
                 {card_main}
@@ -744,14 +770,10 @@ def build_new_booking_request_staff_bodies(
     cta_ff = _INVITE_CTA_FONT_FAMILY
     fg = EMAIL_TEXT
     ff = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
-    org_e = html.escape(org)
 
     notes_html = ""
     if notes_e:
         notes_html = f'                <p style="margin:14px 0 0;font-size:15px;line-height:1.5;color:{fg};">&ldquo;{notes_e}&rdquo;</p>\n'
-    notes_txt_block = ""
-    if notes_plain:
-        notes_txt_block = f'"{notes_plain}"\n\n'
 
     card_main = f"""                <p style="margin:0;font-size:15px;line-height:1.5;color:{fg};">Hey {greet_e} —</p>
                 <p style="margin:14px 0 0;font-size:15px;line-height:1.5;color:{fg};">You have a new booking request.</p>
@@ -778,12 +800,15 @@ def build_new_booking_request_staff_bodies(
                 </table>
 """
 
-    head = _transactional_email_head(page_title_e=org_e)
-    logo = _transactional_email_logo_row(org_e=org_e)
+    head_title = html.escape("New booking request")
+    head = _transactional_email_head(page_title_e=head_title)
+    preheader_plain = f"Hey {greet_raw} — You have a new booking request."
+    preheader_row = _transactional_email_preheader_row(text_e=html.escape(preheader_plain))
+    logo = _transactional_email_logo_row(org_name=org)
     html_body = f"""<!DOCTYPE html>
 <html lang="en">
 {head}
-{_transactional_email_outer_open()}{logo}
+{_transactional_email_outer_open()}{preheader_row}{logo}
             <tr>
               <td style="background:{card_bg};border:1px solid {card_bdr};border-radius:12px;padding:28px 22px;color:{fg};font-family:{ff};">
                 {card_main}
@@ -831,7 +856,6 @@ def build_booking_reminder_bodies(
     detail_dt_e = html.escape(detail_dt)
     st = html.escape(start_12)
     et = html.escape(end_12)
-    org_e = html.escape(org)
     card_bg = BOOKING_DECISION_CARD_BG
     card_bdr = BOOKING_DECISION_CARD_BORDER
     fg = EMAIL_TEXT
@@ -867,6 +891,7 @@ def build_booking_reminder_bodies(
             "See you then.",
             "",
         ]
+        preheader_plain = f"Hey {member_display} — You're booked for tomorrow."
     else:
         subject = (
             _apply_booking_decision_template(
@@ -898,13 +923,15 @@ def build_booking_reminder_bodies(
             "See you soon.",
             "",
         ]
+        preheader_plain = f"Hey {member_display} — Your time at the studio starts in 2 hours."
 
-    head = _transactional_email_head(page_title_e=org_e)
-    logo = _transactional_email_logo_row(org_e=org_e)
+    head = _transactional_email_head(page_title_e=html.escape("Booking reminder"))
+    preheader_row = _transactional_email_preheader_row(text_e=html.escape(preheader_plain))
+    logo = _transactional_email_logo_row(org_name=org)
     html_body = f"""<!DOCTYPE html>
 <html lang="en">
 {head}
-{_transactional_email_outer_open()}{logo}
+{_transactional_email_outer_open()}{preheader_row}{logo}
             <tr>
               <td style="background:{card_bg};border:1px solid {card_bdr};border-radius:12px;padding:28px 22px;color:{fg};font-family:{ff};">
                 {card_main}
