@@ -38,12 +38,13 @@ import bcrypt
 import jwt
 import google_calendar_client
 import google_inbound_sync
+import booking_reminders
 try:
     import stripe  # type: ignore
 except Exception:  # pragma: no cover
     stripe = None
-from fastapi import Body, FastAPI, APIRouter, HTTPException, Depends, Request
-from fastapi.responses import FileResponse
+from fastapi import Body, FastAPI, APIRouter, HTTPException, Depends, Request, Query
+from fastapi.responses import FileResponse, HTMLResponse
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import RedirectResponse
 from urllib.parse import quote_plus, urlencode
@@ -369,6 +370,12 @@ def can_access_members_page(u: dict, p: dict) -> bool:
     )
 
 
+def _can_reassign_booking_member(user: dict, p: dict) -> bool:
+    if user.get("role") == "admin":
+        return True
+    return permissions.has(p, "reassign_booking_member")
+
+
 def _auth_user_out(user: dict) -> dict:
     out = {
         "id": user["id"],
@@ -582,6 +589,12 @@ async def startup():
         app.state.google_inbound_task = asyncio.create_task(google_inbound_sync.google_inbound_background_loop(supabase))
     except Exception as e:
         logger.warning("Google inbound background sync task not started: %s", e)
+    try:
+        app.state.booking_reminder_task = asyncio.create_task(
+            booking_reminders.booking_reminder_background_loop(supabase)
+        )
+    except Exception as e:
+        logger.warning("Booking reminder background loop not started: %s", e)
 
 
 # ---------- Public assets (no auth; invite fallback — file is frontend brand/logo.png, build preferred) ----------
@@ -614,6 +627,7 @@ async def public_version():
         "invite_email_template_version": getattr(invite_email, "INVITE_EMAIL_TEMPLATE_VERSION", ""),
         # True only if INVITE_FROM_EMAIL + (RESEND_API_KEY or SMTP_HOST) — no secrets exposed
         "invite_email_ready": invite_email.invite_email_delivery_configured(),
+        "booking_reminder_poll_sec": booking_reminders.poll_interval_sec(),
     }
 
 
@@ -851,6 +865,47 @@ async def patch_perms_config(data: dict = Body(...), _: dict = Depends(require_a
         },
         "stored": stored,
     }
+
+
+@api.get("/admin/email-preview/booking-decision")
+async def preview_booking_decision_email(
+    decision: str = Query("approved", description="approved or denied"),
+    fmt: str = Query(
+        "json",
+        description='Return shape: "json" (subject + html + text) or "html" (render the email body in a browser tab)',
+    ),
+    calendar_name: str = Query("Studio 7 Miami"),
+    date_str: str = Query("2026-05-12"),
+    start_time: str = Query("13:00"),
+    end_time: str = Query("13:30"),
+    optional_message: str = Query(
+        "",
+        description="Sample moderator note shown under the booking line when non-empty",
+    ),
+    member_name: str = Query("Alex", description="Member display name for accepted-email greeting (first name is used)"),
+    _: dict = Depends(require_admin),
+):
+    """Preview transactional booking emails using current env template overrides (no send). Use Swagger Authorize or curl with admin JWT."""
+    d = (decision or "").strip().lower()
+    if d not in ("approved", "denied"):
+        raise HTTPException(status_code=400, detail='decision must be "approved" or "denied"')
+    f = (fmt or "json").strip().lower()
+    if f not in ("json", "html"):
+        raise HTTPException(status_code=400, detail='fmt must be "json" or "html"')
+    msg = (optional_message or "").strip()
+    subject, html_body, text_body = invite_email.build_booking_decision_bodies(
+        decision=d,  # type: ignore[arg-type]
+        calendar_name=calendar_name.strip() or "Calendar",
+        date_str=date_str.strip() or "2026-05-12",
+        start_time=start_time.strip() or "10:00",
+        end_time=end_time.strip() or "11:00",
+        optional_message=msg,
+        calendar_app_url=f"{FRONTEND_URL.rstrip('/')}/requests",
+        member_name=member_name.strip() or None,
+    )
+    if f == "html":
+        return HTMLResponse(content=html_body)
+    return {"subject": subject, "html": html_body, "text": text_body}
 
 
 @api.get("/users")
@@ -1667,9 +1722,11 @@ async def list_bookings(user: dict = Depends(get_current_user), status: Optional
 
 @api.get("/bookings/assignable-members")
 async def list_assignable_members(mod: dict = Depends(get_current_user)):
-    """Minimal directory for assigning an approved booking to a member (Requests UI)."""
+    """Directory rows for assigning / reassigning a booking to a team member."""
     p = user_permissions_for(mod)
-    if not permissions.has(p, "approve_deny_requests"):
+    if not (
+        _can_reassign_booking_member(mod, p) or permissions.has(p, "approve_deny_requests")
+    ):
         raise HTTPException(status_code=403, detail="Not allowed")
     res = (
         supabase.table("users")
@@ -1815,8 +1872,13 @@ async def patch_booking(booking_id: str, data: BookingUpdateIn, user: dict = Dep
 
     updates: dict[str, Any] = {}
     if "member_id" in raw and raw["member_id"] is not None:
-        if not permissions.has(p, "approve_deny_requests"):
-            raise HTTPException(status_code=403, detail="Only moderators can assign a booking to a member.")
+        if not (
+            _can_reassign_booking_member(user, p) or permissions.has(p, "approve_deny_requests")
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="You do not have permission to reassign this booking to another member.",
+            )
         new_mid = str(raw["member_id"]).strip()
         if not new_mid:
             raise HTTPException(status_code=400, detail="Invalid member.")
@@ -1875,6 +1937,10 @@ async def patch_booking(booking_id: str, data: BookingUpdateIn, user: dict = Dep
             str(merged.get("calendar_id", b["calendar_id"])), d, st, et, exclude_booking_id=booking_id
         ):
             raise HTTPException(status_code=400, detail="This time overlaps another booking on that calendar.")
+
+    if updates and (time_related or "member_id" in updates):
+        updates["reminder_24h_sent_at"] = None
+        updates["reminder_2h_sent_at"] = None
 
     supabase.table("bookings").update(updates).eq("id", booking_id).execute()
     refreshed = supabase.table("bookings").select("*").eq("id", booking_id).execute()
@@ -1967,18 +2033,19 @@ async def approve_booking(booking_id: str, data: ApproveDenyIn, admin: dict = De
             "user_id": b["member_id"],
             "booking_id": booking_id,
             "type": "request_approved",
-            "title": "Booking approved",
+            "title": "Booking accepted",
             "message": (
                 (data.message.strip() if isinstance(data.message, str) and data.message.strip() else "")
-                or f"All confirmed. See you in the space {_format_request_pretty_date(str(b['date']))} at {_format_request_time_point(str(b['start_time']))}. 🌴"
+                or f"All confirmed. See you in the space {_format_request_pretty_date(str(b['date']))} at {_format_request_time_point(str(b['start_time']))}."
             ),
             "is_read": False,
             "created_at": now_iso(),
         }).execute()
     if invite_email.invite_email_delivery_configured() and b.get("member_id"):
         try:
-            mem = supabase.table("users").select("email").eq("id", b["member_id"]).single().execute()
+            mem = supabase.table("users").select("email,name").eq("id", b["member_id"]).single().execute()
             to_em = (mem.data or {}).get("email")
+            mem_name = (mem.data or {}).get("name")
             if to_em:
                 base = str(FRONTEND_URL or "").rstrip("/") or "http://localhost:3000"
                 sent, err, _provider_id = await invite_email.send_booking_decision_email(
@@ -1990,6 +2057,7 @@ async def approve_booking(booking_id: str, data: ApproveDenyIn, admin: dict = De
                     end_time=str(b["end_time"]),
                     optional_message=data.message or "",
                     calendar_app_url=f"{base}/requests",
+                    member_name=str(mem_name) if mem_name else None,
                 )
                 if not sent:
                     logger.warning("Booking approved email not sent to %s: %s", to_em, err)
@@ -2128,8 +2196,9 @@ async def deny_booking(booking_id: str, data: ApproveDenyIn, mod: dict = Depends
     cal_name = str((cal_res.data or [{}])[0].get("name") or "Calendar") if cal_res.data else "Calendar"
     if invite_email.invite_email_delivery_configured() and b.get("member_id"):
         try:
-            mem = supabase.table("users").select("email").eq("id", b["member_id"]).single().execute()
+            mem = supabase.table("users").select("email,name").eq("id", b["member_id"]).single().execute()
             to_em = (mem.data or {}).get("email")
+            mem_name = (mem.data or {}).get("name")
             if to_em:
                 base = str(FRONTEND_URL or "").rstrip("/") or "http://localhost:3000"
                 sent, err, _provider_id = await invite_email.send_booking_decision_email(
@@ -2141,6 +2210,7 @@ async def deny_booking(booking_id: str, data: ApproveDenyIn, mod: dict = Depends
                     end_time=str(b["end_time"]),
                     optional_message=data.message or "",
                     calendar_app_url=f"{base}/requests",
+                    member_name=str(mem_name) if mem_name else None,
                 )
                 if not sent:
                     logger.warning("Booking denied email not sent to %s: %s", to_em, err)
