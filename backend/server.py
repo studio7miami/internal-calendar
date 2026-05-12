@@ -505,6 +505,7 @@ class BookingUpdateIn(BaseModel):
     end_time: Optional[str] = None
     notes: Optional[str] = None
     calendar_id: Optional[str] = None
+    member_id: Optional[str] = None
 
 
 class ApproveDenyIn(BaseModel):
@@ -1664,6 +1665,23 @@ async def list_bookings(user: dict = Depends(get_current_user), status: Optional
     return [_serialize_booking(b, user, users_by_id, p) for b in raw]
 
 
+@api.get("/bookings/assignable-members")
+async def list_assignable_members(mod: dict = Depends(get_current_user)):
+    """Minimal directory for assigning an approved booking to a member (Requests UI)."""
+    p = user_permissions_for(mod)
+    if not permissions.has(p, "approve_deny_requests"):
+        raise HTTPException(status_code=403, detail="Not allowed")
+    res = (
+        supabase.table("users")
+        .select("id,name,email,role")
+        .eq("is_disabled", False)
+        .order("name")
+        .execute()
+    )
+    rows = res.data or []
+    return [u for u in rows if not _is_integration_test_account_email(u.get("email"))]
+
+
 @api.get("/bookings/requests")
 async def list_requests(user: dict = Depends(get_current_user)):
     p = user_permissions_for(user)
@@ -1787,27 +1805,43 @@ async def patch_booking(booking_id: str, data: BookingUpdateIn, user: dict = Dep
     if not _can_user_modify_booking(user, p, b):
         raise HTTPException(status_code=403, detail="Not allowed to update this booking")
     _assert_calendar_in_scope(user, p, b.get("calendar_id", ""))
-    if str(b.get("source") or "") == "google_external":
+    raw = data.model_dump(exclude_unset=True)
+    is_external = str(b.get("source") or "") == "google_external"
+    if is_external and (set(raw.keys()) - {"member_id"}):
         raise HTTPException(
             status_code=400,
-            detail="This slot is synced from Google Calendar (e.g. Acuity/Cal.com). Edit the event in Google, or ask an admin to remove the mirror in Studio 7.",
+            detail="This slot is synced from Google Calendar. You can assign a member here, or edit the event in Google.",
         )
 
-    raw = data.model_dump(exclude_unset=True)
     updates: dict[str, Any] = {}
-    if "date" in raw and raw["date"] is not None:
-        updates["date"] = raw["date"]
-    if "start_time" in raw and raw["start_time"] is not None:
-        updates["start_time"] = raw["start_time"]
-    if "end_time" in raw and raw["end_time"] is not None:
-        updates["end_time"] = raw["end_time"]
-    if "notes" in raw:
-        updates["notes"] = raw["notes"] if raw["notes"] is not None else ""
+    if "member_id" in raw and raw["member_id"] is not None:
+        if not permissions.has(p, "approve_deny_requests"):
+            raise HTTPException(status_code=403, detail="Only moderators can assign a booking to a member.")
+        new_mid = str(raw["member_id"]).strip()
+        if not new_mid:
+            raise HTTPException(status_code=400, detail="Invalid member.")
+        ucheck = supabase.table("users").select("id,is_disabled").eq("id", new_mid).limit(1).execute()
+        if not ucheck.data:
+            raise HTTPException(status_code=400, detail="Member not found.")
+        if ucheck.data[0].get("is_disabled"):
+            raise HTTPException(status_code=400, detail="That account is disabled.")
+        if new_mid != str(b.get("member_id") or ""):
+            updates["member_id"] = new_mid
+
+    if not is_external:
+        if "date" in raw and raw["date"] is not None:
+            updates["date"] = raw["date"]
+        if "start_time" in raw and raw["start_time"] is not None:
+            updates["start_time"] = raw["start_time"]
+        if "end_time" in raw and raw["end_time"] is not None:
+            updates["end_time"] = raw["end_time"]
+        if "notes" in raw:
+            updates["notes"] = raw["notes"] if raw["notes"] is not None else ""
 
     is_owner = str(b.get("member_id")) == str(user["id"])
     # Moving someone else's booking between calendars is staff-only.
     can_staff = permissions.has(p, "delete_any_booking")
-    if "calendar_id" in raw and raw["calendar_id"] is not None and str(raw["calendar_id"]) != str(b.get("calendar_id")):
+    if not is_external and "calendar_id" in raw and raw["calendar_id"] is not None and str(raw["calendar_id"]) != str(b.get("calendar_id")):
         if not can_staff:
             raise HTTPException(status_code=403, detail="Only staff can move a booking to another calendar")
         _assert_calendar_in_scope(user, p, str(raw["calendar_id"]))
@@ -1846,7 +1880,7 @@ async def patch_booking(booking_id: str, data: BookingUpdateIn, user: dict = Dep
     refreshed = supabase.table("bookings").select("*").eq("id", booking_id).execute()
     row = refreshed.data[0] if refreshed.data else merged
 
-    if row.get("status") == "approved":
+    if row.get("status") == "approved" and str(row.get("source") or "") != "google_external":
         cal_res = supabase.table("calendars").select("*").eq("id", row["calendar_id"]).execute()
         cal = cal_res.data[0] if cal_res.data else {}
         geid = str(row.get("google_event_id") or "").strip()
@@ -1927,20 +1961,21 @@ async def approve_booking(booking_id: str, data: ApproveDenyIn, admin: dict = De
         "approved_at": now_iso(),
         "approved_by": admin["id"],
     }).eq("id", booking_id).execute()
-    supabase.table("notifications").insert({
-        "id": str(uuid.uuid4()),
-        "user_id": b["member_id"],
-        "booking_id": booking_id,
-        "type": "request_approved",
-        "title": "Booking approved",
-        "message": (
-            (data.message.strip() if isinstance(data.message, str) and data.message.strip() else "")
-            or f"All confirmed. See you in the space {_format_request_pretty_date(str(b['date']))} at {_format_request_time_point(str(b['start_time']))}. 🌴"
-        ),
-        "is_read": False,
-        "created_at": now_iso(),
-    }).execute()
-    if invite_email.invite_email_delivery_configured():
+    if b.get("member_id"):
+        supabase.table("notifications").insert({
+            "id": str(uuid.uuid4()),
+            "user_id": b["member_id"],
+            "booking_id": booking_id,
+            "type": "request_approved",
+            "title": "Booking approved",
+            "message": (
+                (data.message.strip() if isinstance(data.message, str) and data.message.strip() else "")
+                or f"All confirmed. See you in the space {_format_request_pretty_date(str(b['date']))} at {_format_request_time_point(str(b['start_time']))}. 🌴"
+            ),
+            "is_read": False,
+            "created_at": now_iso(),
+        }).execute()
+    if invite_email.invite_email_delivery_configured() and b.get("member_id"):
         try:
             mem = supabase.table("users").select("email").eq("id", b["member_id"]).single().execute()
             to_em = (mem.data or {}).get("email")
@@ -2075,22 +2110,23 @@ async def deny_booking(booking_id: str, data: ApproveDenyIn, mod: dict = Depends
         "denied_at": now_iso(),
         "denied_by": mod["id"],
     }).eq("id", booking_id).execute()
-    supabase.table("notifications").insert({
-        "id": str(uuid.uuid4()),
-        "user_id": b["member_id"],
-        "booking_id": booking_id,
-        "type": "request_denied",
-        "title": "Booking denied",
-        "message": (
-            (data.message.strip() if isinstance(data.message, str) and data.message.strip() else "")
-            or "This one couldn't be locked in this time. Feel free to find another time that fits"
-        ),
-        "is_read": False,
-        "created_at": now_iso(),
-    }).execute()
+    if b.get("member_id"):
+        supabase.table("notifications").insert({
+            "id": str(uuid.uuid4()),
+            "user_id": b["member_id"],
+            "booking_id": booking_id,
+            "type": "request_denied",
+            "title": "Booking denied",
+            "message": (
+                (data.message.strip() if isinstance(data.message, str) and data.message.strip() else "")
+                or "This one couldn't be locked in this time. Feel free to find another time that fits"
+            ),
+            "is_read": False,
+            "created_at": now_iso(),
+        }).execute()
     cal_res = supabase.table("calendars").select("name").eq("id", b["calendar_id"]).execute()
     cal_name = str((cal_res.data or [{}])[0].get("name") or "Calendar") if cal_res.data else "Calendar"
-    if invite_email.invite_email_delivery_configured():
+    if invite_email.invite_email_delivery_configured() and b.get("member_id"):
         try:
             mem = supabase.table("users").select("email").eq("id", b["member_id"]).single().execute()
             to_em = (mem.data or {}).get("email")
