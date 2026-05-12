@@ -64,3 +64,24 @@ export function formatApiError(detail) {
   if (detail && typeof detail.msg === "string") return detail.msg;
   return String(detail);
 }
+
+/** Prefer this in catch blocks: surfaces PostgREST `message`, HTTP errors, and network failures. */
+export function formatApiErrorFromAxios(err) {
+  if (!err) return "Something went wrong.";
+  if (err._staleAuthFailure) return "Your session was refreshed. Please try again.";
+  const res = err.response;
+  const data = res?.data;
+  const fromDetail = formatApiError(typeof data === "object" ? data?.detail : undefined);
+  if (fromDetail && fromDetail !== "Something went wrong.") return fromDetail;
+  if (data && typeof data === "object") {
+    if (typeof data.message === "string" && data.message.trim()) return data.message;
+    if (typeof data.error_description === "string" && data.error_description.trim()) return data.error_description;
+    if (typeof data.hint === "string" && data.hint.trim()) return data.hint;
+  }
+  if (typeof data === "string" && data.trim() && data.length < 600) return data;
+  if (!res)
+    return err.message?.includes("Network Error")
+      ? "Network error — check your connection and try again."
+      : err.message || "Request failed — no response from server.";
+  return `Request failed (${res.status}).`;
+}

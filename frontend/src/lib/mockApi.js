@@ -56,7 +56,7 @@ function defaultSeed() {
         date: d2,
         start_time: "18:00",
         end_time: "22:00",
-        notes: "Tiffany and Michael Brown: Event Media Package (Studio 7 Miami)",
+        notes: "Tiffany and Michael Brown: Event Media Package",
         status: "approved",
         is_own: false,
         source: "member_request",
@@ -74,7 +74,7 @@ function defaultSeed() {
         date: d3,
         start_time: "19:30",
         end_time: "21:30",
-        notes: "Acting Class w/ CJ Bornacelli (Studio 7)",
+        notes: "Acting Class w/ CJ Bornacelli",
         status: "approved",
         is_own: false,
         source: "member_request",
@@ -105,6 +105,7 @@ export function createMockApi() {
       if (url === "/users") return ok(state.users);
       if (url === "/bookings") return ok(state.bookings);
       if (url === "/bookings/requests") return ok(state.requests);
+      if (url === "/bookings/assignable-members") return ok(state.users);
       return fail(404, `Mock API: GET ${url} not implemented`);
     },
 
@@ -182,10 +183,31 @@ export function createMockApi() {
     patch: async (url, body) => {
       const bookingId = parseId(url, "/bookings");
       if (bookingId && /^\/bookings\/[^/]+$/.test(url)) {
-        const idx = state.bookings.findIndex((b) => String(b.id) === String(bookingId));
-        if (idx === -1) return fail(404, "Booking not found");
-        state.bookings[idx] = { ...state.bookings[idx], ...clone(body) };
-        return ok(state.bookings[idx]);
+        const patchBooking = (row) => {
+          if (!row) return row;
+          const next = { ...row, ...clone(body) };
+          if (body && body.member_id) {
+            const mu = state.users.find((u) => String(u.id) === String(body.member_id));
+            if (mu) {
+              next.member_id = mu.id;
+              next.member_name = mu.name;
+              next.member_email = mu.email;
+              next.member_sauce = mu.sauce;
+            }
+          }
+          return next;
+        };
+        const bi = state.bookings.findIndex((b) => String(b.id) === String(bookingId));
+        if (bi !== -1) {
+          state.bookings[bi] = patchBooking(state.bookings[bi]);
+          return ok(state.bookings[bi]);
+        }
+        const ri = state.requests.findIndex((b) => String(b.id) === String(bookingId));
+        if (ri !== -1) {
+          state.requests[ri] = patchBooking(state.requests[ri]);
+          return ok(state.requests[ri]);
+        }
+        return fail(404, "Booking not found");
       }
       return fail(404, `Mock API: PATCH ${url} not implemented`);
     },
