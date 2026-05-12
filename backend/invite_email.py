@@ -16,10 +16,16 @@ Invite magic-link card matches booking emails: off-white panel #FCFCFC, border #
 
 Booking outcome copy (accepted / denied) — preview without sending:
   - Swagger: /docs → Authorize (admin JWT) → GET /api/admin/email-preview/booking-decision (fmt=html; decision=approved is the accept path)
-  - CLI: cd backend && python3 scripts/preview_booking_emails.py → open email_previews/booking_approved.html
+  - GET /api/admin/email-preview/new-booking-request?fmt=html for the staff new-request email
+  - CLI: cd backend && python3 scripts/preview_booking_emails.py → open email_previews/booking_approved.html / booking_new_request.html
 Placeholders {date} use MM-DD-YYYY; {date_pretty} stays a long weekday form.
 Default approved subject: You're on the calendar — {calendar}. Default denied: Booking update — {org}.
 Accepted and denied HTML use the same card colors and typography; neither includes a CTA button.
+
+New booking request (staff / Seven): sent when a member submits POST /bookings/request if transactional email is configured.
+  - Preview: email_previews/booking_new_request.html or GET /api/admin/email-preview/new-booking-request?fmt=html
+  - Recipients: NEW_BOOKING_REQUEST_NOTIFY_EMAIL (comma-separated), else PRIMARY_ADMIN_EMAIL / SUPER_ADMIN_EMAIL / seven@studio7.miami
+  - Optional: NEW_BOOKING_REQUEST_EMAIL_SUBJECT (placeholders like booking decision), NEW_BOOKING_REQUEST_GREETING_NAME (default Seven)
 
 Booking reminders (~24h and ~2h before start): sent by a background loop when email is configured.
 Optional subjects: BOOKING_REMINDER_24H_SUBJECT, BOOKING_REMINDER_2H_SUBJECT (placeholders like booking decision).
@@ -691,6 +697,118 @@ def build_booking_decision_bodies(
     return subject, html_body, text_body
 
 
+def build_new_booking_request_staff_bodies(
+    *,
+    member_name: str,
+    calendar_name: str,
+    date_str: str,
+    start_time: str,
+    end_time: str,
+    notes: str,
+    review_url: str,
+) -> Tuple[str, str, str]:
+    """HTML/text for notifying staff (e.g. Seven) that a member submitted a booking request."""
+    org = (os.environ.get("INVITE_EMAIL_ORG_NAME") or "Studio 7 Miami").strip()
+    greet_raw = (os.environ.get("NEW_BOOKING_REQUEST_GREETING_NAME") or "Seven").strip() or "Seven"
+    subj_tpl = (os.environ.get("NEW_BOOKING_REQUEST_EMAIL_SUBJECT") or "").strip()
+    member_full = (member_name or "").strip() or "Member"
+    start_12 = _format_time_12h(start_time)
+    end_12 = _format_time_12h(end_time)
+    detail_dt = _booking_email_detail_date(date_str)
+    detail_line_plain = f"{member_full} · {calendar_name} · {detail_dt} · {start_12}–{end_12}"
+
+    if subj_tpl:
+        subject = _apply_booking_decision_template(
+            subj_tpl,
+            calendar_name=calendar_name,
+            org=org,
+            date_iso=date_str,
+            start_time=start_12,
+            end_time=end_12,
+            member_display=member_full,
+            max_len=200,
+        )
+    else:
+        subject = f"New booking request — {org}"[:200]
+
+    notes_plain = (notes or "").strip().replace("\r", "")
+    notes_e = html.escape(notes_plain) if notes_plain else ""
+    greet_e = html.escape(greet_raw)
+    line_e = html.escape(detail_line_plain)
+    href = (review_url or "").strip().replace('"', "%22")
+
+    card_bg = BOOKING_DECISION_CARD_BG
+    card_bdr = BOOKING_DECISION_CARD_BORDER
+    cta_bg = "#F7F7F7"
+    cta_bdr = BOOKING_DECISION_CARD_BORDER
+    cta_ff = _INVITE_CTA_FONT_FAMILY
+    fg = EMAIL_TEXT
+    ff = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
+    org_e = html.escape(org)
+
+    notes_html = ""
+    if notes_e:
+        notes_html = f'                <p style="margin:14px 0 0;font-size:15px;line-height:1.5;color:{fg};">&ldquo;{notes_e}&rdquo;</p>\n'
+    notes_txt_block = ""
+    if notes_plain:
+        notes_txt_block = f'"{notes_plain}"\n\n'
+
+    card_main = f"""                <p style="margin:0;font-size:15px;line-height:1.5;color:{fg};">Hey {greet_e} —</p>
+                <p style="margin:14px 0 0;font-size:15px;line-height:1.5;color:{fg};">You have a new booking request.</p>
+                <p style="margin:14px 0 0;font-size:15px;line-height:1.5;color:{fg};">{line_e}</p>
+{notes_html}                <p style="margin:14px 0 0;font-size:15px;line-height:1.5;color:{fg};">Open the app to approve or deny.</p>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:14px 0 0;">
+                  <tr>
+                    <td align="left" style="padding:0;">
+                      <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="left" style="margin:0;">
+                        <tr>
+                          <td style="border:1px solid {cta_bdr};border-radius:7px;background:{cta_bg};">
+                            <a
+                              href="{href}"
+                              style="display:inline-block;padding:12px 18px;background:{cta_bg};color:{fg};text-decoration:none;border-radius:7px;font-family:{cta_ff};font-size:14px;font-weight:500;letter-spacing:0.2px;"
+                            >
+                              Review request →
+                            </a>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+"""
+
+    head = _transactional_email_head(page_title_e=org_e)
+    logo = _transactional_email_logo_row(org_e=org_e)
+    html_body = f"""<!DOCTYPE html>
+<html lang="en">
+{head}
+{_transactional_email_outer_open()}{logo}
+            <tr>
+              <td style="background:{card_bg};border:1px solid {card_bdr};border-radius:12px;padding:28px 22px;color:{fg};font-family:{ff};">
+                {card_main}
+              </td>
+            </tr>
+{_transactional_email_outer_close()}"""
+
+    text_lines = [
+        f"Hey {greet_raw} —",
+        "",
+        "You have a new booking request.",
+        "",
+        detail_line_plain,
+        "",
+    ]
+    if notes_plain:
+        text_lines.append(f'"{notes_plain}"')
+        text_lines.append("")
+    text_lines.append("Open the app to approve or deny.")
+    text_lines.append("")
+    text_lines.append(review_url.strip())
+    text_body = "\n".join(text_lines)
+    return subject, html_body, text_body
+
+
 def build_booking_reminder_bodies(
     *,
     kind: Literal["24h", "2h"],
@@ -844,6 +962,34 @@ async def send_booking_decision_email(
         optional_message=optional_message,
         calendar_app_url=calendar_app_url,
         member_name=member_name,
+    )
+    return await deliver_html_email(
+        to_email=to_email,
+        subject=subject,
+        html_body=html_body,
+        text_body=text_body,
+    )
+
+
+async def send_new_booking_request_staff_email(
+    *,
+    to_email: str,
+    member_name: str,
+    calendar_name: str,
+    date_str: str,
+    start_time: str,
+    end_time: str,
+    notes: str,
+    review_url: str,
+) -> Tuple[bool, Optional[str], Optional[str]]:
+    subject, html_body, text_body = build_new_booking_request_staff_bodies(
+        member_name=member_name,
+        calendar_name=calendar_name,
+        date_str=date_str,
+        start_time=start_time,
+        end_time=end_time,
+        notes=notes,
+        review_url=review_url,
     )
     return await deliver_html_email(
         to_email=to_email,

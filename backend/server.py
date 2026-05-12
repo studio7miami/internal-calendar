@@ -908,6 +908,40 @@ async def preview_booking_decision_email(
     return {"subject": subject, "html": html_body, "text": text_body}
 
 
+@api.get("/admin/email-preview/new-booking-request")
+async def preview_new_booking_request_email(
+    fmt: str = Query(
+        "json",
+        description='Return shape: "json" (subject + html + text) or "html" (render the email in a browser tab)',
+    ),
+    member_name: str = Query("Alex Rivera"),
+    calendar_name: str = Query("Photography Room"),
+    date_str: str = Query("2026-05-12"),
+    start_time: str = Query("13:00"),
+    end_time: str = Query("13:30"),
+    notes: str = Query("Birthday shoot — need the cyclorama.", description="Omitted in the body when empty"),
+    booking_id: str = Query("00000000-0000-0000-0000-000000000001", description="Used only for the review URL open= param"),
+    _: dict = Depends(require_admin),
+):
+    """Preview staff 'new booking request' email (no send). Same template as POST /bookings/request triggers."""
+    f = (fmt or "json").strip().lower()
+    if f not in ("json", "html"):
+        raise HTTPException(status_code=400, detail='fmt must be "json" or "html"')
+    review_url = f"{FRONTEND_URL.rstrip('/')}/requests?open={quote_plus(booking_id.strip())}"
+    subject, html_body, text_body = invite_email.build_new_booking_request_staff_bodies(
+        member_name=member_name.strip() or "Member",
+        calendar_name=calendar_name.strip() or "Calendar",
+        date_str=date_str.strip() or "2026-05-12",
+        start_time=start_time.strip() or "10:00",
+        end_time=end_time.strip() or "11:00",
+        notes=(notes or "").strip(),
+        review_url=review_url,
+    )
+    if f == "html":
+        return HTMLResponse(content=html_body)
+    return {"subject": subject, "html": html_body, "text": text_body}
+
+
 @api.get("/users")
 async def list_users(user: dict = Depends(get_current_user)):
     p = user_permissions_for(user)
@@ -1747,9 +1781,9 @@ async def list_requests(user: dict = Depends(get_current_user)):
     mod = permissions.has(p, "approve_deny_requests")
     q = supabase.table("bookings").select("*")
     if mod:
-        q = q.in_("status", ["pending", "approved", "denied"]).order("created_at", desc=False)
+        q = q.in_("status", ["pending", "approved", "denied"]).order("created_at", desc=True)
     else:
-        q = q.eq("member_id", user["id"]).in_("status", ["pending", "approved"]).order("created_at", desc=False)
+        q = q.eq("member_id", user["id"]).in_("status", ["pending", "approved"]).order("created_at", desc=True)
     res = q.execute()
     raw = res.data or []
     if not mod:
@@ -1849,6 +1883,28 @@ async def create_request(data: BookingRequestIn, user: dict = Depends(get_curren
         "is_read": False,
         "created_at": now_iso(),
     }).execute()
+    if invite_email.invite_email_delivery_configured():
+        notify_raw = (os.environ.get("NEW_BOOKING_REQUEST_NOTIFY_EMAIL") or "").strip()
+        staff_emails = [x.strip() for x in notify_raw.split(",") if x.strip()] if notify_raw else [PRIMARY_ADMIN_EMAIL]
+        review_url = f"{FRONTEND_URL.rstrip('/')}/requests?open={quote_plus(str(booking['id']))}"
+        mem_display = str(user.get("name") or "").strip() or "Member"
+        cal_display = str(cal.get("name") or "Calendar")
+        for to_em in staff_emails:
+            try:
+                sent, err, _pid = await invite_email.send_new_booking_request_staff_email(
+                    to_email=to_em,
+                    member_name=mem_display,
+                    calendar_name=cal_display,
+                    date_str=data.date,
+                    start_time=data.start_time,
+                    end_time=data.end_time,
+                    notes=data.notes or "",
+                    review_url=review_url,
+                )
+                if not sent:
+                    logger.warning("New booking request email not sent to %s: %s", to_em, err)
+            except Exception as e:
+                logger.warning("New booking request email error: %s", e)
     return booking
 
 
