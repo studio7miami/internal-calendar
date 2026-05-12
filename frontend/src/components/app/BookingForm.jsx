@@ -427,7 +427,7 @@ export default function BookingForm({
 
       {editMode && canReassignBooking && reassignSelectOptions.length > 0 && (
         <div>
-          <label className="label-tech block mb-1">Assign to member</label>
+          <label className="label-tech block mb-1">Assign to</label>
           <Select value={String(memberId || "")} onValueChange={setMemberId}>
             <SelectTrigger data-testid="booking-edit-member-select" className={selectTriggerClass}>
               <SelectValue placeholder="Select member" />
@@ -445,7 +445,7 @@ export default function BookingForm({
 
       {canManualBook && mode === "manual" && !editMode && (
         <div>
-          <label className="label-tech block mb-1">Assign member</label>
+          <label className="label-tech block mb-1">Assign to</label>
           <Select
             value={memberId ? String(memberId) : SELF_MEMBER_VALUE}
             onValueChange={(v) => setMemberId(v === SELF_MEMBER_VALUE ? "" : v)}
