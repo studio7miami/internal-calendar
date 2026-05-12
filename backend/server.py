@@ -1747,9 +1747,9 @@ async def list_requests(user: dict = Depends(get_current_user)):
     mod = permissions.has(p, "approve_deny_requests")
     q = supabase.table("bookings").select("*")
     if mod:
-        q = q.in_("status", ["pending", "approved", "denied"]).order("created_at", desc=True)
+        q = q.in_("status", ["pending", "approved", "denied"]).order("created_at", desc=False)
     else:
-        q = q.eq("member_id", user["id"]).in_("status", ["pending", "approved"]).order("created_at", desc=True)
+        q = q.eq("member_id", user["id"]).in_("status", ["pending", "approved"]).order("created_at", desc=False)
     res = q.execute()
     raw = res.data or []
     if not mod:
