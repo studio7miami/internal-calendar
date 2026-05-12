@@ -132,6 +132,9 @@ export default function BookingForm({
   defaultEnd,
   canManualBook,
   members = [],
+  /** Users eligible as assignees when reassigning an existing booking (role `member`). */
+  reassignMembers = [],
+  canReassignBooking = false,
   editingBooking = null,
   allBookings = [],
 }) {
@@ -162,6 +165,22 @@ export default function BookingForm({
     (editingBooking.is_own ||
       p.delete_any_booking);
 
+  const reassignSelectOptions = useMemo(() => {
+    const rows = (reassignMembers || []).filter((m) => m?.role === "member");
+    if (!editMode || !editingBooking?.member_id) return rows;
+    const mid = String(editingBooking.member_id);
+    if (rows.some((m) => String(m.id) === mid)) return rows;
+    return [
+      {
+        id: editingBooking.member_id,
+        name: editingBooking.member_name || "Member",
+        email: editingBooking.member_email || "",
+        role: "member",
+      },
+      ...rows,
+    ];
+  }, [reassignMembers, editMode, editingBooking]);
+
   React.useEffect(() => {
     if (!open) return;
     if (editMode) {
@@ -170,7 +189,7 @@ export default function BookingForm({
       setStart(normTime(editingBooking.start_time));
       setEnd(normTime(editingBooking.end_time));
       setNotes(editingBooking.notes ?? "");
-      setMemberId("");
+      setMemberId(editingBooking.member_id != null ? String(editingBooking.member_id) : "");
       setRecurFreq("none");
       setRecurUntil("");
       setRecurUntilOpen(false);
@@ -316,12 +335,18 @@ export default function BookingForm({
     setSubmitting(true);
     try {
       if (editMode) {
-        await api.patch(`/bookings/${editingBooking.id}`, {
+        const patch = {
           date,
           start_time: start,
           end_time: end,
           notes,
-        });
+        };
+        if (canReassignBooking) {
+          const orig = String(editingBooking.member_id ?? "");
+          const next = String(memberId || "");
+          if (next && next !== orig) patch.member_id = next;
+        }
+        await api.patch(`/bookings/${editingBooking.id}`, patch);
       } else {
         const basePayload = {
           calendar_id: calendarId,
@@ -399,6 +424,24 @@ export default function BookingForm({
           </SelectContent>
         </Select>
       </div>
+
+      {editMode && canReassignBooking && reassignSelectOptions.length > 0 && (
+        <div>
+          <label className="label-tech block mb-1">Assign to member</label>
+          <Select value={String(memberId || "")} onValueChange={setMemberId}>
+            <SelectTrigger data-testid="booking-edit-member-select" className={selectTriggerClass}>
+              <SelectValue placeholder="Select member" />
+            </SelectTrigger>
+            <SelectContent>
+              {reassignSelectOptions.map((m) => (
+                <SelectItem key={m.id} value={String(m.id)}>
+                  {m.name} · {m.email}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       {canManualBook && mode === "manual" && !editMode && (
         <div>
