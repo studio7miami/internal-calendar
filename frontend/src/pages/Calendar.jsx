@@ -270,6 +270,8 @@ export default function CalendarPage() {
   const [enabledCalIds, setEnabledCalIds] = useState(new Set());
   const [bookings, setBookings] = useState([]);
   const [members, setMembers] = useState([]);
+  /** When the user can reassign but cannot load full `/users`, e.g. member + permission only. */
+  const [assignableBookingMembers, setAssignableBookingMembers] = useState([]);
   const [formOpen, setFormOpen] = useState(false);
   const [formInit, setFormInit] = useState({});
   const [editingBooking, setEditingBooking] = useState(null);
@@ -287,6 +289,15 @@ export default function CalendarPage() {
   const showBookingDetails = user?.role === "admin" || user?.role === "manager";
   const canFetchMembers = isAdmin || !!user?.permissions?.view_members_directory;
   const canManualBook = isAdmin || !!user?.permissions?.create_manual_booking;
+  /** Includes queue moderators (approve/deny) so assign-on-approve keeps working. */
+  const canReassignBooking =
+    isAdmin ||
+    !!user?.permissions?.reassign_booking_member ||
+    !!user?.permissions?.approve_deny_requests;
+  const reassignMemberOptions = useMemo(() => {
+    const raw = canFetchMembers ? members : assignableBookingMembers;
+    return (raw || []).filter((m) => m && m.role === "member" && !m.is_disabled);
+  }, [canFetchMembers, members, assignableBookingMembers]);
   /** Admins always; managers only if Role permissions → Edit or cancel any booking. */
   const staffCanManageAnyBooking = isAdmin || !!user?.permissions?.delete_any_booking;
   const canRequestBooking = !!user?.permissions?.create_request;
@@ -335,6 +346,9 @@ export default function CalendarPage() {
     try {
       const secondaries = [api.get("/bookings")];
       if (canFetchMembers) secondaries.push(api.get("/users"));
+      if (canReassignBooking && !canFetchMembers) {
+        secondaries.push(api.get("/bookings/assignable-members"));
+      }
       const results = await Promise.all(secondaries);
       {
         const list = Array.isArray(results[0].data) ? results[0].data : [];
@@ -345,11 +359,18 @@ export default function CalendarPage() {
       } else if (!canFetchMembers) {
         setMembers([]);
       }
+      if (canReassignBooking && !canFetchMembers) {
+        const res = results[1];
+        setAssignableBookingMembers(Array.isArray(res?.data) ? res.data : []);
+      } else {
+        setAssignableBookingMembers([]);
+      }
     } catch {
       setBookings([]);
       setMembers([]);
+      setAssignableBookingMembers([]);
     }
-  }, [user, canFetchMembers]);
+  }, [user, canFetchMembers, canReassignBooking]);
 
   const handleCalendarMemberRoleChange = useCallback(
     async (u, role) => {
@@ -1341,6 +1362,8 @@ export default function CalendarPage() {
         defaultEnd={formInit.end}
         canManualBook={canManualBook}
         members={members}
+        reassignMembers={reassignMemberOptions}
+        canReassignBooking={canReassignBooking}
         editingBooking={editingBooking}
         allBookings={bookings}
       />

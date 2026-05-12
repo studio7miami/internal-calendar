@@ -64,6 +64,11 @@ const ROLE_PERMISSION_HELP_SECTIONS = [
         intent:
           "Can edit or remove any booking from the calendar — not just their own. Permanent action.",
       },
+      {
+        title: "Reassign bookings to another member",
+        intent:
+          "When editing a booking, can change which team member it belongs to — without needing full directory or request-queue access. Admins always have this.",
+      },
     ],
   },
   {
@@ -95,7 +100,7 @@ const ROLE_PERMISSION_HELP_SECTIONS = [
 /** Category headers for the role-permissions matrix; keys must match backend `PERMISSION_KEYS`. */
 const ROLE_PERMISSION_MATRIX_SECTIONS = [
   { category: "VIEWING", keys: ["view_schedule", "see_all_booking_details"] },
-  { category: "BOOKING", keys: ["create_request", "create_manual_booking", "delete_any_booking"] },
+  { category: "BOOKING", keys: ["create_request", "create_manual_booking", "delete_any_booking", "reassign_booking_member"] },
   { category: "REQUESTS QUEUE", keys: ["approve_deny_requests"] },
   { category: "TEAM MANAGEMENT", keys: ["view_members_directory", "assign_member_calendars"] },
 ];
