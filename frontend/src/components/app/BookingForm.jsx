@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "../ui/drawer";
 import { Button } from "../ui/button";
@@ -69,6 +69,47 @@ const TIME_OPTIONS = (() => {
   return out;
 })();
 
+/** Local calendar date YYYY-MM-DD */
+function ymdLocalFromDate(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** Next half-hour at or after `now` (local), e.g. 11:20 → 11:30. */
+function earliestNextHalfHourSlot(now = new Date()) {
+  const z = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const ms = now.getTime() - z.getTime();
+  const half = 30 * 60 * 1000;
+  const slot = Math.ceil(ms / half - 1e-9) * half;
+  const totalMin = Math.floor(slot / 60000);
+  if (totalMin >= 24 * 60) return null;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function hhmmToMinutes(t) {
+  const [h, mm] = normTime(t).split(":").map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(mm)) return 0;
+  return h * 60 + mm;
+}
+
+function compareHHMM(a, b) {
+  return hhmmToMinutes(a) - hhmmToMinutes(b);
+}
+
+/** Default end = start + 1h on the half-hour grid; same-day cap 23:30 (23:00 → 23:30). */
+function addOneHourHHMM(hhmm) {
+  const s = hhmmToMinutes(hhmm);
+  const last = 23 * 60 + 30;
+  const e = Math.min(s + 60, last);
+  const h = Math.floor(e / 60);
+  const m = e % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
 function useIsMobile() {
   const [isMobile, setIsMobile] = React.useState(
     typeof window !== "undefined" ? window.innerWidth < 768 : false
@@ -138,9 +179,20 @@ export default function BookingForm({
       return;
     }
     setCalendarId(calendars?.[0]?.id || "");
-    setDate(defaultDate || "");
-    setStart(defaultStart || "10:00");
-    setEnd(defaultEnd || "11:00");
+    const d0 = defaultDate || "";
+    const today0 = ymdLocalFromDate(new Date());
+    let s0 = defaultStart || "10:00";
+    let e0 = defaultEnd || "11:00";
+    if (d0 === today0) {
+      const min0 = earliestNextHalfHourSlot(new Date());
+      if (min0 && compareHHMM(s0, min0) < 0) {
+        s0 = min0;
+        e0 = addOneHourHHMM(min0);
+      }
+    }
+    setDate(d0);
+    setStart(s0);
+    setEnd(e0);
     setNotes("");
     setMemberId("");
     setRecurFreq("none");
@@ -160,6 +212,40 @@ export default function BookingForm({
     }, 0);
     return () => clearTimeout(t);
   }, [isMobile, recurUntilOpen]);
+
+  const startTimeOptions = useMemo(() => {
+    let opts = TIME_OPTIONS.filter((t) => compareHHMM(addOneHourHHMM(t), t) > 0);
+    if (date) {
+      const today = ymdLocalFromDate(new Date());
+      if (date === today) {
+        const min = earliestNextHalfHourSlot(new Date());
+        if (min) opts = opts.filter((t) => compareHHMM(t, min) >= 0);
+        else opts = [];
+      }
+    }
+    if (editMode && editingBooking?.start_time) {
+      const cur = normTime(editingBooking.start_time);
+      if (!opts.includes(cur)) opts = [...opts, cur].sort((a, b) => compareHHMM(a, b));
+    }
+    return opts;
+  }, [date, editMode, editingBooking?.start_time]);
+
+  const endTimeOptions = useMemo(
+    () => TIME_OPTIONS.filter((t) => compareHHMM(t, start) > 0),
+    [start]
+  );
+
+  useEffect(() => {
+    if (!open || editMode || !date) return;
+    const n = normTime(start);
+    if (startTimeOptions.length && !startTimeOptions.includes(n)) {
+      const fix = startTimeOptions[0];
+      if (fix) {
+        setStart(fix);
+        setEnd(addOneHourHHMM(fix));
+      }
+    }
+  }, [open, editMode, date, startTimeOptions, start]);
 
   const addDays = (ymdStr, days) => {
     const d = new Date(`${ymdStr}T00:00:00`);
@@ -389,8 +475,19 @@ export default function BookingForm({
                 const y = d.getFullYear();
                 const m = String(d.getMonth() + 1).padStart(2, "0");
                 const dd = String(d.getDate()).padStart(2, "0");
-                setDate(`${y}-${m}-${dd}`);
+                const next = `${y}-${m}-${dd}`;
+                setDate(next);
                 setDateOpen(false);
+                if (!editMode) {
+                  const today = ymdLocalFromDate(new Date());
+                  if (next === today) {
+                    const min = earliestNextHalfHourSlot(new Date());
+                    if (min) {
+                      setStart(min);
+                      setEnd(addOneHourHHMM(min));
+                    }
+                  }
+                }
               }}
               initialFocus
               className="w-full text-slate-900 dark:text-white"
@@ -402,12 +499,18 @@ export default function BookingForm({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="min-w-0 overflow-hidden">
           <label className="label-tech block mb-1">Start</label>
-          <Select value={String(normTime(start))} onValueChange={setStart}>
+          <Select
+            value={String(normTime(start))}
+            onValueChange={(v) => {
+              setStart(v);
+              setEnd(addOneHourHHMM(v));
+            }}
+          >
             <SelectTrigger data-testid="booking-start-input" className={cn(selectTriggerClass, "md:text-sm")}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {TIME_OPTIONS.map((t) => (
+              {startTimeOptions.map((t) => (
                 <SelectItem key={t} value={t}>
                   {fmtTimeLabel(t)}
                 </SelectItem>
@@ -422,7 +525,7 @@ export default function BookingForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {TIME_OPTIONS.map((t) => (
+              {endTimeOptions.map((t) => (
                 <SelectItem key={t} value={t}>
                   {fmtTimeLabel(t)}
                 </SelectItem>
