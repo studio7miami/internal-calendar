@@ -138,6 +138,7 @@ function StatusBadge({ status, compact }) {
       "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:text-emerald-300 dark:bg-emerald-950/40",
     denied: "border-red-200 bg-red-50 text-red-900 dark:border-red-900 dark:text-red-300 dark:bg-red-950/40",
   };
+  const labels = { pending: "Pending", approved: "Accepted", denied: "Declined" };
   return (
     <span
       className={cn(
@@ -146,7 +147,7 @@ function StatusBadge({ status, compact }) {
         map[status] || map.pending
       )}
     >
-      {status}
+      {labels[status] || status}
     </span>
   );
 }
@@ -168,6 +169,7 @@ function RequestCard({
   setAssignDraft = () => {},
   assignSavingId = null,
   onSaveAssign = () => {},
+  resolveFlash = null,
 }) {
   const cal = calendars.find((c) => c.id === b.calendar_id);
   const color = cal?.color || "#64748b";
@@ -233,6 +235,32 @@ function RequestCard({
       </div>
       <div className={cn("flex items-start", compact ? "gap-2" : "gap-4", "flex-col sm:flex-row", "text-left")}>
         <div className={cn("min-w-0 flex-1 text-left", compact ? "space-y-1.5" : "space-y-2")}>
+          {resolveFlash === "approve" && b.status === "approved" && (
+            <div
+              className={cn(
+                "flex items-center gap-2 rounded-[7px] border border-emerald-200/90 bg-emerald-50/95 px-3 py-2 text-sm font-medium text-emerald-950 dark:border-emerald-800/70 dark:bg-emerald-950/35 dark:text-emerald-100",
+                compact && "py-1.5 text-xs"
+              )}
+              role="status"
+              data-testid={`request-accepted-flash-${b.id}`}
+            >
+              <Check className={cn("shrink-0 text-emerald-700 dark:text-emerald-300", compact ? "h-3.5 w-3.5" : "h-4 w-4")} strokeWidth={2} />
+              You accepted this request.
+            </div>
+          )}
+          {resolveFlash === "deny" && b.status === "denied" && (
+            <div
+              className={cn(
+                "flex items-center gap-2 rounded-[7px] border border-red-200/90 bg-red-50/95 px-3 py-2 text-sm font-medium text-red-950 dark:border-red-900/70 dark:bg-red-950/35 dark:text-red-100",
+                compact && "py-1.5 text-xs"
+              )}
+              role="status"
+              data-testid={`request-declined-flash-${b.id}`}
+            >
+              <X className={cn("shrink-0 text-red-700 dark:text-red-300", compact ? "h-3.5 w-3.5" : "h-4 w-4")} strokeWidth={2} />
+              Request declined.
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <div className={cn("flex min-w-0 flex-1 flex-nowrap items-center gap-2")}>
               <StatusBadge status={b.status} compact={compact} />
@@ -371,12 +399,12 @@ function RequestCard({
               </Button>
               <Button
                 onClick={() => act(b.id, "approve")}
-                data-testid={`approve-${b.id}`}
+                data-testid={`accept-${b.id}`}
                 variant="ghost"
                 className={cn("flex-1", pageBtnPrimaryClass, compact && "h-8 text-xs")}
               >
                 <Check className={cn("mr-1 shrink-0", compact ? "h-3.5 w-3.5" : "h-4 w-4")} strokeWidth={1.5} />{" "}
-                {(amount[b.id] || "").trim() ? "Approve & send checkout" : "Approve"}
+                {(amount[b.id] || "").trim() ? "Accept & send checkout" : "Accept"}
               </Button>
             </div>
           </div>
@@ -453,6 +481,8 @@ export default function Requests() {
   const [allReqGranularity, setAllReqGranularity] = useState("week");
   const [allReqCursor, setAllReqCursor] = useState(() => new Date());
   const [statusTab, setStatusTab] = useState("pending"); // pending | approved | denied
+  /** While on Pending, keep resolving request visible briefly after accept/deny (id → API verb). */
+  const [resolveFlashById, setResolveFlashById] = useState({});
   const [assignableMembers, setAssignableMembers] = useState([]);
   const [assignDraft, setAssignDraft] = useState({});
   const [assignSavingId, setAssignSavingId] = useState(null);
@@ -529,6 +559,14 @@ export default function Requests() {
       setMsg((m) => ({ ...m, [id]: "" }));
       setAmount((m) => ({ ...m, [id]: "" }));
       await refresh();
+      setResolveFlashById((prev) => ({ ...prev, [id]: verb }));
+      window.setTimeout(() => {
+        setResolveFlashById((prev) => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+      }, 12000);
     } catch (e) {
       alert(formatApiErrorFromAxios(e));
     }
@@ -553,11 +591,20 @@ export default function Requests() {
   };
 
   const filteredItems = useMemo(() => {
-    if (statusTab === "pending") return items.filter((x) => x.status === "pending");
+    if (statusTab === "pending") {
+      const pending = items.filter((x) => x.status === "pending");
+      const pendingSorted = pending.slice().sort(sortPendingByReceivedThenMember);
+      const extras = Object.keys(resolveFlashById)
+        .map((rid) => items.find((x) => String(x.id) === String(rid)))
+        .filter((x) => x && x.status !== "pending");
+      const seen = new Set(pendingSorted.map((x) => String(x.id)));
+      const tail = extras.filter((x) => !seen.has(String(x.id)));
+      return [...pendingSorted, ...tail];
+    }
     if (statusTab === "approved") return items.filter((x) => x.status === "approved");
     if (statusTab === "denied") return items.filter((x) => x.status === "denied");
     return items;
-  }, [items, statusTab]);
+  }, [items, statusTab, resolveFlashById]);
 
   const byRecent = useMemo(() => {
     const list = filteredItems.slice();
@@ -645,6 +692,7 @@ export default function Requests() {
           setAssignDraft={setAssignDraft}
           assignSavingId={assignSavingId}
           onSaveAssign={onSaveAssign}
+          resolveFlash={resolveFlashById[b.id] || null}
         />
       ))}
     </div>
@@ -749,6 +797,7 @@ export default function Requests() {
                   setAssignDraft={setAssignDraft}
                   assignSavingId={assignSavingId}
                   onSaveAssign={onSaveAssign}
+                  resolveFlash={resolveFlashById[b.id] || null}
                   compact
                 />
               );
@@ -804,7 +853,7 @@ export default function Requests() {
           >
             {[
               { id: "pending", label: "Pending" },
-              { id: "approved", label: "Approved" },
+              { id: "approved", label: "Accepted" },
               { id: "denied", label: "Denied" },
             ].map(({ id, label }) => {
               const on = statusTab === id;
