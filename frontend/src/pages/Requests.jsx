@@ -36,11 +36,11 @@ const PREVIEW_LIMIT = 7;
 /** Lowercase words for empty-state copy (tab ids → user-facing). */
 const REQUESTS_TAB_EMPTY_PHRASE = { pending: "pending", approved: "accepted", denied: "denied" };
 
-/** Order received: earliest submission first (FIFO), then member name, then id. */
-function sortByReceivedThenMember(a, b) {
+/** Newest request first (latest created_at on top), then member name, then id. */
+function sortByReceivedNewestFirst(a, b) {
   const ca = String(a.created_at || "");
   const cb = String(b.created_at || "");
-  const byTime = ca.localeCompare(cb);
+  const byTime = cb.localeCompare(ca);
   if (byTime !== 0) return byTime;
   const na = String(a.member_name || a.member_email || "");
   const nb = String(b.member_name || b.member_email || "");
@@ -48,6 +48,9 @@ function sortByReceivedThenMember(a, b) {
   if (byName !== 0) return byName;
   return String(a.id || "").localeCompare(String(b.id || ""));
 }
+
+/** Keep resolved rows on the Pending tab this long so Pending → Accepted/Denied is visible. */
+const PENDING_RESOLVE_LINGER_MS = 5000;
 
 function ymd(d) {
   const y = d.getFullYear();
@@ -459,6 +462,8 @@ export default function Requests() {
   const [allReqGranularity, setAllReqGranularity] = useState("week");
   const [allReqCursor, setAllReqCursor] = useState(() => new Date());
   const [statusTab, setStatusTab] = useState("pending"); // pending | approved | denied
+  /** Booking ids recently resolved while on Pending — keep row visible until badge confirmation linger ends. */
+  const [pendingLingerIds, setPendingLingerIds] = useState({});
   const [assignableMembers, setAssignableMembers] = useState([]);
   const [assignDraft, setAssignDraft] = useState({});
   const [assignSavingId, setAssignSavingId] = useState(null);
@@ -527,7 +532,9 @@ export default function Requests() {
     const message = msg[id] || "";
     const amountRaw = amount[id] || "";
     const cents = verb === "approve" ? dollarsToCents(amountRaw) : 0;
+    const idStr = String(id);
     let snapshot = null;
+    setPendingLingerIds((prev) => ({ ...prev, [idStr]: true }));
     setItems((rows) => {
       const row = rows.find((x) => String(x.id) === String(id));
       snapshot = row ? { ...row } : null;
@@ -544,6 +551,16 @@ export default function Requests() {
     });
     setMsg((m) => ({ ...m, [id]: "" }));
     setAmount((m) => ({ ...m, [id]: "" }));
+
+    const clearLingerLater = () => {
+      window.setTimeout(() => {
+        setPendingLingerIds((prev) => {
+          const next = { ...prev };
+          delete next[idStr];
+          return next;
+        });
+      }, PENDING_RESOLVE_LINGER_MS);
+    };
 
     try {
       await api.post(`/bookings/${id}/${verb}`, { message });
@@ -568,8 +585,14 @@ export default function Requests() {
           );
         }
       }
+      clearLingerLater();
       void refresh().catch(() => {});
     } catch (e) {
+      setPendingLingerIds((prev) => {
+        const next = { ...prev };
+        delete next[idStr];
+        return next;
+      });
       if (snapshot) {
         setItems((rows) => rows.map((x) => (String(x.id) === String(id) ? snapshot : x)));
       }
@@ -599,16 +622,22 @@ export default function Requests() {
 
   const filteredItems = useMemo(() => {
     if (statusTab === "pending") {
-      return items.filter((x) => x.status === "pending").slice().sort(sortByReceivedThenMember);
+      const linger = pendingLingerIds;
+      const list = items.filter((x) => x.status === "pending" || linger[String(x.id)]);
+      return list.slice().sort(sortByReceivedNewestFirst);
     }
-    if (statusTab === "approved") return items.filter((x) => x.status === "approved");
-    if (statusTab === "denied") return items.filter((x) => x.status === "denied");
+    if (statusTab === "approved") {
+      return items.filter((x) => x.status === "approved").slice().sort(sortByReceivedNewestFirst);
+    }
+    if (statusTab === "denied") {
+      return items.filter((x) => x.status === "denied").slice().sort(sortByReceivedNewestFirst);
+    }
     return items;
-  }, [items, statusTab]);
+  }, [items, statusTab, pendingLingerIds]);
 
   const byRecent = useMemo(() => {
     const list = filteredItems.slice();
-    return list.sort(sortByReceivedThenMember);
+    return list.sort(sortByReceivedNewestFirst);
   }, [filteredItems]);
 
   const previewRequests = useMemo(() => byRecent.slice(0, PREVIEW_LIMIT), [byRecent]);
@@ -633,7 +662,7 @@ export default function Requests() {
 
   const requestsInRangeSorted = useMemo(() => {
     const slice = requestsInRange.slice();
-    return slice.sort(sortByReceivedThenMember);
+    return slice.sort(sortByReceivedNewestFirst);
   }, [requestsInRange]);
 
   const requestsRangeTitle = useMemo(() => {
