@@ -77,6 +77,7 @@ class TestAuth:
         perms = data["permissions"]
         assert perms.get("view_schedule") is True
         assert perms.get("approve_deny_requests") is True
+        assert perms.get("reassign_booking_member") is True
         assert perms.get("see_all_booking_details") is True
         assert perms.get("assign_member_calendars") is True
         assert "phone_e164" in data
