@@ -33,15 +33,20 @@ import MemberSummaryDialog from "../components/members/MemberSummaryDialog";
 
 const PREVIEW_LIMIT = 7;
 
-/** Pending queue: earliest submission first (FIFO), then member name. */
-function sortPendingByReceivedThenMember(a, b) {
+/** Lowercase words for empty-state copy (tab ids → user-facing). */
+const REQUESTS_TAB_EMPTY_PHRASE = { pending: "pending", approved: "accepted", denied: "denied" };
+
+/** Order received: earliest submission first (FIFO), then member name, then id. */
+function sortByReceivedThenMember(a, b) {
   const ca = String(a.created_at || "");
   const cb = String(b.created_at || "");
   const byTime = ca.localeCompare(cb);
   if (byTime !== 0) return byTime;
   const na = String(a.member_name || a.member_email || "");
   const nb = String(b.member_name || b.member_email || "");
-  return na.localeCompare(nb);
+  const byName = na.localeCompare(nb);
+  if (byName !== 0) return byName;
+  return String(a.id || "").localeCompare(String(b.id || ""));
 }
 
 function ymd(d) {
@@ -169,7 +174,6 @@ function RequestCard({
   setAssignDraft = () => {},
   assignSavingId = null,
   onSaveAssign = () => {},
-  resolveFlash = null,
 }) {
   const cal = calendars.find((c) => c.id === b.calendar_id);
   const color = cal?.color || "#64748b";
@@ -235,32 +239,6 @@ function RequestCard({
       </div>
       <div className={cn("flex items-start", compact ? "gap-2" : "gap-4", "flex-col sm:flex-row", "text-left")}>
         <div className={cn("min-w-0 flex-1 text-left", compact ? "space-y-1.5" : "space-y-2")}>
-          {resolveFlash === "approve" && b.status === "approved" && (
-            <div
-              className={cn(
-                "flex items-center gap-2 rounded-[7px] border border-emerald-200/90 bg-emerald-50/95 px-3 py-2 text-sm font-medium text-emerald-950 dark:border-emerald-800/70 dark:bg-emerald-950/35 dark:text-emerald-100",
-                compact && "py-1.5 text-xs"
-              )}
-              role="status"
-              data-testid={`request-accepted-flash-${b.id}`}
-            >
-              <Check className={cn("shrink-0 text-emerald-700 dark:text-emerald-300", compact ? "h-3.5 w-3.5" : "h-4 w-4")} strokeWidth={2} />
-              You accepted this request.
-            </div>
-          )}
-          {resolveFlash === "deny" && b.status === "denied" && (
-            <div
-              className={cn(
-                "flex items-center gap-2 rounded-[7px] border border-red-200/90 bg-red-50/95 px-3 py-2 text-sm font-medium text-red-950 dark:border-red-900/70 dark:bg-red-950/35 dark:text-red-100",
-                compact && "py-1.5 text-xs"
-              )}
-              role="status"
-              data-testid={`request-declined-flash-${b.id}`}
-            >
-              <X className={cn("shrink-0 text-red-700 dark:text-red-300", compact ? "h-3.5 w-3.5" : "h-4 w-4")} strokeWidth={2} />
-              Request declined.
-            </div>
-          )}
           <div className="flex items-center gap-2">
             <div className={cn("flex min-w-0 flex-1 flex-nowrap items-center gap-2")}>
               <StatusBadge status={b.status} compact={compact} />
@@ -481,8 +459,6 @@ export default function Requests() {
   const [allReqGranularity, setAllReqGranularity] = useState("week");
   const [allReqCursor, setAllReqCursor] = useState(() => new Date());
   const [statusTab, setStatusTab] = useState("pending"); // pending | approved | denied
-  /** While on Pending, keep resolving request visible briefly after accept/deny (id → API verb). */
-  const [resolveFlashById, setResolveFlashById] = useState({});
   const [assignableMembers, setAssignableMembers] = useState([]);
   const [assignDraft, setAssignDraft] = useState({});
   const [assignSavingId, setAssignSavingId] = useState(null);
@@ -548,26 +524,57 @@ export default function Requests() {
   };
 
   const act = async (id, verb) => {
+    const message = msg[id] || "";
+    const amountRaw = amount[id] || "";
+    const cents = verb === "approve" ? dollarsToCents(amountRaw) : 0;
+    let snapshot = null;
+    setItems((rows) => {
+      const row = rows.find((x) => String(x.id) === String(id));
+      snapshot = row ? { ...row } : null;
+      if (!row) return rows;
+      return rows.map((x) =>
+        String(x.id) !== String(id)
+          ? x
+          : {
+              ...x,
+              status: verb === "approve" ? "approved" : "denied",
+              approval_message: message,
+            }
+      );
+    });
+    setMsg((m) => ({ ...m, [id]: "" }));
+    setAmount((m) => ({ ...m, [id]: "" }));
+
     try {
-      await api.post(`/bookings/${id}/${verb}`, { message: msg[id] || "" });
-      if (verb === "approve") {
-        const cents = dollarsToCents(amount[id]);
-        if (cents > 0) {
-          await api.post(`/bookings/${id}/payment/checkout`, { amount_cents: cents, currency: "usd" });
+      await api.post(`/bookings/${id}/${verb}`, { message });
+      if (verb === "approve" && cents > 0) {
+        const co = await api.post(`/bookings/${id}/payment/checkout`, {
+          amount_cents: cents,
+          currency: "usd",
+        });
+        const url = co.data?.url;
+        if (url) {
+          setItems((rows) =>
+            rows.map((x) =>
+              String(x.id) !== String(id)
+                ? x
+                : {
+                    ...x,
+                    payment_required: true,
+                    payment_status: "checkout_created",
+                    stripe_checkout_url: url,
+                  }
+            )
+          );
         }
       }
-      setMsg((m) => ({ ...m, [id]: "" }));
-      setAmount((m) => ({ ...m, [id]: "" }));
-      await refresh();
-      setResolveFlashById((prev) => ({ ...prev, [id]: verb }));
-      window.setTimeout(() => {
-        setResolveFlashById((prev) => {
-          const next = { ...prev };
-          delete next[id];
-          return next;
-        });
-      }, 12000);
+      void refresh().catch(() => {});
     } catch (e) {
+      if (snapshot) {
+        setItems((rows) => rows.map((x) => (String(x.id) === String(id) ? snapshot : x)));
+      }
+      setMsg((m) => ({ ...m, [id]: message }));
+      setAmount((m) => ({ ...m, [id]: amountRaw }));
       alert(formatApiErrorFromAxios(e));
     }
   };
@@ -592,33 +599,17 @@ export default function Requests() {
 
   const filteredItems = useMemo(() => {
     if (statusTab === "pending") {
-      const pending = items.filter((x) => x.status === "pending");
-      const pendingSorted = pending.slice().sort(sortPendingByReceivedThenMember);
-      const extras = Object.keys(resolveFlashById)
-        .map((rid) => items.find((x) => String(x.id) === String(rid)))
-        .filter((x) => x && x.status !== "pending");
-      const seen = new Set(pendingSorted.map((x) => String(x.id)));
-      const tail = extras.filter((x) => !seen.has(String(x.id)));
-      return [...pendingSorted, ...tail];
+      return items.filter((x) => x.status === "pending").slice().sort(sortByReceivedThenMember);
     }
     if (statusTab === "approved") return items.filter((x) => x.status === "approved");
     if (statusTab === "denied") return items.filter((x) => x.status === "denied");
     return items;
-  }, [items, statusTab, resolveFlashById]);
+  }, [items, statusTab]);
 
   const byRecent = useMemo(() => {
     const list = filteredItems.slice();
-    if (statusTab === "pending") {
-      return list.sort(sortPendingByReceivedThenMember);
-    }
-    // Approved / denied: sort by booking date (newest → oldest), then time, then submission time.
-    return list.sort(
-      (a, b) =>
-        String(b.date || "").localeCompare(String(a.date || "")) ||
-        String(a.start_time || "").localeCompare(String(b.start_time || "")) ||
-        String(b.created_at || "").localeCompare(String(a.created_at || ""))
-    );
-  }, [filteredItems, statusTab]);
+    return list.sort(sortByReceivedThenMember);
+  }, [filteredItems]);
 
   const previewRequests = useMemo(() => byRecent.slice(0, PREVIEW_LIMIT), [byRecent]);
 
@@ -642,13 +633,8 @@ export default function Requests() {
 
   const requestsInRangeSorted = useMemo(() => {
     const slice = requestsInRange.slice();
-    if (statusTab === "pending") {
-      return slice.sort(sortPendingByReceivedThenMember);
-    }
-    return slice.sort(
-      (a, b) => a.date.localeCompare(b.date) || String(a.start_time).localeCompare(String(b.start_time))
-    );
-  }, [requestsInRange, statusTab]);
+    return slice.sort(sortByReceivedThenMember);
+  }, [requestsInRange]);
 
   const requestsRangeTitle = useMemo(() => {
     if (allReqGranularity === "week") {
@@ -692,7 +678,6 @@ export default function Requests() {
           setAssignDraft={setAssignDraft}
           assignSavingId={assignSavingId}
           onSaveAssign={onSaveAssign}
-          resolveFlash={resolveFlashById[b.id] || null}
         />
       ))}
     </div>
@@ -797,7 +782,6 @@ export default function Requests() {
                   setAssignDraft={setAssignDraft}
                   assignSavingId={assignSavingId}
                   onSaveAssign={onSaveAssign}
-                  resolveFlash={resolveFlashById[b.id] || null}
                   compact
                 />
               );
@@ -912,7 +896,7 @@ export default function Requests() {
           className="rounded-[7px] border border-dashed border-gray-200/90 bg-white/50 px-4 py-8 text-center text-sm text-slate-600 dark:border-white/20 dark:bg-zinc-900/30 dark:text-zinc-400"
           data-testid="requests-tab-empty"
         >
-          No {statusTab} requests right now.
+          No {REQUESTS_TAB_EMPTY_PHRASE[statusTab] ?? statusTab} requests right now.
         </p>
       )}
 
