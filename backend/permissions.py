@@ -16,6 +16,7 @@ PERMISSION_DEFINITIONS: Tuple[Tuple[str, str], ...] = (
     ("view_members_directory", "View team list"),
     ("assign_member_calendars", "Assign calendars to members"),
     ("delete_any_booking", "Edit or cancel any booking"),
+    ("reassign_booking_member", "Reassign bookings to another member"),
 )
 
 PERMISSION_KEYS = [k for k, _ in PERMISSION_DEFINITIONS]
@@ -29,6 +30,7 @@ DEFAULT_MEMBER: Dict[str, bool] = {
     "view_members_directory": False,
     "assign_member_calendars": False,
     "delete_any_booking": False,
+    "reassign_booking_member": False,
 }
 
 # Managers: schedule + full detail + requests per product brief; toggles are admin-editable
@@ -41,6 +43,8 @@ DEFAULT_MANAGER: Dict[str, bool] = {
     "view_members_directory": True,
     "assign_member_calendars": False,
     "delete_any_booking": False,
+    # Managers who handle requests can reassign by default; toggle off per deploy if needed.
+    "reassign_booking_member": True,
 }
 
 DEFAULTS_BY_ROLE: Dict[str, Dict[str, bool]] = {
