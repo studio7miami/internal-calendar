@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { api, formatApiError } from "../lib/api";
+import { api, formatApiErrorFromAxios } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { useLocation } from "react-router-dom";
 import { Button } from "../components/ui/button";
@@ -21,7 +21,13 @@ import {
   pageInputClass,
   glassBarHoverClass,
 } from "../lib/pageTheme";
-import { cn } from "@/lib/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import MemberSummaryDialog from "../components/members/MemberSummaryDialog";
 
 const PREVIEW_LIMIT = 7;
@@ -156,6 +162,11 @@ function RequestCard({
   calName,
   setProfileMember,
   compact = false,
+  assignableMembers = [],
+  assignDraft = {},
+  setAssignDraft = () => {},
+  assignSavingId = null,
+  onSaveAssign = () => {},
 }) {
   const cal = calendars.find((c) => c.id === b.calendar_id);
   const color = cal?.color || "#64748b";
@@ -194,6 +205,21 @@ function RequestCard({
   };
 
   const notesText = stripVenueFromText(b.notes);
+
+  const memberOptions = useMemo(() => {
+    const o = [...(assignableMembers || [])];
+    if (b.member_id && !o.some((u) => String(u.id) === String(b.member_id))) {
+      o.unshift({
+        id: b.member_id,
+        name: b.member_name || "Assignee",
+        email: b.member_email || "",
+      });
+    }
+    return o;
+  }, [assignableMembers, b.member_email, b.member_id, b.member_name]);
+
+  const effectiveAssign =
+    assignDraft[b.id] !== undefined ? assignDraft[b.id] : b.member_id || "";
 
   return (
     <div
@@ -355,6 +381,60 @@ function RequestCard({
           </div>
         )}
       </div>
+
+      {canModerate && b.status === "approved" && memberOptions.length > 0 && (
+        <div
+          className={cn(
+            "border-t border-slate-200/80 dark:border-white/10",
+            compact ? "mt-2 pt-2" : "mt-3 pt-3"
+          )}
+        >
+          <div className="text-xs font-medium text-slate-600 dark:text-zinc-400">Assigned member</div>
+          <div className={cn("mt-1.5 flex flex-col gap-2 sm:flex-row sm:items-center")}>
+            <Select
+              value={effectiveAssign ? String(effectiveAssign) : "__none__"}
+              onValueChange={(v) =>
+                setAssignDraft((m) => ({
+                  ...m,
+                  [b.id]: v === "__none__" ? "" : v,
+                }))
+              }
+            >
+              <SelectTrigger
+                className={cn(pageInputClass, "h-9 w-full text-left text-xs sm:w-[min(100%,20rem)]")}
+                data-testid={`assign-member-${b.id}`}
+              >
+                <SelectValue placeholder="Choose member" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__" className="text-xs">
+                  — Unassigned —
+                </SelectItem>
+                {memberOptions.map((u) => (
+                  <SelectItem key={u.id} value={String(u.id)} className="text-xs">
+                    {u.name}
+                    {u.email ? ` · ${u.email}` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              type="button"
+              variant="ghost"
+              className={cn(pageBtnPrimaryClass, "h-9 shrink-0 text-xs")}
+              disabled={
+                assignSavingId === b.id ||
+                !effectiveAssign ||
+                String(effectiveAssign) === String(b.member_id || "")
+              }
+              onClick={() => onSaveAssign(b.id, String(effectiveAssign))}
+              data-testid={`assign-save-${b.id}`}
+            >
+              {assignSavingId === b.id ? "Saving…" : "Save assignment"}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -372,6 +452,9 @@ export default function Requests() {
   const [allReqGranularity, setAllReqGranularity] = useState("week");
   const [allReqCursor, setAllReqCursor] = useState(() => new Date());
   const [statusTab, setStatusTab] = useState("pending"); // pending | approved | denied
+  const [assignableMembers, setAssignableMembers] = useState([]);
+  const [assignDraft, setAssignDraft] = useState({});
+  const [assignSavingId, setAssignSavingId] = useState(null);
 
   const canModerate = !!user?.permissions?.approve_deny_requests;
 
@@ -387,6 +470,25 @@ export default function Requests() {
   useEffect(() => {
     refresh();
   }, []);
+
+  useEffect(() => {
+    if (!canModerate) {
+      setAssignableMembers([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await api.get("/bookings/assignable-members");
+        if (!cancelled) setAssignableMembers(r.data || []);
+      } catch {
+        if (!cancelled) setAssignableMembers([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [canModerate]);
 
   useEffect(() => {
     if (!location?.search) return;
@@ -425,9 +527,27 @@ export default function Requests() {
       }
       setMsg((m) => ({ ...m, [id]: "" }));
       setAmount((m) => ({ ...m, [id]: "" }));
-      refresh();
+      await refresh();
     } catch (e) {
-      alert(formatApiError(e?.response?.data?.detail) || "Action failed");
+      alert(formatApiErrorFromAxios(e));
+    }
+  };
+
+  const onSaveAssign = async (bookingId, memberId) => {
+    if (!memberId) return;
+    setAssignSavingId(bookingId);
+    try {
+      await api.patch(`/bookings/${bookingId}`, { member_id: memberId });
+      setAssignDraft((m) => {
+        const next = { ...m };
+        delete next[bookingId];
+        return next;
+      });
+      await refresh();
+    } catch (e) {
+      alert(formatApiErrorFromAxios(e));
+    } finally {
+      setAssignSavingId(null);
     }
   };
 
@@ -519,6 +639,11 @@ export default function Requests() {
           act={act}
           calName={calName}
           setProfileMember={setProfileMember}
+          assignableMembers={assignableMembers}
+          assignDraft={assignDraft}
+          setAssignDraft={setAssignDraft}
+          assignSavingId={assignSavingId}
+          onSaveAssign={onSaveAssign}
         />
       ))}
     </div>
@@ -618,6 +743,11 @@ export default function Requests() {
                   act={act}
                   calName={calName}
                   setProfileMember={setProfileMember}
+                  assignableMembers={assignableMembers}
+                  assignDraft={assignDraft}
+                  setAssignDraft={setAssignDraft}
+                  assignSavingId={assignSavingId}
+                  onSaveAssign={onSaveAssign}
                   compact
                 />
               );
