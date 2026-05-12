@@ -271,6 +271,43 @@ class TestBookings:
         if created_cal:
             requests.delete(f"{API}/calendars/{cal_id}", headers=admin_headers)
 
+    def test_request_rejects_overlap_with_pending(self, admin_headers, member):
+        """Two overlapping pending holds on the same calendar should not both exist."""
+        cal_id, created_cal = _calendar_id_or_create(admin_headers)
+        try:
+            slot = {"calendar_id": cal_id, "date": "2026-06-01", "start_time": "10:00", "end_time": "11:00", "notes": "a"}
+            r1 = requests.post(f"{API}/bookings/request", json=slot, headers=member["headers"])
+            assert r1.status_code == 200, r1.text
+            r2 = requests.post(
+                f"{API}/bookings/request",
+                json={**slot, "notes": "b"},
+                headers=member["headers"],
+            )
+            assert r2.status_code == 400, r2.text
+            bid1 = r1.json()["id"]
+            requests.delete(f"{API}/bookings/{bid1}", headers=member["headers"])
+        finally:
+            if created_cal:
+                requests.delete(f"{API}/calendars/{cal_id}", headers=admin_headers)
+
+    def test_manual_rejects_overlap(self, admin_headers):
+        cal_id, created_cal = _calendar_id_or_create(admin_headers)
+        try:
+            body = {"calendar_id": cal_id, "date": "2026-06-02", "start_time": "14:00", "end_time": "15:30"}
+            r1 = requests.post(f"{API}/bookings/manual", json=body, headers=admin_headers)
+            assert r1.status_code == 200, r1.text
+            r2 = requests.post(
+                f"{API}/bookings/manual",
+                json={**body, "start_time": "15:00", "end_time": "16:00"},
+                headers=admin_headers,
+            )
+            assert r2.status_code == 400, r2.text
+            mid = r1.json()["id"]
+            requests.delete(f"{API}/bookings/{mid}", headers=admin_headers)
+        finally:
+            if created_cal:
+                requests.delete(f"{API}/calendars/{cal_id}", headers=admin_headers)
+
 
 # ----- Notifications -----
 class TestNotifications:
