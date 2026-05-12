@@ -23,6 +23,8 @@ export const api = MOCK_MODE
   ? createMockApi()
   : axios.create({
       baseURL: API_BASE,
+      // Prevents infinite “Loading…” when the API or proxy hangs (default axios has no timeout).
+      timeout: 30000,
     });
 
 if (!MOCK_MODE) {
@@ -80,8 +82,10 @@ export function formatApiErrorFromAxios(err) {
   }
   if (typeof data === "string" && data.trim() && data.length < 600) return data;
   if (!res)
-    return err.message?.includes("Network Error")
-      ? "Network error — check your connection and try again."
-      : err.message || "Request failed — no response from server.";
+    return err.code === "ECONNABORTED" || /timeout/i.test(String(err.message || ""))
+      ? "Request timed out. The server may be busy — try again in a moment."
+      : err.message?.includes("Network Error")
+        ? "Network error — check your connection and try again."
+        : err.message || "Request failed — no response from server.";
   return `Request failed (${res.status}).`;
 }
