@@ -93,6 +93,42 @@ export function createMockApi() {
   const fail = (status, detail) =>
     Promise.reject({ response: { status, data: { detail } } });
 
+  const normHm = (t) => {
+    const s = String(t || "");
+    return s.length >= 5 ? s.slice(0, 5) : s;
+  };
+  const timeOverlap = (a0, a1, b0, b1) => normHm(a0) < normHm(b1) && normHm(a1) > normHm(b0);
+
+  /** Same rules as backend: pending + approved on same calendar/date block overlapping times. */
+  const hasBookingConflict = (calendarId, date, start, end, excludeBookingId) => {
+    const cid = String(calendarId ?? "");
+    const d = String(date ?? "");
+    const st = String(start ?? "");
+    const et = String(end ?? "");
+    const blocks = [...state.bookings, ...state.requests];
+    for (const row of blocks) {
+      if (excludeBookingId && String(row.id) === String(excludeBookingId)) continue;
+      const status = row.status;
+      if (status !== "approved" && status !== "pending") continue;
+      if (String(row.calendar_id) !== cid) continue;
+      if (String(row.date) !== d) continue;
+      if (timeOverlap(st, et, row.start_time, row.end_time)) return true;
+    }
+    return false;
+  };
+
+  const firstNameOnly = (displayName) => {
+    const s = String(displayName || "").trim();
+    if (!s) return "";
+    const parts = s.split(/\s+/);
+    return parts[0] || "";
+  };
+
+  const memberCalendarConflictMsg = (displayName) => {
+    const first = firstNameOnly(displayName) || "Member";
+    return `${first}, this time conflicts with another booking on the calendar. Choose another time.`;
+  };
+
   const parseId = (url, prefix) => {
     const m = String(url || "").match(new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/([^/]+)`));
     return m ? m[1] : null;
@@ -111,9 +147,16 @@ export function createMockApi() {
 
     post: async (url, body) => {
       if (url === "/bookings/request") {
+        const me = state.me;
+        const calId = String(body?.calendar_id || "");
+        const date = String(body?.date || "");
+        const st = String(body?.start_time || "");
+        const et = String(body?.end_time || "");
+        if (hasBookingConflict(calId, date, st, et, null)) {
+          return fail(400, memberCalendarConflictMsg(me.name));
+        }
         const id = uuid();
         const cal = state.calendars.find((c) => String(c.id) === String(body?.calendar_id));
-        const me = state.me;
         const row = {
           id,
           calendar_id: String(body?.calendar_id || ""),
@@ -136,11 +179,18 @@ export function createMockApi() {
       }
 
       if (url === "/bookings/manual") {
-        const id = uuid();
-        const cal = state.calendars.find((c) => String(c.id) === String(body?.calendar_id));
         const member = body?.member_id
           ? state.users.find((u) => String(u.id) === String(body.member_id))
           : state.me;
+        const calId = String(body?.calendar_id || "");
+        const date = String(body?.date || "");
+        const st = String(body?.start_time || "");
+        const et = String(body?.end_time || "");
+        if (hasBookingConflict(calId, date, st, et, null)) {
+          return fail(400, memberCalendarConflictMsg(member?.name || state.me.name));
+        }
+        const id = uuid();
+        const cal = state.calendars.find((c) => String(c.id) === String(body?.calendar_id));
         const row = {
           id,
           calendar_id: String(body?.calendar_id || ""),
@@ -168,6 +218,14 @@ export function createMockApi() {
         const id = approveId || denyId;
         const idx = state.requests.findIndex((r) => String(r.id) === String(id));
         if (idx === -1) return fail(404, "Request not found");
+        if (approveId) {
+          const r = state.requests[idx];
+          if (
+            hasBookingConflict(r.calendar_id, r.date, r.start_time, r.end_time, id)
+          ) {
+            return fail(400, memberCalendarConflictMsg(r.member_name));
+          }
+        }
         state.requests[idx].status = approveId ? "approved" : "denied";
         state.requests[idx].approval_message = String(body?.message || "");
         return ok({ ok: true });
@@ -199,12 +257,44 @@ export function createMockApi() {
         };
         const bi = state.bookings.findIndex((b) => String(b.id) === String(bookingId));
         if (bi !== -1) {
-          state.bookings[bi] = patchBooking(state.bookings[bi]);
+          const cur = state.bookings[bi];
+          const merged = patchBooking(cur);
+          const timeKeys = ["date", "start_time", "end_time", "calendar_id"];
+          if (timeKeys.some((k) => k in (body || {}))) {
+            if (
+              hasBookingConflict(
+                merged.calendar_id,
+                merged.date,
+                merged.start_time,
+                merged.end_time,
+                bookingId,
+              )
+            ) {
+              return fail(400, memberCalendarConflictMsg(merged.member_name));
+            }
+          }
+          state.bookings[bi] = merged;
           return ok(state.bookings[bi]);
         }
         const ri = state.requests.findIndex((b) => String(b.id) === String(bookingId));
         if (ri !== -1) {
-          state.requests[ri] = patchBooking(state.requests[ri]);
+          const cur = state.requests[ri];
+          const merged = patchBooking(cur);
+          const timeKeys = ["date", "start_time", "end_time", "calendar_id"];
+          if (timeKeys.some((k) => k in (body || {}))) {
+            if (
+              hasBookingConflict(
+                merged.calendar_id,
+                merged.date,
+                merged.start_time,
+                merged.end_time,
+                bookingId,
+              )
+            ) {
+              return fail(400, memberCalendarConflictMsg(merged.member_name));
+            }
+          }
+          state.requests[ri] = merged;
           return ok(state.requests[ri]);
         }
         return fail(404, "Booking not found");
