@@ -20,6 +20,7 @@ const DEFS = [
   { key: "view_members_directory", label: "View team list" },
   { key: "assign_member_calendars", label: "Assign calendars to members" },
   { key: "delete_any_booking", label: "Edit or cancel any booking" },
+  { key: "reassign_booking_member", label: "Reassign bookings to another member" },
 ];
 
 const EFF_MEMBER = {
@@ -31,6 +32,7 @@ const EFF_MEMBER = {
   view_members_directory: false,
   assign_member_calendars: false,
   delete_any_booking: false,
+  reassign_booking_member: false,
 };
 
 const EFF_MANAGER = {
@@ -42,6 +44,7 @@ const EFF_MANAGER = {
   view_members_directory: true,
   assign_member_calendars: false,
   delete_any_booking: false,
+  reassign_booking_member: true,
 };
 
 const EFF_ADMIN = DEFS.reduce((acc, d) => {
