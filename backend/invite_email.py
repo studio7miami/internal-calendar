@@ -11,6 +11,19 @@ Edit copy: optional env INVITE_EMAIL_SUBJECT — use placeholders {org}, {invite
 Default invite subject: You're in — {org}.
 Logo: INVITE_EMAIL_LOGO_URL, else FRONTEND_URL/brand/logo.png when FRONTEND_URL is not localhost,
 else API_PUBLIC_ORIGIN + /api/public/brand-logo.png (serves frontend build/public brand/logo.png).
+Header logo links to TRANSACTIONAL_EMAIL_SITE_URL, else FRONTEND_URL (non-local), else https://team.studio7.miami.
+Invite magic-link card matches booking emails: off-white panel #FCFCFC, border #212121 @ 7%, CTA pill #F7F7F7 with same border.
+
+Booking outcome copy (accepted / denied) — preview without sending:
+  - Swagger: /docs → Authorize (admin JWT) → GET /api/admin/email-preview/booking-decision (fmt=html; decision=approved is the accept path)
+  - CLI: cd backend && python3 scripts/preview_booking_emails.py → open email_previews/booking_approved.html
+Placeholders {date} use MM-DD-YYYY; {date_pretty} stays a long weekday form.
+Default approved subject: You're on the calendar — {calendar}. Default denied: Booking update — {org}.
+Accepted and denied HTML use the same card colors and typography; neither includes a CTA button.
+
+Booking reminders (~24h and ~2h before start): sent by a background loop when email is configured.
+Optional subjects: BOOKING_REMINDER_24H_SUBJECT, BOOKING_REMINDER_2H_SUBJECT (placeholders like booking decision).
+Poll interval: BOOKING_REMINDER_POLL_SEC (default 300; 0 disables).
 """
 from __future__ import annotations
 
@@ -23,18 +36,25 @@ import ssl
 from email.message import EmailMessage
 from typing import Literal, Optional, Tuple
 
-import httpx
 
 logger = logging.getLogger(__name__)
 
-# Shared look for invite + booking transactional HTML (many clients ignore <style> blocks).
-# Light card (brand): off-white background with near-black text + outline.
-EMAIL_PAGE_BG = "#F7F7F7"
+# Shared look for transactional HTML (many clients ignore <style> blocks).
 EMAIL_TEXT = "#161616"
-EMAIL_CARD_BORDER = "#161616"
+# Booking, invite, reminders: card panel
+BOOKING_DECISION_CARD_BG = "#FCFCFC"
+BOOKING_DECISION_CARD_BORDER = "rgba(33, 33, 33, 0.07)"  # #212121 @ 7%
+
+_INVITE_EMAIL_MANROPE_HEAD = """    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500&display=swap" rel="stylesheet" />
+"""
+_INVITE_CTA_FONT_FAMILY = (
+    "'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
+)
 
 # Bump this when changing invite HTML significantly.
-INVITE_EMAIL_TEMPLATE_VERSION = "invite-email-2026-05-01-v1"
+INVITE_EMAIL_TEMPLATE_VERSION = "invite-email-2026-05-09-v5"
 
 
 def _from_addr() -> str:
@@ -75,6 +95,17 @@ def _frontend_base() -> str:
     return (os.environ.get("FRONTEND_URL") or "http://localhost:3000").rstrip("/")
 
 
+def _transactional_email_site_url() -> str:
+    """HTTPS origin for logo link. Override with TRANSACTIONAL_EMAIL_SITE_URL if needed."""
+    raw = (os.environ.get("TRANSACTIONAL_EMAIL_SITE_URL") or "").strip().rstrip("/")
+    if raw.startswith("http://") or raw.startswith("https://"):
+        return raw
+    fe = _frontend_base().rstrip("/")
+    if fe and "localhost" not in fe.lower() and "127.0.0.1" not in fe.lower():
+        return fe
+    return "https://team.studio7.miami"
+
+
 def _api_public_origin() -> str:
     for key in ("API_PUBLIC_ORIGIN", "PUBLIC_API_ORIGIN", "RENDER_EXTERNAL_URL"):
         v = (os.environ.get(key) or "").strip().rstrip("/")
@@ -98,6 +129,128 @@ def resolve_invite_logo_url() -> str:
     return f"{fe}/brand/logo.png"
 
 
+def _logo_dark_variant_url(light_url: str) -> str:
+    """Derive dark logo URL from light (https paths, file://, or INVITE_EMAIL_LOGO_URL)."""
+    u = light_url or ""
+    if "/brand/logo.png" in u:
+        return u.replace("/brand/logo.png", "/brand/logo-dark.png")
+    if u.endswith("logo.png"):
+        return u[: -len("logo.png")] + "logo-dark.png"
+    return u
+
+
+def _format_time_12h(hhmm: str) -> str:
+    """Display HH:MM or HH:MM:SS as 12-hour, e.g. 13:00 -> 1:00 PM."""
+    s = (hhmm or "").strip()
+    if not s:
+        return ""
+    parts = s.split(":")
+    try:
+        h = int(parts[0])
+        m = int(parts[1][:2]) if len(parts) > 1 else 0
+    except (ValueError, IndexError):
+        return hhmm
+    ampm = "PM" if h >= 12 else "AM"
+    h12 = h % 12
+    if h12 == 0:
+        h12 = 12
+    return f"{h12}:{m:02d} {ampm}"
+
+
+def _transactional_email_head(*, page_title_e: str, extra_head: str = "") -> str:
+    """Shared <head> for invite + booking outcome emails (logo dark-mode swap). `page_title_e` must be escaped."""
+    extra = extra_head.rstrip() + ("\n" if extra_head.strip() else "")
+    return f"""  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="x-apple-disable-message-reformatting" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="supported-color-schemes" content="light dark" />
+{extra}    <style>
+      .s7-logo-light {{
+        display: block !important;
+      }}
+      .s7-logo-dark {{
+        display: none !important;
+        mso-hide: all !important;
+      }}
+      @media (prefers-color-scheme: dark) {{
+        .s7-logo-light {{
+          display: none !important;
+          mso-hide: all !important;
+        }}
+        .s7-logo-dark {{
+          display: block !important;
+        }}
+      }}
+      [data-ogsc] .s7-logo-light {{
+        display: none !important;
+        mso-hide: all !important;
+      }}
+      [data-ogsc] .s7-logo-dark {{
+        display: block !important;
+      }}
+      [data-ogsb] .s7-logo-light {{
+        display: none !important;
+        mso-hide: all !important;
+      }}
+      [data-ogsb] .s7-logo-dark {{
+        display: block !important;
+      }}
+    </style>
+    <title>{page_title_e}</title>
+  </head>"""
+
+
+def _transactional_email_outer_open() -> str:
+    return """  <body style="margin:0;padding:0;background:transparent;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:transparent;">
+      <tr>
+        <td align="center" style="padding:28px 12px;background:transparent;">
+          <table role="presentation" width="560" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:560px;background:transparent;">
+"""
+
+
+def _transactional_email_outer_close() -> str:
+    return """          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>"""
+
+
+def _transactional_email_logo_row(*, org_e: str) -> str:
+    raw_light = resolve_invite_logo_url()
+    raw_dark = _logo_dark_variant_url(raw_light)
+    logo_src = raw_light.replace("&", "&amp;")
+    logo_dark_src = raw_dark.replace("&", "&amp;")
+    site = _transactional_email_site_url().replace('"', "%22")
+    return f"""            <tr>
+              <td align="center" style="padding:0 0 18px;background:transparent;">
+                <a href="{site}" style="display:inline-block;text-decoration:none;border:0;" target="_blank" rel="noopener noreferrer">
+                  <img
+                    src="{logo_src}"
+                    alt="{org_e}"
+                    width="150"
+                    border="0"
+                    class="s7-logo-light"
+                    style="display:block;max-width:150px;height:auto;width:100%;"
+                  />
+                  <img
+                    src="{logo_dark_src}"
+                    alt="{org_e}"
+                    width="150"
+                    border="0"
+                    class="s7-logo-dark"
+                    style="display:block;max-width:150px;height:auto;width:100%;"
+                  />
+                </a>
+              </td>
+            </tr>
+"""
+
+
 def build_invite_email_subject(*, org_name: str, inviter_name: Optional[str] = None) -> str:
     org = (org_name or "Studio 7 Miami").strip() or "Studio 7 Miami"
     inviter_clean = (inviter_name or "").replace("\n", " ").replace("\r", "")[:80]
@@ -114,127 +267,47 @@ def build_invite_email_subject(*, org_name: str, inviter_name: Optional[str] = N
 def build_invite_email_html(*, invite_link: str, org_name: str) -> str:
     org_e = html.escape(org_name)
     href = invite_link.replace('"', "%22")
-    logo_src = resolve_invite_logo_url().replace("&", "&amp;")
-    # Dark-mode (inverted) logo asset.
-    logo_dark_src = logo_src.replace("/brand/logo.png", "/brand/logo-dark.png")
-    bg = EMAIL_PAGE_BG
+    card_bg = BOOKING_DECISION_CARD_BG
+    card_bdr = BOOKING_DECISION_CARD_BORDER
+    cta_bg = "#F7F7F7"
+    cta_bdr = BOOKING_DECISION_CARD_BORDER
+    cta_ff = _INVITE_CTA_FONT_FAMILY
     fg = EMAIL_TEXT
-    bdr = EMAIL_CARD_BORDER
     ff = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
+    head = _transactional_email_head(page_title_e=org_e, extra_head=_INVITE_EMAIL_MANROPE_HEAD)
+    logo = _transactional_email_logo_row(org_e=org_e)
     return f"""<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="x-apple-disable-message-reformatting" />
-    <meta name="color-scheme" content="light dark" />
-    <meta name="supported-color-schemes" content="light dark" />
-    <style>
-      /* Default to the normal (light) logo; swap to the dark logo when the client supports it. */
-      .s7-logo-light {{
-        display: block !important;
-      }}
-      .s7-logo-dark {{
-        display: none !important;
-        mso-hide: all !important;
-      }}
-      .s7-footer {{
-        color: #161616 !important;
-      }}
-      @media (prefers-color-scheme: dark) {{
-        .s7-logo-light {{
-          display: none !important;
-          mso-hide: all !important;
-        }}
-        .s7-logo-dark {{
-          display: block !important;
-        }}
-        .s7-footer {{
-          color: {fg} !important;
-        }}
-      }}
-
-      /* Outlook.com / some web clients */
-      [data-ogsc] .s7-logo-light {{
-        display: none !important;
-        mso-hide: all !important;
-      }}
-      [data-ogsc] .s7-logo-dark {{
-        display: block !important;
-      }}
-      [data-ogsc] .s7-footer {{
-        color: {fg} !important;
-      }}
-
-      /* Some clients use data-ogsb for dark mode */
-      [data-ogsb] .s7-logo-light {{
-        display: none !important;
-        mso-hide: all !important;
-      }}
-      [data-ogsb] .s7-logo-dark {{
-        display: block !important;
-      }}
-      [data-ogsb] .s7-footer {{
-        color: {fg} !important;
-      }}
-    </style>
-    <title>{org_e}</title>
-  </head>
-  <body style="margin:0;padding:0;background:transparent;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:transparent;">
-      <tr>
-        <td align="center" style="padding:28px 12px;background:transparent;">
-          <table role="presentation" width="560" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:560px;background:transparent;">
-            <tr>
-              <td align="center" style="padding:0 0 18px;background:transparent;">
-                <img
-                  src="{logo_src}"
-                  alt="{org_e}"
-                  width="150"
-                  border="0"
-                  class="s7-logo-light"
-                  style="display:block;max-width:150px;height:auto;width:100%;"
-                />
-                <img
-                  src="{logo_dark_src}"
-                  alt="{org_e}"
-                  width="150"
-                  border="0"
-                  class="s7-logo-dark"
-                  style="display:block;max-width:150px;height:auto;width:100%;"
-                />
-              </td>
-            </tr>
+{head}
+{_transactional_email_outer_open()}{logo}
             <tr>
               <td
-                style="background:{bg};border:1px solid {bdr};border-radius:12px;padding:28px 22px;color:{fg};font-family:{ff};"
+                style="background:{card_bg};border:1px solid {card_bdr};border-radius:12px;padding:28px 22px;color:{fg};font-family:{ff};"
               >
-                <div style="font-size:22px;line-height:1.2;font-weight:700;margin:0 0 16px;color:{fg};">
+                <p style="margin:0;font-size:22px;line-height:1.2;font-weight:700;color:{fg};">
                   Welcome.
-                </div>
-                <div style="font-size:14px;line-height:1.6;margin:0 0 14px;color:{fg};">
+                </p>
+                <p style="margin:14px 0 0;font-size:15px;line-height:1.5;color:{fg};">
                   You&apos;ve been added to the {org_e} team calendar.
-                </div>
-                <div style="font-size:14px;line-height:1.6;margin:0 0 20px;color:{fg} !important;-webkit-text-fill-color:{fg} !important;opacity:1 !important;">
+                </p>
+                <p style="margin:14px 0 0;font-size:15px;line-height:1.5;color:{fg};">
                   This is where you&apos;ll see availability, request time in<br />the space, and stay connected with your bookings.
-                </div>
-                <div style="font-size:14px;line-height:1.6;margin:0 0 22px;color:{fg};">
+                </p>
+                <p style="margin:14px 0 0;font-size:15px;line-height:1.5;color:{fg};">
                   Tap below to set up your account.
-                </div>
+                </p>
 
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:0;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:14px 0 0;">
                   <tr>
-                    <!-- Match the space above the CTA (same as the paragraph spacing before it). -->
-                    <td align="left" style="padding:0 0 22px;">
+                    <td align="left" style="padding:0 0 14px;">
                       <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="left" style="margin:0;">
                         <tr>
                           <td
-                            align="left"
-                            style="border:1px solid {fg};border-radius:7px;background:{bg};"
+                            style="border:1px solid {cta_bdr};border-radius:7px;background:{cta_bg};"
                           >
                             <a
                               href="{href}"
-                              style="display:inline-block;padding:12px 18px;background:{bg};color:{fg};text-decoration:none;border-radius:7px;font-size:14px;font-weight:700;letter-spacing:0.2px;"
+                              style="display:inline-block;padding:12px 18px;background:{cta_bg};color:{fg};text-decoration:none;border-radius:7px;font-family:{cta_ff};font-size:14px;font-weight:500;letter-spacing:0.2px;"
                             >
                               Accept invite →
                             </a>
@@ -253,17 +326,7 @@ def build_invite_email_html(*, invite_link: str, org_name: str) -> str:
                 </table>
               </td>
             </tr>
-            <tr>
-              <td align="center" class="s7-footer" style="padding:14px 6px 0;color:#161616;font-family:{ff};font-size:11px;line-height:1.4;background:transparent;">
-                {org_e}
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>"""
+{_transactional_email_outer_close()}"""
 
 
 def _text_body(invite_link: str, org_name: str) -> str:
@@ -293,6 +356,8 @@ async def deliver_html_email(
     resend = _resend_key()
     if resend:
         try:
+            import httpx
+
             async with httpx.AsyncClient(timeout=20.0) as client:
                 r = await client.post(
                     "https://api.resend.com/emails",
@@ -366,6 +431,90 @@ async def deliver_html_email(
     return False, "No email transport configured (set RESEND_API_KEY or SMTP_*)", None
 
 
+def _booking_pretty_date(date_str: str) -> str:
+    s = (date_str or "").strip()
+    if not s:
+        return ""
+    try:
+        from datetime import date
+
+        parts = s.split("-")
+        if len(parts) >= 3:
+            y, m, d = int(parts[0]), int(parts[1]), int(parts[2])
+            dt = date(y, m, d)
+            return dt.strftime("%a, %b %d, %Y")
+    except Exception:
+        pass
+    return s
+
+
+def _booking_date_mmddyyyy(date_str: str) -> str:
+    """YYYY-MM-DD -> MM-DD-YYYY for email display."""
+    s = (date_str or "").strip()
+    if not s:
+        return ""
+    try:
+        parts = s.split("-")
+        if len(parts) >= 3:
+            y, mo, d = int(parts[0]), int(parts[1]), int(parts[2])
+            return f"{mo:02d}-{d:02d}-{y}"
+    except (ValueError, IndexError):
+        pass
+    return s
+
+
+def _booking_email_detail_date(date_iso: str) -> str:
+    """YYYY-MM-DD -> 'Tue, May 12' (weekday, month, day; no year)."""
+    s = (date_iso or "").strip()
+    if not s:
+        return ""
+    try:
+        from datetime import date
+
+        parts = s.split("-")
+        if len(parts) >= 3:
+            y, m, d = int(parts[0]), int(parts[1]), int(parts[2])
+            dt = date(y, m, d)
+            return dt.strftime("%a, %b ") + str(d)
+    except Exception:
+        pass
+    return s
+
+
+def _booking_member_first_name(raw: Optional[str]) -> str:
+    s = (raw or "").strip()
+    if not s:
+        return "there"
+    return s.split()[0]
+
+
+def _apply_booking_decision_template(
+    template: str,
+    *,
+    calendar_name: str,
+    org: str,
+    date_iso: str,
+    start_time: str,
+    end_time: str,
+    member_display: str = "",
+    max_len: Optional[int] = None,
+) -> str:
+    raw = (template or "").replace("\r\n", "\n")
+    date_us = _booking_date_mmddyyyy(date_iso)
+    out = (
+        raw.replace("{calendar}", calendar_name)
+        .replace("{org}", org)
+        .replace("{date}", date_us)
+        .replace("{date_pretty}", _booking_pretty_date(date_iso))
+        .replace("{start_time}", start_time)
+        .replace("{end_time}", end_time)
+        .replace("{member}", member_display)
+    )
+    if max_len is not None and len(out) > max_len:
+        return out[:max_len]
+    return out
+
+
 def build_booking_decision_bodies(
     *,
     decision: Literal["approved", "denied"],
@@ -375,73 +524,303 @@ def build_booking_decision_bodies(
     end_time: str,
     optional_message: str,
     calendar_app_url: str,
+    member_name: Optional[str] = None,
 ) -> Tuple[str, str, str]:
     org = (os.environ.get("INVITE_EMAIL_ORG_NAME") or "Studio 7 Miami").strip()
+    member_display = _booking_member_first_name(member_name)
+    start_12 = _format_time_12h(start_time)
+    end_12 = _format_time_12h(end_time)
+    subj_tpl_ap = (os.environ.get("BOOKING_APPROVED_EMAIL_SUBJECT") or "").strip()
+    subj_tpl_dn = (os.environ.get("BOOKING_DENIED_EMAIL_SUBJECT") or "").strip()
+    lead_tpl_ap = (os.environ.get("BOOKING_APPROVED_EMAIL_LEAD") or "").strip()
+    lead_tpl_dn = (os.environ.get("BOOKING_DENIED_EMAIL_LEAD") or "").strip()
+
     cn = html.escape(calendar_name)
-    dn = html.escape(date_str)
-    st = html.escape(start_time)
-    et = html.escape(end_time)
+    st = html.escape(start_12)
+    et = html.escape(end_12)
     msg = (optional_message or "").strip().replace("\r", "")
     msg_e = html.escape(msg) if msg else ""
-    href = calendar_app_url.replace('"', "%22")
+
     if decision == "approved":
-        subject = f"Booking approved — {calendar_name}"[:200]
-        lead = "Your booking request was approved."
-        lead_plain = "Your booking request was approved."
+        subject = (
+            _apply_booking_decision_template(
+                subj_tpl_ap,
+                calendar_name=calendar_name,
+                org=org,
+                date_iso=date_str,
+                start_time=start_12,
+                end_time=end_12,
+                member_display=member_display,
+                max_len=200,
+            )
+            if subj_tpl_ap
+            else f"You're on the calendar — {calendar_name}"[:200]
+        )
+        lead_plain = (
+            _apply_booking_decision_template(
+                lead_tpl_ap,
+                calendar_name=calendar_name,
+                org=org,
+                date_iso=date_str,
+                start_time=start_12,
+                end_time=end_12,
+                member_display=member_display,
+            )
+            if lead_tpl_ap
+            else ""
+        )
     else:
-        subject = f"Booking request declined — {calendar_name}"[:200]
-        lead = "Your booking request was not approved."
-        lead_plain = "Your booking request was not approved."
+        subject = (
+            _apply_booking_decision_template(
+                subj_tpl_dn,
+                calendar_name=calendar_name,
+                org=org,
+                date_iso=date_str,
+                start_time=start_12,
+                end_time=end_12,
+                member_display=member_display,
+                max_len=200,
+            )
+            if subj_tpl_dn
+            else f"Booking update — {org}"[:200]
+        )
+        lead_plain = (
+            _apply_booking_decision_template(
+                lead_tpl_dn,
+                calendar_name=calendar_name,
+                org=org,
+                date_iso=date_str,
+                start_time=start_12,
+                end_time=end_12,
+                member_display=member_display,
+            )
+            if lead_tpl_dn
+            else ""
+        )
+
+    lead_html = "<br />".join(html.escape(p) for p in (lead_plain or "").split("\n"))
     org_e = html.escape(org)
-    bg = EMAIL_PAGE_BG
+    card_bg = BOOKING_DECISION_CARD_BG
+    card_bdr = BOOKING_DECISION_CARD_BORDER
     fg = EMAIL_TEXT
-    bdr = EMAIL_CARD_BORDER
     ff = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
-    msg_block = (
-        f'<p style="font-size:14px;line-height:1.55;color:{fg};margin:16px 0 0;">{msg_e}</p>' if msg_e else ""
-    )
+
+    if decision == "approved":
+        detail_dt = _booking_email_detail_date(date_str)
+        detail_dt_e = html.escape(detail_dt)
+        lead_extra = ""
+        if lead_html:
+            lead_extra = f'                <p style="margin:14px 0 0;font-size:15px;line-height:1.5;color:{fg};">{lead_html}</p>\n'
+        msg_p = (
+            f'                <p style="margin:14px 0 0;font-size:15px;line-height:1.5;color:{fg};">{msg_e}</p>\n'
+            if msg_e
+            else ""
+        )
+        card_main = f"""                <p style="margin:0;font-size:15px;line-height:1.5;color:{fg};">{html.escape(f"Hey {member_display}")} —</p>
+                <p style="margin:14px 0 0;font-size:15px;line-height:1.5;color:{fg};">Your booking has been confirmed.</p>
+{lead_extra}                <p style="margin:14px 0 0;font-size:15px;line-height:1.5;color:{fg};">{cn} · {detail_dt_e} · {st}–{et}</p>
+{msg_p}                <p style="margin:14px 0 0;font-size:15px;line-height:1.5;color:{fg};">See you in the space.</p>
+"""
+    else:
+        detail_dt = _booking_email_detail_date(date_str)
+        detail_dt_e = html.escape(detail_dt)
+        lead_extra = ""
+        if lead_html:
+            lead_extra = f'                <p style="margin:14px 0 0;font-size:15px;line-height:1.5;color:{fg};">{lead_html}</p>\n'
+        msg_p = (
+            f'                <p style="margin:14px 0 0;font-size:15px;line-height:1.5;color:{fg};">{msg_e}</p>\n'
+            if msg_e
+            else ""
+        )
+        card_main = f"""                <p style="margin:0;font-size:15px;line-height:1.5;color:{fg};">{html.escape(f"Hey {member_display}")} —</p>
+                <p style="margin:14px 0 0;font-size:15px;line-height:1.5;color:{fg};">{html.escape("This one couldn't be locked in this time.")}</p>
+{lead_extra}                <p style="margin:14px 0 0;font-size:15px;line-height:1.5;color:{fg};">{cn} · {detail_dt_e} · {st}–{et}</p>
+{msg_p}                <p style="margin:14px 0 0;font-size:15px;line-height:1.5;color:{fg};">Feel free to check the calendar for another time that works.</p>
+"""
+
+    head = _transactional_email_head(page_title_e=org_e)
+    logo = _transactional_email_logo_row(org_e=org_e)
     html_body = f"""<!DOCTYPE html>
 <html lang="en">
-  <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head>
-  <body style="margin:0;padding:0;background:{bg};">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:{bg};">
-      <tr>
-        <td align="center" style="padding:28px 12px;">
-          <table role="presentation" width="560" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:560px;">
+{head}
+{_transactional_email_outer_open()}{logo}
             <tr>
-              <td style="background:{bg};border:1px solid {bdr};border-radius:12px;padding:28px 22px;color:{fg};font-family:{ff};">
-                <p style="margin:0 0 14px;font-size:15px;line-height:1.5;color:{fg};">{lead}</p>
-                <p style="margin:0 0 8px;font-size:14px;line-height:1.5;color:{fg};"><strong>{cn}</strong><br /><span style="color:{fg};">{dn}</span> · {st}–{et}</p>
-                {msg_block}
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:22px 0 0;">
-                  <tr>
-                    <td align="center" style="padding:0;">
-                      <table role="presentation" cellspacing="0" cellpadding="0" border="0">
-                        <tr>
-                          <td style="border:1px solid {fg};border-radius:8px;background:{bg};">
-                            <a href="{href}" style="display:inline-block;padding:12px 20px;background:{bg};color:{fg};text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">Open requests</a>
-                          </td>
-                        </tr>
-                      </table>
-                    </td>
-                  </tr>
-                </table>
-                <p style="font-size:12px;line-height:1.45;color:{fg};margin:22px 0 0;">{org_e}</p>
+              <td style="background:{card_bg};border:1px solid {card_bdr};border-radius:12px;padding:28px 22px;color:{fg};font-family:{ff};">
+                {card_main}
               </td>
             </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>"""
-    lines = [lead_plain, "", f"{calendar_name}", f"{date_str} · {start_time}–{end_time}", ""]
-    if msg:
-        lines.append(msg)
+{_transactional_email_outer_close()}"""
+    if decision == "approved":
+        detail_dt = _booking_email_detail_date(date_str)
+        lines = [
+            f"Hey {member_display} —",
+            "",
+            "Your booking has been confirmed.",
+            "",
+        ]
+        if lead_plain.strip():
+            lines.append(lead_plain)
+            lines.append("")
+        lines.append(f"{calendar_name} · {detail_dt} · {start_12}–{end_12}")
+        lines.append("")
+        if msg:
+            lines.append(msg)
+            lines.append("")
+        lines.append("See you in the space.")
+        lines.append("")
+    else:
+        lines = [
+            f"Hey {member_display} —",
+            "",
+            "This one couldn't be locked in this time.",
+            "",
+        ]
+        if lead_plain.strip():
+            lines.append(lead_plain)
+            lines.append("")
+        detail_dt = _booking_email_detail_date(date_str)
+        lines.append(f"{calendar_name} · {detail_dt} · {start_12}–{end_12}")
+        lines.append("")
+        if msg:
+            lines.append(msg)
+            lines.append("")
+        lines.append("Feel free to check the calendar for another time that works.")
         lines.append("")
     lines.append(calendar_app_url)
     text_body = "\n".join(lines)
     return subject, html_body, text_body
+
+
+def build_booking_reminder_bodies(
+    *,
+    kind: Literal["24h", "2h"],
+    calendar_name: str,
+    date_str: str,
+    start_time: str,
+    end_time: str,
+    member_name: Optional[str] = None,
+) -> Tuple[str, str, str]:
+    """HTML/text for ~24h or ~2h pre-booking reminders; same card chrome as booking decision emails."""
+    org = (os.environ.get("INVITE_EMAIL_ORG_NAME") or "Studio 7 Miami").strip()
+    member_display = _booking_member_first_name(member_name)
+    start_12 = _format_time_12h(start_time)
+    end_12 = _format_time_12h(end_time)
+    subj_24 = (os.environ.get("BOOKING_REMINDER_24H_SUBJECT") or "").strip()
+    subj_2 = (os.environ.get("BOOKING_REMINDER_2H_SUBJECT") or "").strip()
+
+    cn = html.escape(calendar_name)
+    detail_dt = _booking_email_detail_date(date_str)
+    detail_dt_e = html.escape(detail_dt)
+    st = html.escape(start_12)
+    et = html.escape(end_12)
+    org_e = html.escape(org)
+    card_bg = BOOKING_DECISION_CARD_BG
+    card_bdr = BOOKING_DECISION_CARD_BORDER
+    fg = EMAIL_TEXT
+    ff = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
+
+    if kind == "24h":
+        subject = (
+            _apply_booking_decision_template(
+                subj_24,
+                calendar_name=calendar_name,
+                org=org,
+                date_iso=date_str,
+                start_time=start_12,
+                end_time=end_12,
+                member_display=member_display,
+                max_len=200,
+            )
+            if subj_24
+            else f"Tomorrow @ {org}"[:200]
+        )
+        card_main = f"""                <p style="margin:0;font-size:15px;line-height:1.5;color:{fg};">{html.escape(f"Hey {member_display}")} —</p>
+                <p style="margin:14px 0 0;font-size:15px;line-height:1.5;color:{fg};">{html.escape("You're booked for tomorrow.")}</p>
+                <p style="margin:14px 0 0;font-size:15px;line-height:1.5;color:{fg};">{cn} · {detail_dt_e} · {st}–{et}</p>
+                <p style="margin:14px 0 0;font-size:15px;line-height:1.5;color:{fg};">See you then.</p>
+"""
+        lines = [
+            f"Hey {member_display} —",
+            "",
+            "You're booked for tomorrow.",
+            "",
+            f"{calendar_name} · {detail_dt} · {start_12}–{end_12}",
+            "",
+            "See you then.",
+            "",
+        ]
+    else:
+        subject = (
+            _apply_booking_decision_template(
+                subj_2,
+                calendar_name=calendar_name,
+                org=org,
+                date_iso=date_str,
+                start_time=start_12,
+                end_time=end_12,
+                member_display=member_display,
+                max_len=200,
+            )
+            if subj_2
+            else f"You're up in 2 hours — {org}"[:200]
+        )
+        line2_plain = "Your time at the studio starts in 2 hours."
+        card_main = f"""                <p style="margin:0;font-size:15px;line-height:1.5;color:{fg};">{html.escape(f"Hey {member_display}")} —</p>
+                <p style="margin:14px 0 0;font-size:15px;line-height:1.5;color:{fg};">{html.escape(line2_plain)}</p>
+                <p style="margin:14px 0 0;font-size:15px;line-height:1.5;color:{fg};">{cn} · {st}–{et}</p>
+                <p style="margin:14px 0 0;font-size:15px;line-height:1.5;color:{fg};">See you soon.</p>
+"""
+        lines = [
+            f"Hey {member_display} —",
+            "",
+            line2_plain,
+            "",
+            f"{calendar_name} · {start_12}–{end_12}",
+            "",
+            "See you soon.",
+            "",
+        ]
+
+    head = _transactional_email_head(page_title_e=org_e)
+    logo = _transactional_email_logo_row(org_e=org_e)
+    html_body = f"""<!DOCTYPE html>
+<html lang="en">
+{head}
+{_transactional_email_outer_open()}{logo}
+            <tr>
+              <td style="background:{card_bg};border:1px solid {card_bdr};border-radius:12px;padding:28px 22px;color:{fg};font-family:{ff};">
+                {card_main}
+              </td>
+            </tr>
+{_transactional_email_outer_close()}"""
+    text_body = "\n".join(lines)
+    return subject, html_body, text_body
+
+
+async def send_booking_reminder_email(
+    *,
+    to_email: str,
+    kind: Literal["24h", "2h"],
+    calendar_name: str,
+    date_str: str,
+    start_time: str,
+    end_time: str,
+    member_name: Optional[str] = None,
+) -> Tuple[bool, Optional[str], Optional[str]]:
+    subject, html_body, text_body = build_booking_reminder_bodies(
+        kind=kind,
+        calendar_name=calendar_name,
+        date_str=date_str,
+        start_time=start_time,
+        end_time=end_time,
+        member_name=member_name,
+    )
+    return await deliver_html_email(
+        to_email=to_email,
+        subject=subject,
+        html_body=html_body,
+        text_body=text_body,
+    )
 
 
 async def send_booking_decision_email(
@@ -454,6 +833,7 @@ async def send_booking_decision_email(
     end_time: str,
     optional_message: str,
     calendar_app_url: str,
+    member_name: Optional[str] = None,
 ) -> Tuple[bool, Optional[str], Optional[str]]:
     subject, html_body, text_body = build_booking_decision_bodies(
         decision=decision,
@@ -463,6 +843,7 @@ async def send_booking_decision_email(
         end_time=end_time,
         optional_message=optional_message,
         calendar_app_url=calendar_app_url,
+        member_name=member_name,
     )
     return await deliver_html_email(
         to_email=to_email,
