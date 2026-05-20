@@ -44,6 +44,7 @@ export default function MemberSummaryDialog({
   const [busy, setBusy] = useState(false);
   const [draftPhone, setDraftPhone] = useState("");
   const [draftSauce, setDraftSauce] = useState("");
+  const [draftBookable, setDraftBookable] = useState(false);
   const [selfPassword, setSelfPassword] = useState("");
   const [profileMsg, setProfileMsg] = useState("");
   const [profileErr, setProfileErr] = useState("");
@@ -70,6 +71,7 @@ export default function MemberSummaryDialog({
     if (!open || !member) return;
     setDraftPhone(member.phone_e164 || member.member_phone_e164 || "");
     setDraftSauce(member.sauce ?? member.member_sauce ?? "");
+    setDraftBookable(Boolean(member.bookable));
     setSelfPassword("");
     setProfileMsg("");
     setProfileErr("");
@@ -115,6 +117,9 @@ export default function MemberSummaryDialog({
       const curSauce = (member.sauce ?? member.member_sauce ?? "").toLowerCase();
       if ((draftSauce || "").toLowerCase() !== curSauce) {
         body.sauce = draftSauce;
+      }
+      if (Boolean(member.bookable) !== draftBookable) {
+        body.bookable = draftBookable;
       }
       if (Object.keys(body).length === 0) {
         setProfileMsg("No changes to save.");
@@ -220,6 +225,21 @@ export default function MemberSummaryDialog({
                     ))}
                   </select>
                 </div>
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-800 dark:text-zinc-200">
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 rounded border-slate-300"
+                    checked={draftBookable}
+                    onChange={(e) => setDraftBookable(e.target.checked)}
+                    data-testid="member-summary-bookable"
+                  />
+                  <span>
+                    <span className="font-medium">Bookable on book.studio7.miami</span>
+                    <span className="mt-0.5 block text-xs font-normal text-slate-500 dark:text-zinc-500">
+                      Show as a shooter option on the public booking page.
+                    </span>
+                  </span>
+                </label>
               </>
             ) : memberEditsOwnPhone ? (
               <>
