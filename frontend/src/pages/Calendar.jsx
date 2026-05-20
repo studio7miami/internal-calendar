@@ -130,11 +130,12 @@ function normBookingHm(t) {
   return s.length >= 5 ? s.slice(0, 5) : s;
 }
 
-/** "Booked · Seven" — always member first name (never raw notes / synthetic tails from Google sync). */
+/** Members without detail permission see a generic "Booked" chip for client sessions. */
 function chipLabel(b, _calendar) {
   void _calendar;
-  const raw = ((b.member_name || "") + "").trim();
-  const who = raw ? raw.split(/\s+/)[0] : "Member";
+  const raw = ((b.member_name || b.client_name || "") + "").trim();
+  if (!raw || raw === "Booked") return "Booked";
+  const who = raw.split(/\s+/)[0];
   return `Booked · ${who}`;
 }
 
