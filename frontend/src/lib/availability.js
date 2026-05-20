@@ -99,3 +99,14 @@ export function slotsFromWeekRows(rows) {
     }))
     .filter((r) => r.start < r.end);
 }
+
+/** Seven days, midnight–11:59 PM — for Studio / photobooth calendars. */
+export function weekRows24Hours() {
+  return DAY_LABELS.map((label, weekday) => ({
+    weekday,
+    label,
+    enabled: true,
+    start: "00:00",
+    end: "23:59",
+  }));
+}
