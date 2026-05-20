@@ -3,6 +3,11 @@
     {
       "source": "/api/(.*)",
       "destination": "https://api.studio7.miami/api/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/booking/index.html",
+      "has": [{ "type": "host", "value": "book.studio7.miami" }]
     }
   ]
 }
