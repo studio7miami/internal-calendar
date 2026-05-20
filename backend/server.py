@@ -39,6 +39,7 @@ import jwt
 import google_calendar_client
 import google_inbound_sync
 import booking_reminders
+import public_booking
 try:
     import stripe  # type: ignore
 except Exception:  # pragma: no cover
@@ -81,6 +82,7 @@ def _clean_http_origin(raw: Optional[str], *, default: str) -> str:
 
 
 FRONTEND_URL = _clean_http_origin(os.environ.get("FRONTEND_URL"), default="http://localhost:3000")
+BOOKING_PUBLIC_URL = _clean_http_origin(os.environ.get("BOOKING_PUBLIC_URL"), default="https://book.studio7.miami")
 
 
 def _resolve_brand_logo_path() -> Path:
@@ -535,6 +537,8 @@ class RolePatchIn(BaseModel):
 class AdminUserProfilePatchIn(BaseModel):
     phone_e164: Optional[str] = None
     sauce: Optional[str] = None
+    bookable: Optional[bool] = None
+    bookable: Optional[bool] = None
 
 
 class MePhonePatchIn(BaseModel):
@@ -607,6 +611,88 @@ async def public_brand_logo_png():
         media_type="image/png",
         headers={"Cache-Control": "public, max-age=604800"},
     )
+
+
+async def _finalize_public_booking_after_payment(booking_id: str, payment_updates: dict) -> None:
+    """Mark a paid public booking as approved and sync to Google Calendar."""
+    res = supabase.table("bookings").select("*").eq("id", booking_id).execute()
+    if not res.data:
+        return
+    b = res.data[0]
+    if str(b.get("source") or "") != public_booking.SOURCE:
+        return
+    if str(b.get("status")) == "approved" and b.get("paid_at"):
+        return
+
+    merged = {**b, **payment_updates, "status": "approved"}
+    acting = str(b.get("shooter_id") or "").strip()
+    if not acting:
+        admin_row = (
+            supabase.table("users")
+            .select("id")
+            .eq("role", "admin")
+            .eq("is_disabled", False)
+            .limit(1)
+            .execute()
+        )
+        acting = str((admin_row.data or [{}])[0].get("id") or "")
+
+    cal_res = supabase.table("calendars").select("*").eq("id", b["calendar_id"]).execute()
+    cal = cal_res.data[0] if cal_res.data else {}
+    gid = None
+    if acting:
+        gid = await gcal_push_event(cal.get("google_calendar_id"), merged, acting)
+
+    row_updates = {**payment_updates, "status": "approved"}
+    if gid:
+        row_updates["google_event_id"] = gid
+    supabase.table("bookings").update(row_updates).eq("id", booking_id).execute()
+
+
+@api.get("/public/booking/config")
+async def public_booking_config():
+    """Service catalog + whether calendar mapping is configured (book.studio7.miami)."""
+    return {
+        "services": public_booking.service_catalog_for_api(supabase),
+        "api_base": "/api/public/booking",
+    }
+
+
+@api.get("/public/booking/shooters")
+async def public_booking_shooters():
+    return {"shooters": public_booking.list_bookable_shooters(supabase)}
+
+
+@api.get("/public/booking/availability")
+async def public_booking_availability(
+    service: str = Query(..., description="Service slug, e.g. portraits"),
+    year: int = Query(..., ge=2020, le=2100),
+    month: int = Query(..., ge=1, le=12),
+):
+    try:
+        return public_booking.month_availability(supabase, service.strip().lower(), year, month)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@api.post("/public/booking/request")
+async def public_booking_request(data: public_booking.PublicBookingRequestIn):
+    if not stripe_connect_configured():
+        raise HTTPException(status_code=503, detail="Online payments are not configured.")
+    st = read_stripe_connect_status()
+    if not st.get("connected"):
+        raise HTTPException(status_code=400, detail="Stripe is not connected.")
+    try:
+        return await public_booking.create_public_booking(
+            supabase,
+            data,
+            now_iso_fn=now_iso,
+            stripe_module=stripe,
+            stripe_connect_account_id=str(st.get("account_id") or ""),
+            booking_public_url=BOOKING_PUBLIC_URL,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @api.get("/public/version")
@@ -948,7 +1034,7 @@ async def list_users(user: dict = Depends(get_current_user)):
     if not can_access_members_page(user, p):
         raise HTTPException(status_code=403, detail="Not allowed")
     res = supabase.table("users").select(
-        "id,email,name,role,is_disabled,created_at,visible_calendar_ids,phone_e164,sauce"
+        "id,email,name,role,is_disabled,created_at,visible_calendar_ids,phone_e164,sauce,bookable"
     ).order("created_at", desc=True).execute()
     rows = res.data or []
     return [u for u in rows if not _is_integration_test_account_email(u.get("email"))]
@@ -961,7 +1047,7 @@ async def members_bootstrap(user: dict = Depends(get_current_user)):
     if not can_access_members_page(user, p):
         raise HTTPException(status_code=403, detail="Not allowed")
     res = supabase.table("users").select(
-        "id,email,name,role,is_disabled,created_at,visible_calendar_ids,phone_e164,sauce"
+        "id,email,name,role,is_disabled,created_at,visible_calendar_ids,phone_e164,sauce,bookable"
     ).order("created_at", desc=True).execute()
     rows = res.data or []
     users_out = [u for u in rows if not _is_integration_test_account_email(u.get("email"))]
@@ -1066,8 +1152,8 @@ async def set_user_role(user_id: str, data: RolePatchIn, admin: dict = Depends(r
 
 @api.patch("/users/{user_id}/profile")
 async def patch_user_profile(user_id: str, data: AdminUserProfilePatchIn, admin: dict = Depends(require_admin)):
-    if data.phone_e164 is None and data.sauce is None:
-        raise HTTPException(status_code=400, detail="Provide phone_e164 and/or sauce")
+    if data.phone_e164 is None and data.sauce is None and data.bookable is None:
+        raise HTTPException(status_code=400, detail="Provide phone_e164, sauce, and/or bookable")
     res = supabase.table("users").select("id,email").eq("id", user_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="User not found")
@@ -1085,6 +1171,8 @@ async def patch_user_profile(user_id: str, data: AdminUserProfilePatchIn, admin:
         if sk not in ALLOWED_SAUCES:
             raise HTTPException(status_code=400, detail="Pick a valid option for what's your sauce")
         upd["sauce"] = sk
+    if data.bookable is not None:
+        upd["bookable"] = bool(data.bookable)
     if not upd:
         raise HTTPException(status_code=400, detail="No changes")
     supabase.table("users").update(upd).eq("id", user_id).execute()
@@ -1346,7 +1434,6 @@ async def stripe_webhook(req: Request):
         session_id = str(obj.get("id") or "")
         payment_intent = obj.get("payment_intent")
         ref_booking_id = str(obj.get("client_reference_id") or "").strip()
-        # Update by session id first; fall back to client_reference_id.
         updates = {
             "payment_status": "paid",
             "paid_at": now_iso(),
@@ -1354,6 +1441,23 @@ async def stripe_webhook(req: Request):
         if payment_intent:
             updates["stripe_payment_intent_id"] = str(payment_intent)
         try:
+            booking_id = ref_booking_id
+            if session_id:
+                hit = (
+                    supabase.table("bookings")
+                    .select("id,source")
+                    .eq("stripe_checkout_session_id", session_id)
+                    .limit(1)
+                    .execute()
+                )
+                if hit.data:
+                    booking_id = str(hit.data[0]["id"])
+            if booking_id:
+                b_row = supabase.table("bookings").select("source").eq("id", booking_id).limit(1).execute()
+                src = str((b_row.data or [{}])[0].get("source") or "")
+                if src == public_booking.SOURCE:
+                    await _finalize_public_booking_after_payment(booking_id, updates)
+                    return {"ok": True}
             if session_id:
                 res = supabase.table("bookings").update(updates).eq("stripe_checkout_session_id", session_id).execute()
                 if res.data:
@@ -1730,12 +1834,18 @@ def _serialize_booking(b: dict, viewer: dict, users_by_id: dict, viewer_perms: O
     }
     if str(b.get("source") or "") == "google_external":
         base["external_title"] = b.get("external_title")
+    if str(b.get("source") or "") == "public_booking" and not can_see_detail:
+        base["member_name"] = "Booked"
     if can_see_detail:
         mid_raw = b.get("member_id")
         owner = users_by_id.get(str(mid_raw)) if mid_raw is not None else None
         disp_name = owner["name"] if owner else None
-        if not disp_name and str(b.get("source") or "") == "google_external":
+        src = str(b.get("source") or "")
+        if not disp_name and src == "public_booking":
+            disp_name = (b.get("client_name") or "").strip() or "Client"
+        if not disp_name and src == "google_external":
             disp_name = b.get("external_title") or "Booked (external)"
+        shooter = users_by_id.get(str(b["shooter_id"])) if b.get("shooter_id") else None
         base.update({
             "notes": _strip_venue_from_text(b.get("notes", "")),
             "member_id": b.get("member_id"),
@@ -1743,6 +1853,12 @@ def _serialize_booking(b: dict, viewer: dict, users_by_id: dict, viewer_perms: O
             "member_email": owner["email"] if owner else None,
             "member_phone_e164": owner.get("phone_e164") if owner else None,
             "member_sauce": owner.get("sauce") if owner else None,
+            "client_name": b.get("client_name"),
+            "client_email": b.get("client_email"),
+            "shooter_id": str(b["shooter_id"]) if b.get("shooter_id") else None,
+            "shooter_name": shooter.get("name") if shooter else None,
+            "service_slug": b.get("service_slug"),
+            "addon_mua": bool(b.get("addon_mua")),
             "google_event_id": b.get("google_event_id"),
             "created_at": b.get("created_at"),
             "approval_message": b.get("approval_message", ""),
@@ -1771,10 +1887,21 @@ async def list_bookings(user: dict = Depends(get_current_user), status: Optional
     scope = calendar_id_scope_for_user(user, p)
     if scope is not None:
         raw = [b for b in raw if b.get("calendar_id") in scope]
-    member_ids = list({str(b["member_id"]) for b in raw if b.get("member_id")})
+    # Unpaid public checkouts stay off the team calendar until Stripe confirms payment.
+    raw = [
+        b for b in raw
+        if str(b.get("source") or "") != public_booking.SOURCE
+        or str(b.get("status")) == "approved"
+    ]
+    member_ids: set[str] = set()
+    for b in raw:
+        if b.get("member_id"):
+            member_ids.add(str(b["member_id"]))
+        if b.get("shooter_id"):
+            member_ids.add(str(b["shooter_id"]))
     users_by_id: dict[str, Any] = {}
     if member_ids:
-        users_res = supabase.table("users").select("id,name,email,phone_e164,sauce").in_("id", member_ids).execute()
+        users_res = supabase.table("users").select("id,name,email,phone_e164,sauce").in_("id", list(member_ids)).execute()
         users_by_id = {str(u["id"]): u for u in (users_res.data or [])}
     return [_serialize_booking(b, user, users_by_id, p) for b in raw]
 
@@ -1811,6 +1938,8 @@ async def list_requests(user: dict = Depends(get_current_user)):
         q = q.eq("member_id", user["id"]).in_("status", ["pending", "approved"]).order("created_at", desc=True)
     res = q.execute()
     raw = res.data or []
+    # Client bookings on book.studio7.miami are paid via Stripe — not the member Requests queue.
+    raw = [b for b in raw if str(b.get("source") or "") != public_booking.SOURCE]
     if not mod:
         uid = str(user.get("id") or "")
         raw = [b for b in raw if str(b.get("member_id") or "") == uid]
@@ -1818,10 +1947,15 @@ async def list_requests(user: dict = Depends(get_current_user)):
         sc = calendar_id_scope_for_user(user, p)
         if sc is not None:
             raw = [b for b in raw if b.get("calendar_id") in sc]
-    member_ids = list({str(b["member_id"]) for b in raw if b.get("member_id")})
+    member_ids: set[str] = set()
+    for b in raw:
+        if b.get("member_id"):
+            member_ids.add(str(b["member_id"]))
+        if b.get("shooter_id"):
+            member_ids.add(str(b["shooter_id"]))
     users_by_id: dict[str, Any] = {}
     if member_ids:
-        users_res = supabase.table("users").select("id,name,email,phone_e164,sauce").in_("id", member_ids).execute()
+        users_res = supabase.table("users").select("id,name,email,phone_e164,sauce").in_("id", list(member_ids)).execute()
         users_by_id = {str(u["id"]): u for u in (users_res.data or [])}
     return [_serialize_booking(b, user, users_by_id, p) for b in raw]
 
