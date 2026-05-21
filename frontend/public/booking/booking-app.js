@@ -3,10 +3,15 @@
  * Talks to FastAPI /api/public/booking/* (Supabase bookings table on the server).
  */
 (function () {
-  const API_BASE = (window.S7_BOOKING_API || "").replace(/\/+$/, "") ||
-    (location.hostname === "book.studio7.miami"
-      ? "https://api.studio7.miami/api"
-      : "/api");
+  function resolveApiBase() {
+    const override = (window.S7_BOOKING_API || "").replace(/\/+$/, "");
+    if (override) return override;
+    if (location.hostname === "book.studio7.miami") return "https://api.studio7.miami/api";
+    const local = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+    if (local) return "/api";
+    return "/api";
+  }
+  const API_BASE = resolveApiBase();
 
   const SERVICES_UI = {
     portraits: {
@@ -434,10 +439,23 @@
     }
   })();
 
+  (function initTheme() {
+    try {
+      const saved = localStorage.getItem("s7-booking-theme");
+      if (saved === "dark" || saved === "light") {
+        document.documentElement.setAttribute("data-theme", saved);
+      }
+    } catch (_) {}
+  })();
+
   document.getElementById("themeToggle")?.addEventListener("click", () => {
     const root = document.documentElement;
     const isDark = root.getAttribute("data-theme") === "dark";
-    root.setAttribute("data-theme", isDark ? "light" : "dark");
+    const next = isDark ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    try {
+      localStorage.setItem("s7-booking-theme", next);
+    } catch (_) {}
   });
 
   async function boot() {

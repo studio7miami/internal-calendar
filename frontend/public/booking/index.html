@@ -5,8 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Book a session — Studio 7 Miami</title>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/booking/booking.css?v=3" />
+  <link rel="stylesheet" href="/booking/booking.css?v=4" />
   <style>
+    /* Critical layout if booking.css is cached/missing on deploy */
+    .service-gallery-marquee { overflow: hidden; width: 100%; height: 148px; max-height: 148px; }
+    .service-gallery-track {
+      display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px;
+      width: 100%; height: 148px; max-height: 148px;
+    }
+    .service-gallery-track img {
+      width: 100%; height: 148px; max-height: 148px; object-fit: cover; display: block;
+    }
     .client-form { display: none; margin-top: 14px; padding-top: 14px; border-top: 0.5px solid var(--border); }
     .client-form label { display: block; font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
     .client-form input {
@@ -58,14 +67,10 @@
     <section class="service-gallery" aria-label="Sample session photos">
       <div class="service-gallery-marquee">
         <div class="service-gallery-track" id="serviceGalleryTrack">
-          <img src="/brand/slide-2.jpg" alt="" loading="lazy" />
-          <img src="/brand/slide-3.jpg" alt="" loading="lazy" />
-          <img src="/brand/slide-4.jpg" alt="" loading="lazy" />
-          <img src="/brand/slide-2.jpg" alt="" loading="lazy" />
-          <img src="/brand/slide-2.jpg" alt="" loading="lazy" aria-hidden="true" />
-          <img src="/brand/slide-3.jpg" alt="" loading="lazy" aria-hidden="true" />
-          <img src="/brand/slide-4.jpg" alt="" loading="lazy" aria-hidden="true" />
-          <img src="/brand/slide-2.jpg" alt="" loading="lazy" aria-hidden="true" />
+          <img src="/brand/slide-2.jpg" alt="" loading="lazy" width="160" height="148" />
+          <img src="/brand/slide-3.jpg" alt="" loading="lazy" width="160" height="148" />
+          <img src="/brand/slide-4.jpg" alt="" loading="lazy" width="160" height="148" />
+          <img src="/brand/slide-2.jpg" alt="" loading="lazy" width="160" height="148" />
         </div>
       </div>
     </section>
@@ -138,6 +143,6 @@
     </section>
   </div>
 
-  <script src="/booking/booking-app.js?v=3"></script>
+  <script src="/booking/booking-app.js?v=4"></script>
 </body>
 </html>
