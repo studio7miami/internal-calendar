@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Book a session — Studio 7 Miami</title>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/booking/booking.css?v=7" />
+  <link rel="stylesheet" href="/booking/booking.css?v=11" />
   <style>
     /* Critical: photo strip if booking.css is missing on deploy */
     .gallery-card { overflow: hidden; margin-bottom: 1rem; padding: 14px 0; }
@@ -34,7 +34,7 @@
   <div class="container">
     <div class="top-bar">
       <a class="brand" href="https://studio7.miami" target="_blank" rel="noopener noreferrer" aria-label="Studio 7 Miami">
-        <img id="palmIcon" class="s7-icon" src="/brand/favicon.png" alt="Studio 7 Miami" width="22" height="22" />
+        <img id="brandLogo" src="/brand/logo-booking.png" alt="Studio 7 Miami" />
       </a>
       <button type="button" class="theme-switch" id="themeToggle" aria-label="Toggle light or dark mode">
         <span class="theme-switch-track" aria-hidden="true"><span class="theme-switch-thumb"></span></span>
@@ -146,6 +146,12 @@
     </section>
   </div>
 
-  <script src="/booking/booking-app.js?v=7"></script>
+  <footer class="page-footer page-footer--center">
+    <a href="https://studio7.miami" target="_blank" rel="noopener noreferrer" aria-label="Studio 7 Miami">
+      <img id="footerPalm" class="s7-icon footer-palm" src="/brand/favicon.png" alt="" width="22" height="22" />
+    </a>
+  </footer>
+
+  <script src="/booking/booking-app.js?v=9"></script>
 </body>
 </html>

@@ -13,6 +13,19 @@
   }
   const API_BASE = resolveApiBase();
 
+  function serviceSlugFromUrl() {
+    const raw = new URLSearchParams(location.search).get("service");
+    return (raw || "portraits").trim().toLowerCase();
+  }
+
+  function formatServiceName(slug) {
+    return slug
+      .split("-")
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(" ");
+  }
+
   const SERVICES_UI = {
     portraits: {
       meta: "90-minute session",
@@ -141,7 +154,11 @@
       renderCalendar();
     } catch (e) {
       console.error(e);
-      showError(e.message || "Could not load availability.");
+      const msg =
+        e && e.message === "Load failed"
+          ? "Could not reach the booking server. Refresh the page or try again shortly."
+          : e.message || "Could not load availability.";
+      showError(msg);
       renderCalendar();
     }
   }
@@ -149,7 +166,7 @@
   async function loadConfig() {
     const cfg = await apiGet("/public/booking/config");
     apiServices = cfg.services || [];
-    const slug = new URLSearchParams(location.search).get("service") || "portraits";
+    const slug = serviceSlugFromUrl();
     const svc = apiServices.find((s) => s.slug === slug) || apiServices.find((s) => s.slug === "portraits") || apiServices[0];
     if (svc) applyService(svc);
     else initServiceFromUi(slug);
@@ -180,9 +197,10 @@
   }
 
   function initServiceFromUi(slug) {
-    const ui = SERVICES_UI[slug] || SERVICES_UI.portraits;
-    state.serviceSlug = slug in SERVICES_UI ? slug : "portraits";
-    state.serviceName = slug.replace(/-/g, " ");
+    const key = slug in SERVICES_UI ? slug : "portraits";
+    const ui = SERVICES_UI[key];
+    state.serviceSlug = key;
+    state.serviceName = formatServiceName(key);
     state.servicePrice = 350;
     document.getElementById("svcName").textContent = state.serviceName;
     document.getElementById("svcMeta").textContent = ui.meta + " | $350";
@@ -482,7 +500,7 @@
       await loadConfig();
     } catch (e) {
       console.error(e);
-      initServiceFromUi(new URLSearchParams(location.search).get("service") || "portraits");
+      initServiceFromUi(serviceSlugFromUrl());
       showError(e.message || "Could not connect to booking server.");
       renderCalendar();
     }
