@@ -8,7 +8,7 @@ import { ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import ColorWheel from "../components/app/ColorWheel";
 import { pageTitleClass, pageCardClass, pageInputClass, pageBtnPrimaryClass, pageBtnOutlineClass } from "../lib/pageTheme";
 import { cn } from "@/lib/utils";
-import { normHm, weekRowsFromSlots, slotsFromWeekRows, weekRows24Hours } from "../lib/availability";
+import { normHm, weekRowsFromSlots, slotsFromWeekRows } from "../lib/availability";
 import {
   Dialog,
   DialogContent,
@@ -554,17 +554,7 @@ export default function CalendarsAdmin({ embedded = false }) {
                 />
               </div>
               <div className="rounded-[7px] border border-slate-200/80 bg-white/60 p-3 dark:border-white/10 dark:bg-zinc-900/30">
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <div className="label-tech text-slate-700 dark:text-zinc-300">STUDIO SCHEDULE</div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className={cn("h-8 text-xs", pageBtnOutlineClass)}
-                    onClick={() => setWeekRowsState(weekRows24Hours())}
-                  >
-                    24 hours (all week)
-                  </Button>
-                </div>
+                <div className="mb-2 label-tech text-slate-700 dark:text-zinc-300">STUDIO SCHEDULE</div>
                 <div className="grid max-h-[220px] gap-2 overflow-y-auto sm:max-h-none">
                   {(weekRowsState || weekRowsFromSlots(c.availability_weekly)).map((row) => (
                     <div
