@@ -1,6 +1,6 @@
 /**
- * book.studio7.miami → static public booking page (not the team React app).
- * CRA's SPA fallback serves /index.html for all hosts; middleware runs first.
+ * book.studio7.miami — booking HTML is served at / via vercel.json rewrites (URL stays clean).
+ * Do not redirect to /booking/index.html here (that exposes the long path in the browser).
  */
 export const config = {
   matcher: ["/((?!booking/|api/|brand/|static/).*)"],
@@ -11,17 +11,5 @@ export default function middleware(request) {
   if (host !== "book.studio7.miami") {
     return;
   }
-
-  const url = new URL(request.url);
-  if (
-    url.pathname.startsWith("/booking/") ||
-    url.pathname.startsWith("/brand/") ||
-    url.pathname.startsWith("/static/")
-  ) {
-    return;
-  }
-
-  const dest = new URL("/booking/index.html", url.origin);
-  dest.search = url.search;
-  return Response.redirect(dest, 302);
+  // Let vercel.json rewrites handle / and SPA-style paths; /booking/* assets pass through.
 }

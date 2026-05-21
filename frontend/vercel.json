@@ -1,15 +1,15 @@
 {
   "redirects": [
     {
-      "source": "/",
-      "destination": "/booking/index.html",
-      "permanent": false,
+      "source": "/booking/index.html",
+      "destination": "/",
+      "permanent": true,
       "has": [{ "type": "host", "value": "book.studio7.miami" }]
     },
     {
-      "source": "/:path((?!booking/|brand/|static/).*)",
-      "destination": "/booking/index.html",
-      "permanent": false,
+      "source": "/booking",
+      "destination": "/",
+      "permanent": true,
       "has": [{ "type": "host", "value": "book.studio7.miami" }]
     }
   ],
@@ -19,7 +19,12 @@
       "destination": "https://api.studio7.miami/api/$1"
     },
     {
-      "source": "/(.*)",
+      "source": "/",
+      "destination": "/booking/index.html",
+      "has": [{ "type": "host", "value": "book.studio7.miami" }]
+    },
+    {
+      "source": "/:path((?!booking/|brand/|static/|api/).*)",
       "destination": "/booking/index.html",
       "has": [{ "type": "host", "value": "book.studio7.miami" }]
     }
