@@ -213,7 +213,54 @@ def _booking_fits_availability(cal: dict, date_str: str, start: str, end: str) -
 
 
 def _time_overlap(a0: str, a1: str, b0: str, b1: str) -> bool:
-    return _norm_hm(a0) < _norm_hm(b1) and _norm_hm(a1) > _norm_hm(b0)
+    try:
+        if not b0 or not b1:
+            return False
+        return _norm_hm(a0) < _norm_hm(b1) and _norm_hm(a1) > _norm_hm(b0)
+    except (TypeError, ValueError):
+        return False
+
+
+def _bookings_by_date_for_month(
+    supabase,
+    calendar_id: str,
+    year: int,
+    month: int,
+) -> Dict[str, List[Tuple[str, str]]]:
+    """One query for the whole month — avoids hundreds of per-slot round trips."""
+    max_day = cal_mod.monthrange(year, month)[1]
+    start_iso = f"{year:04d}-{month:02d}-01"
+    end_iso = f"{year:04d}-{month:02d}-{max_day:02d}"
+    res = (
+        supabase.table("bookings")
+        .select("date,start_time,end_time")
+        .eq("calendar_id", calendar_id)
+        .gte("date", start_iso)
+        .lte("date", end_iso)
+        .in_("status", ["approved", "pending"])
+        .execute()
+    )
+    by_date: Dict[str, List[Tuple[str, str]]] = {}
+    for row in res.data or []:
+        raw_d = row.get("date")
+        d = str(raw_d)[:10] if raw_d else ""
+        st, et = row.get("start_time"), row.get("end_time")
+        if not d or st is None or et is None:
+            continue
+        by_date.setdefault(d, []).append((str(st), str(et)))
+    return by_date
+
+
+def _has_conflict_cached(
+    by_date: Dict[str, List[Tuple[str, str]]],
+    date_str: str,
+    start: str,
+    end: str,
+) -> bool:
+    for b0, b1 in by_date.get(date_str, []):
+        if _time_overlap(start, end, b0, b1):
+            return True
+    return False
 
 
 def _calendar_has_conflict(
@@ -232,7 +279,10 @@ def _calendar_has_conflict(
         .execute()
     )
     for row in res.data or []:
-        if _time_overlap(start, end, str(row.get("start_time")), str(row.get("end_time"))):
+        st, et = row.get("start_time"), row.get("end_time")
+        if st is None or et is None:
+            continue
+        if _time_overlap(start, end, str(st), str(et)):
             return True
     return False
 
@@ -280,6 +330,7 @@ def month_availability(
     today = date.today()
     max_day = cal_mod.monthrange(year, month)[1]
     days_out: Dict[str, List[str]] = {}
+    month_bookings = _bookings_by_date_for_month(supabase, calendar_id, year, month)
 
     for day in range(1, max_day + 1):
         iso = f"{year:04d}-{month:02d}-{day:02d}"
@@ -295,7 +346,7 @@ def month_availability(
             end = _minutes_to_hm(smin + duration)
             if not _booking_fits_availability(cal, iso, start, end):
                 continue
-            if _calendar_has_conflict(supabase, calendar_id, iso, start, end):
+            if _has_conflict_cached(month_bookings, iso, start, end):
                 continue
             if d == today:
                 now = datetime.now()
