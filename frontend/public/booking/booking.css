@@ -30,6 +30,19 @@ body {
   color:var(--text-primary);min-height:100vh;padding:2rem 1.25rem 4rem;
   transition:background .3s ease,color .3s ease,border-color .3s ease;-webkit-font-smoothing:antialiased;
 }
+/* Page enter — matches team app PageEnterMotion; Motion JS drives the animation */
+html.booking-preload .booking-enter > *,
+html.booking-preload .booking-enter-footer {
+  opacity:0;
+  transform:translateY(16px);
+}
+@media (prefers-reduced-motion:reduce) {
+  html.booking-preload .booking-enter > *,
+  html.booking-preload .booking-enter-footer {
+    opacity:1;
+    transform:none;
+  }
+}
 .container { max-width:680px;margin:0 auto; }
 .top-bar {
   display:flex;justify-content:space-between;align-items:center;
