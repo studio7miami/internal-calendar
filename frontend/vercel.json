@@ -1,4 +1,18 @@
 {
+  "redirects": [
+    {
+      "source": "/",
+      "destination": "/booking/index.html",
+      "permanent": false,
+      "has": [{ "type": "host", "value": "book.studio7.miami" }]
+    },
+    {
+      "source": "/:path((?!booking/|brand/|static/).*)",
+      "destination": "/booking/index.html",
+      "permanent": false,
+      "has": [{ "type": "host", "value": "book.studio7.miami" }]
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/(.*)",
@@ -11,4 +25,3 @@
     }
   ]
 }
-

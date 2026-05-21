@@ -3,7 +3,7 @@
  * CRA's SPA fallback serves /index.html for all hosts; middleware runs first.
  */
 export const config = {
-  matcher: ["/((?!booking/|api/).*)"],
+  matcher: ["/((?!booking/|api/|brand/|static/).*)"],
 };
 
 export default function middleware(request) {
@@ -13,7 +13,11 @@ export default function middleware(request) {
   }
 
   const url = new URL(request.url);
-  if (url.pathname.startsWith("/booking/")) {
+  if (
+    url.pathname.startsWith("/booking/") ||
+    url.pathname.startsWith("/brand/") ||
+    url.pathname.startsWith("/static/")
+  ) {
     return;
   }
 
