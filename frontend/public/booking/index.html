@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Book a session — Studio 7 Miami</title>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/booking/booking.css?v=14" />
+  <link rel="stylesheet" href="/booking/booking.css?v=16" />
   <style>
     /* Critical: photo strip if booking.css is missing on deploy */
     .gallery-card { overflow: hidden; margin-bottom: 1rem; padding: 14px 0; }
@@ -57,23 +57,26 @@
         <div class="card-sub" id="svcMeta">90-minute session | $350</div>
       </div>
       <div class="detail-body">
-        <div class="service-desc" id="svcDesc"></div>
+        <div class="service-desc" id="svcDesc">Explore, experiment, and walk away with images that actually feel like you.</div>
         <div class="included-label">What's included</div>
-        <ul class="included-list" id="svcIncludes"></ul>
+        <ul class="included-list" id="svcIncludes">
+          <li>90-minute session</li>
+          <li>9 professionally edited photos</li>
+          <li>5–7 day turnaround | 1-day rush delivery available</li>
+        </ul>
       </div>
     </section>
 
     <section class="gallery-card" id="serviceGallery" aria-label="Sample session photos">
       <div class="gallery-strip-wrap">
+        <!-- 3 slides + 1 duplicate set for seamless loop (CSS scrolls -50%) -->
         <div class="gallery-strip" id="galleryStrip">
           <div class="gallery-strip-item"><img src="/brand/slide-2.jpg" alt="" loading="lazy" /></div>
           <div class="gallery-strip-item"><img src="/brand/slide-3.jpg" alt="" loading="lazy" /></div>
           <div class="gallery-strip-item"><img src="/brand/slide-4.jpg" alt="" loading="lazy" /></div>
-          <div class="gallery-strip-item"><img src="/brand/slide-2.jpg" alt="" loading="lazy" /></div>
           <div class="gallery-strip-item" aria-hidden="true"><img src="/brand/slide-2.jpg" alt="" loading="lazy" /></div>
           <div class="gallery-strip-item" aria-hidden="true"><img src="/brand/slide-3.jpg" alt="" loading="lazy" /></div>
           <div class="gallery-strip-item" aria-hidden="true"><img src="/brand/slide-4.jpg" alt="" loading="lazy" /></div>
-          <div class="gallery-strip-item" aria-hidden="true"><img src="/brand/slide-2.jpg" alt="" loading="lazy" /></div>
         </div>
       </div>
     </section>
@@ -153,6 +156,6 @@
   </footer>
 
   <script type="module" src="/booking/booking-motion.js?v=14"></script>
-  <script src="/booking/booking-app.js?v=14"></script>
+  <script src="/booking/booking-app.js?v=15"></script>
 </body>
 </html>
