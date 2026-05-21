@@ -51,29 +51,33 @@ body {
   background:var(--text-primary);transition:transform .25s ease,background .25s;
 }
 [data-theme="dark"] .theme-switch-thumb { transform:translateX(20px); }
-.service-gallery {
-  margin-bottom:1rem;border-radius:12px;overflow:hidden;
-  border:0.5px solid var(--border);background:var(--bg-card);
+/* Service photo strip — matches Studio7Miami-Booking.html */
+.gallery-card {
+  background:transparent;border:0.5px solid transparent;border-radius:12px;
+  overflow:hidden;margin-bottom:1rem;padding:14px 0;
 }
-.service-gallery-marquee { overflow:hidden;width:100%; }
-.service-gallery-track {
-  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:3px;
-  width:100%;
+.gallery-strip-wrap {
+  overflow:hidden;position:relative;width:100%;
 }
-.service-gallery-track img {
-  width:100%;height:148px;max-height:148px;min-height:0;
-  object-fit:cover;display:block;background:var(--bg-inset);
+.gallery-strip {
+  display:flex;gap:10px;padding:0 14px;
+  animation:galleryScroll 40s linear infinite;
+  width:max-content;
 }
-@media (max-width:560px) {
-  .service-gallery-marquee {
-    overflow-x:auto;-webkit-overflow-scrolling:touch;scroll-snap-type:x mandatory;
-  }
-  .service-gallery-track {
-    display:flex;gap:3px;width:max-content;
-  }
-  .service-gallery-track img {
-    flex:0 0 42%;width:42%;max-width:160px;height:148px;scroll-snap-align:start;
-  }
+.gallery-strip:hover { animation-play-state:paused; }
+.gallery-strip-item {
+  flex-shrink:0;width:140px;aspect-ratio:2/3;border-radius:16px;overflow:hidden;
+}
+.gallery-strip-item img {
+  width:100%;height:100%;object-fit:cover;display:block;
+}
+@keyframes galleryScroll {
+  0% { transform:translateX(0); }
+  100% { transform:translateX(-50%); }
+}
+@media (prefers-reduced-motion:reduce) {
+  .gallery-strip { animation:none; }
+  .gallery-strip-item:nth-child(n+5) { display:none; }
 }
 .brand-mark {
   width:22px;height:22px;border-radius:4px;border:0.5px solid var(--border-md);
@@ -177,15 +181,16 @@ body {
   padding:16px 20px 12px;border-bottom:0.5px solid var(--border);
 }
 .cal-month { font-size:14px;font-weight:600;color:var(--text-primary);letter-spacing:-.01em; }
-.cal-grid { padding:16px 20px 20px; }
-.cal-weekdays { display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:8px; }
+.cal-grid { padding:16px 12px 20px;overflow:visible; }
+.cal-weekdays { display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:8px;min-width:0; }
 .cal-wd {
   font-size:10px;font-weight:700;text-align:center;letter-spacing:.06em;
   color:var(--text-tertiary);padding:4px 0;
 }
-.cal-days { display:grid;grid-template-columns:repeat(7,1fr);gap:3px; }
+.cal-days { display:grid;grid-template-columns:repeat(7,1fr);gap:3px;min-width:0; }
 .cal-day {
   aspect-ratio:1;border-radius:7px;display:flex;align-items:center;justify-content:center;
+  min-width:0;overflow:hidden;
   font-size:13px;font-weight:500;cursor:default;color:var(--text-secondary);
   transition:background .15s,color .15s;position:relative;border:none;background:transparent;
 }

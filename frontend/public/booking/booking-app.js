@@ -66,11 +66,15 @@
   async function apiGet(path) {
     const res = await fetch(API_BASE + path, { headers: { Accept: "application/json" } });
     const text = await res.text();
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+    if (text.trim().startsWith("<") && !ct.includes("json")) {
+      throw new Error("Booking API unavailable. Restart the dev server (npm start) and reload.");
+    }
     let data;
     try {
       data = text ? JSON.parse(text) : {};
     } catch {
-      data = { detail: text };
+      throw new Error("Invalid response from booking server.");
     }
     if (!res.ok) throw new Error(data.detail || data.message || "Request failed");
     return data;
@@ -138,6 +142,7 @@
     } catch (e) {
       console.error(e);
       showError(e.message || "Could not load availability.");
+      renderCalendar();
     }
   }
 
@@ -184,6 +189,7 @@
     document.getElementById("svcDesc").textContent = ui.desc;
     document.getElementById("svcIncludes").innerHTML = ui.includes.map((i) => "<li>" + i + "</li>").join("");
     updateSummary();
+    loadAvailability();
   }
 
   function updateSteps() {
@@ -241,6 +247,16 @@
       if (isCurrentMonth && d === todayD) btn.className += " today";
       btn.textContent = d;
       if (hasSlots) btn.addEventListener("click", () => selectDate(d, btn));
+      wrap.appendChild(btn);
+    }
+
+    const totalCells = firstOffset + daysInMonth;
+    const trailingCount = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7);
+    for (let d = 1; d <= trailingCount; d++) {
+      const btn = document.createElement("button");
+      btn.className = "cal-day disabled overflow-day";
+      btn.style.cssText = "opacity:0.38;font-size:13px;";
+      btn.textContent = d;
       wrap.appendChild(btn);
     }
   }
@@ -439,6 +455,8 @@
     }
   })();
 
+  /* Gallery uses CSS :hover { animation-play-state: paused } — same as original HTML */
+
   (function initTheme() {
     try {
       const saved = localStorage.getItem("s7-booking-theme");
@@ -459,13 +477,24 @@
   });
 
   async function boot() {
+    renderCalendar();
     try {
       await loadConfig();
-      await loadShooters();
-      renderCalendar();
     } catch (e) {
       console.error(e);
-      showError(e.message || "Could not start booking.");
+      initServiceFromUi(new URLSearchParams(location.search).get("service") || "portraits");
+      showError(e.message || "Could not connect to booking server.");
+      renderCalendar();
+    }
+    try {
+      await loadShooters();
+    } catch (e) {
+      console.error(e);
+      const body = document.getElementById("shooterBody");
+      if (body) {
+        body.innerHTML =
+          '<div style="grid-column:1/-1;font-size:12px;color:var(--text-tertiary);">Could not load team.</div>';
+      }
     }
   }
 
