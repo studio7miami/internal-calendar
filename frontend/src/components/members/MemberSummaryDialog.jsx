@@ -233,12 +233,7 @@ export default function MemberSummaryDialog({
                     onChange={(e) => setDraftBookable(e.target.checked)}
                     data-testid="member-summary-bookable"
                   />
-                  <span>
-                    <span className="font-medium">Bookable on book.studio7.miami</span>
-                    <span className="mt-0.5 block text-xs font-normal text-slate-500 dark:text-zinc-500">
-                      Show as a shooter option on the public booking page.
-                    </span>
-                  </span>
+                  <span className="font-medium">Available for booking</span>
                 </label>
               </>
             ) : memberEditsOwnPhone ? (
