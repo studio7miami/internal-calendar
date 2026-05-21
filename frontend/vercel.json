@@ -25,28 +25,29 @@
       "has": [{ "type": "host", "value": "book.studio7.miami" }]
     }
   ],
-  "rewrites": {
-    "beforeFiles": [
-      {
-        "source": "/api/(.*)",
-        "destination": "https://api.studio7.miami/api/$1"
-      },
-      {
-        "source": "/",
-        "has": [{ "type": "host", "value": "book.studio7.miami" }],
-        "destination": "/booking/index.html"
-      },
-      {
-        "source": "/:path((?!booking/|brand/|static/|api/).*)",
-        "has": [{ "type": "host", "value": "book.studio7.miami" }],
-        "destination": "/booking/index.html"
-      }
-    ],
-    "afterFiles": [
-      {
-        "source": "/(.*)",
-        "destination": "/index.html"
-      }
-    ]
-  }
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "https://api.studio7.miami/api/$1"
+    },
+    {
+      "src": "/booking/(.*)",
+      "dest": "/booking/$1",
+      "has": [{ "type": "host", "value": "book.studio7.miami" }],
+      "continue": true
+    },
+    {
+      "src": "/brand/(.*)",
+      "dest": "/brand/$1",
+      "has": [{ "type": "host", "value": "book.studio7.miami" }],
+      "continue": true
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/booking/index.html",
+      "has": [{ "type": "host", "value": "book.studio7.miami" }]
+    },
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ]
 }
