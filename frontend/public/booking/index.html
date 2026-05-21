@@ -1,1 +1,130 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Book a session — Studio 7 Miami</title>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/booking/booking.css" />
+  <style>
+    .client-form { display: none; margin-top: 14px; padding-top: 14px; border-top: 0.5px solid var(--border); }
+    .client-form label { display: block; font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+    .client-form input {
+      width: 100%; margin-bottom: 12px; padding: 10px 12px; font-size: 13px; font-family: Manrope, sans-serif;
+      border: 0.5px solid var(--border-md); border-radius: 8px; background: var(--bg-chip); color: var(--text-primary);
+    }
+    .booking-error {
+      display: none; margin-bottom: 12px; padding: 10px 12px; font-size: 12px; line-height: 1.5;
+      border-radius: 8px; border: 0.5px solid rgba(255,80,80,0.35); color: #b33; background: rgba(255,80,80,0.08);
+    }
+    .confirm-panel { display: none; margin-top: 16px; padding: 16px 18px; border-radius: 10px; border: 0.5px solid var(--border); background: var(--bg-surface); }
+    .confirm-panel h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+    .confirm-panel p { font-size: 12px; line-height: 1.6; color: var(--text-secondary); }
+    .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2.25rem; padding-bottom: 1.25rem; border-bottom: 0.5px solid var(--border-md); }
+    .brand-name { font-size: 13px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+    .theme-toggle { background: none; border: none; cursor: pointer; font-size: 11px; color: var(--text-tertiary); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="top-bar">
+      <div class="brand">
+        <img src="/brand/logo.png" alt="Studio 7 Miami" style="height:22px;width:auto;" onerror="this.style.display='none'" />
+        <span class="brand-name">Studio 7 Miami</span>
+      </div>
+      <button type="button" class="theme-toggle" id="themeToggle" aria-label="Toggle theme">Theme</button>
+    </div>
 
+    <div id="bookingError" class="booking-error" role="alert"></div>
+
+    <div class="steps-bar">
+      <div class="step-item done" id="step1"><div class="step-num">1</div><div class="step-label">Service</div></div>
+      <div class="step-divider"></div>
+      <div class="step-item active" id="step2"><div class="step-num">2</div><div class="step-label">Date & time</div></div>
+      <div class="step-divider"></div>
+      <div class="step-item" id="step3"><div class="step-num">3</div><div class="step-label">Shooter</div></div>
+    </div>
+
+    <section class="detail-card">
+      <div class="card-header">
+        <div class="card-title" id="svcName">Portraits</div>
+        <div class="card-sub" id="svcMeta">90-minute session | $350</div>
+      </div>
+      <div class="detail-body">
+        <div class="service-desc" id="svcDesc"></div>
+        <div class="included-label">What's included</div>
+        <ul class="included-list" id="svcIncludes"></ul>
+      </div>
+    </section>
+
+    <section class="addon-card">
+      <div class="card-header">
+        <div class="card-title">Add-on</div>
+        <div class="card-sub">Optional</div>
+      </div>
+      <div class="addon-body">
+        <div class="addon-row" id="muaAddon" role="button" tabindex="0">
+          <div class="addon-copy">
+            <strong>Makeup artist</strong>
+            <span>Professional makeup before your session.</span>
+          </div>
+          <div class="addon-price">+$200</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="booking-card">
+      <div class="cal-header" style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px 12px;border-bottom:0.5px solid var(--border);">
+        <div class="cal-month" id="cal-month"></div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <button type="button" onclick="changeMonth(-1)" class="cal-nav-btn" style="width:28px;height:28px;border-radius:6px;border:0.5px solid var(--border-md);background:var(--bg-chip);cursor:pointer;">‹</button>
+          <span id="todayBtn" style="display:none;font-size:11px;padding:0 10px;height:28px;border-radius:6px;border:0.5px solid var(--border-md);background:var(--bg-chip);cursor:pointer;" onclick="goToday()">Today</span>
+          <button type="button" onclick="changeMonth(1)" class="cal-nav-btn" style="width:28px;height:28px;border-radius:6px;border:0.5px solid var(--border-md);background:var(--bg-chip);cursor:pointer;">›</button>
+        </div>
+      </div>
+      <div class="cal-grid">
+        <div class="cal-weekdays">
+          <div class="cal-wd">SUN</div><div class="cal-wd">MON</div><div class="cal-wd">TUE</div><div class="cal-wd">WED</div>
+          <div class="cal-wd">THU</div><div class="cal-wd">FRI</div><div class="cal-wd">SAT</div>
+        </div>
+        <div class="cal-days" id="calDays"></div>
+      </div>
+    </section>
+
+    <section class="time-card locked" id="timeCard">
+      <div class="card-header"><div class="card-title">Select a time</div></div>
+      <div class="time-grid" id="timeGrid"></div>
+    </section>
+
+    <section class="shooter-card locked" id="shooterCard">
+      <div class="card-header"><div class="card-title">Select your shooter</div></div>
+      <div class="shooter-grid" id="shooterBody">Loading team…</div>
+    </section>
+
+    <section class="selection-summary">
+      <div class="summary-line"><span>Service</span><strong id="summaryService">$350</strong></div>
+      <div class="summary-line"><span>Add-on</span><strong id="summaryAddon">$0</strong></div>
+      <div class="summary-line"><span>Date & time</span><strong id="summaryDateTime">Select a date first</strong></div>
+      <div class="summary-line"><span>Shooter</span><strong id="summaryShooter">Select after time</strong></div>
+      <div class="summary-line total"><span>Total due</span><strong id="summaryTotal">$350</strong></div>
+
+      <div class="client-form" id="clientForm">
+        <label for="clientName">Your name</label>
+        <input id="clientName" type="text" autocomplete="name" required />
+        <label for="clientEmail">Email</label>
+        <input id="clientEmail" type="email" autocomplete="email" required />
+      </div>
+
+      <button type="button" class="cta-btn" id="payBtn" disabled>Select date, time & shooter</button>
+      <div class="cta-note" id="ctaNote">You'll complete payment securely with Stripe. Your session is confirmed once payment succeeds.</div>
+
+      <div class="confirm-panel" id="confirmPanel">
+        <h3>Request received</h3>
+        <p id="confirmDetail"></p>
+      </div>
+    </section>
+  </div>
+
+  <script src="/booking/booking-app.js"></script>
+</body>
+</html>
