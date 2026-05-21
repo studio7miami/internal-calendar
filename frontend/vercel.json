@@ -33,17 +33,15 @@
     {
       "src": "/booking/(.*)",
       "dest": "/booking/$1",
-      "has": [{ "type": "host", "value": "book.studio7.miami" }],
-      "continue": true
+      "has": [{ "type": "host", "value": "book.studio7.miami" }]
     },
     {
       "src": "/brand/(.*)",
       "dest": "/brand/$1",
-      "has": [{ "type": "host", "value": "book.studio7.miami" }],
-      "continue": true
+      "has": [{ "type": "host", "value": "book.studio7.miami" }]
     },
     {
-      "src": "/(.*)",
+      "src": "/",
       "dest": "/booking/index.html",
       "has": [{ "type": "host", "value": "book.studio7.miami" }]
     },
