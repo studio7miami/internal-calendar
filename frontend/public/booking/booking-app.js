@@ -29,26 +29,31 @@
   const SERVICES_UI = {
     portraits: {
       meta: "90-minute session",
+      price: 350,
       desc: "Explore, experiment, and walk away with images that actually feel like you.",
       includes: ["90-minute session", "9 professionally edited photos", "5–7 day turnaround | 1-day rush delivery available"],
     },
     "beauty-headshots": {
       meta: "30-minute session",
+      price: 300,
       desc: "Your presence, elevated — two polished looks and a gallery built to make an impression.",
       includes: ["30-minute session", "2 reels + 6 professionally edited photos", "5–7 day turnaround | 1-day rush delivery available"],
     },
     "theatrical-headshots": {
       meta: "30-minute session",
+      price: 255,
       desc: "Built for the performer — two styled looks for casting and creative submissions.",
       includes: ["30-minute session", "2 styled looks + 6 professionally edited photos", "5–7 day turnaround | 1-day rush delivery available"],
     },
     "standard-headshots": {
       meta: "30-minute session",
+      price: 225,
       desc: "Clean, confident, professional — timeless white-backdrop headshots.",
       includes: ["30-minute session", "6 professionally edited photos", "5–7 day turnaround | 1-day gallery delivery"],
     },
     "passport-photos": {
       meta: "15-minute session",
+      price: 50,
       desc: "Official passport or visa photo — shot to meet U.S. specifications.",
       includes: ["15-minute in-studio session", "Compliant print + digital file"],
     },
@@ -66,6 +71,7 @@
     shooterId: null,
     shooterDisplay: null,
     bookingConfirmed: false,
+    paymentsConnected: true,
   };
 
   let AVAILABLE = {};
@@ -166,6 +172,15 @@
   async function loadConfig() {
     const cfg = await apiGet("/public/booking/config");
     apiServices = cfg.services || [];
+    const pay = cfg.payments || {};
+    state.paymentsConnected = pay.connected !== false && pay.configured !== false;
+    if (pay.configured === false) {
+      showError("Online payment is not set up on the server yet.");
+      state.paymentsConnected = false;
+    } else if (!pay.connected) {
+      showError("Online payment is temporarily unavailable. Please contact the studio to book.");
+      state.paymentsConnected = false;
+    }
     const slug = serviceSlugFromUrl();
     const svc = apiServices.find((s) => s.slug === slug) || apiServices.find((s) => s.slug === "portraits") || apiServices[0];
     if (svc) applyService(svc);
@@ -199,15 +214,15 @@
   function initServiceFromUi(slug) {
     const key = slug in SERVICES_UI ? slug : "portraits";
     const ui = SERVICES_UI[key];
+    const price = ui.price ?? 350;
     state.serviceSlug = key;
     state.serviceName = formatServiceName(key);
-    state.servicePrice = 350;
+    state.servicePrice = price;
     document.getElementById("svcName").textContent = state.serviceName;
-    document.getElementById("svcMeta").textContent = ui.meta + " | $350";
+    document.getElementById("svcMeta").textContent = ui.meta + " | $" + price;
     document.getElementById("svcDesc").textContent = ui.desc;
     document.getElementById("svcIncludes").innerHTML = ui.includes.map((i) => "<li>" + i + "</li>").join("");
     updateSummary();
-    loadAvailability();
   }
 
   function updateSteps() {
@@ -406,15 +421,30 @@
     const ready = state.dateIso && state.time && state.shooterId;
     const btn = document.getElementById("payBtn");
     const form = document.getElementById("clientForm");
+    const note = document.getElementById("ctaNote");
     if (!btn || !form) return;
-    if (ready && !state.bookingConfirmed) {
+    if (ready && !state.bookingConfirmed && state.paymentsConnected) {
       form.style.display = "block";
       btn.disabled = false;
       btn.textContent = "Continue to payment";
+      if (note) note.style.display = "";
+    } else if (ready && !state.bookingConfirmed && !state.paymentsConnected) {
+      form.style.display = "block";
+      btn.disabled = true;
+      btn.textContent = "Payment unavailable";
+      if (note) {
+        note.textContent = "Contact the studio to complete your booking.";
+        note.style.display = "";
+      }
     } else if (!ready) {
       form.style.display = "none";
       btn.disabled = true;
       btn.textContent = "Select date, time & shooter";
+      if (note) {
+        note.textContent =
+          "You'll complete payment securely with Stripe. Your session is confirmed once payment succeeds.";
+        note.style.display = "";
+      }
     }
   }
 
@@ -425,6 +455,10 @@
   });
 
   document.getElementById("payBtn")?.addEventListener("click", async () => {
+    if (!state.paymentsConnected) {
+      showError("Online payment is temporarily unavailable. Please contact the studio to book.");
+      return;
+    }
     const name = document.getElementById("clientName").value.trim();
     const email = document.getElementById("clientEmail").value.trim();
     if (!name || !email) {
@@ -494,13 +528,16 @@
     } catch (_) {}
   });
 
+  /* Paint service copy immediately — do not wait for /config API */
+  initServiceFromUi(serviceSlugFromUrl());
+  loadAvailability();
+
   async function boot() {
     renderCalendar();
     try {
       await loadConfig();
     } catch (e) {
       console.error(e);
-      initServiceFromUi(serviceSlugFromUrl());
       showError(e.message || "Could not connect to booking server.");
       renderCalendar();
     }
