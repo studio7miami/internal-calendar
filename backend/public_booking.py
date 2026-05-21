@@ -9,6 +9,7 @@ import os
 import re
 import uuid
 from datetime import date, datetime, timedelta
+from uuid import UUID
 from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel, EmailStr, Field
@@ -133,6 +134,41 @@ def _read_public_booking_config(supabase) -> dict:
         return {}
 
 
+def _is_uuid(value: str) -> bool:
+    try:
+        UUID(str(value))
+        return True
+    except (ValueError, AttributeError, TypeError):
+        return False
+
+
+def resolve_internal_calendar_id(supabase, raw: str) -> Optional[str]:
+    """
+    Map config value → calendars.id (uuid).
+    Accepts either a Supabase calendar uuid or a Google Calendar id
+    (e.g. …@group.calendar.google.com) stored in calendars.google_calendar_id.
+    """
+    key = (raw or "").strip()
+    if not key:
+        return None
+    if _is_uuid(key):
+        res = supabase.table("calendars").select("id").eq("id", key).limit(1).execute()
+        if res.data:
+            return str(res.data[0]["id"])
+        return None
+    res = (
+        supabase.table("calendars")
+        .select("id")
+        .eq("google_calendar_id", key)
+        .limit(1)
+        .execute()
+    )
+    if res.data:
+        return str(res.data[0]["id"])
+    logger.warning("public_booking: no calendar row for google_calendar_id=%s", key[:80])
+    return None
+
+
 def resolve_calendar_id(supabase, service_slug: str) -> Optional[str]:
     svc = SERVICE_CATALOG.get(service_slug)
     if not svc:
@@ -140,8 +176,8 @@ def resolve_calendar_id(supabase, service_slug: str) -> Optional[str]:
     pb = _read_public_booking_config(supabase)
     services = pb.get("services") if isinstance(pb.get("services"), dict) else {}
     svc_cfg = services.get(service_slug) if isinstance(services.get(service_slug), dict) else {}
-    cid = (svc_cfg.get("calendar_id") or pb.get("calendar_id") or os.environ.get("PUBLIC_BOOKING_CALENDAR_ID") or "").strip()
-    return cid or None
+    raw = (svc_cfg.get("calendar_id") or pb.get("calendar_id") or os.environ.get("PUBLIC_BOOKING_CALENDAR_ID") or "").strip()
+    return resolve_internal_calendar_id(supabase, raw)
 
 
 def addon_mua_cents(supabase) -> int:
