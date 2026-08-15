@@ -43,6 +43,16 @@
       "continue": true
     },
     {
+      "src": "/photobooth",
+      "dest": "https://photobooth-booking-eight.vercel.app/photobooth",
+      "has": [{ "type": "host", "value": "book.studio7.miami" }]
+    },
+    {
+      "src": "/photobooth/(.*)",
+      "dest": "https://photobooth-booking-eight.vercel.app/photobooth/$1",
+      "has": [{ "type": "host", "value": "book.studio7.miami" }]
+    },
+    {
       "src": "/(.*)",
       "dest": "/booking/index.html",
       "has": [{ "type": "host", "value": "book.studio7.miami" }]
