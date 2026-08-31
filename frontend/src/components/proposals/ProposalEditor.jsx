@@ -15,10 +15,11 @@ import {
   PROPOSAL_SECTIONS,
   proposalShareSms,
   proposalSignPaySms,
+  withResumeStep,
 } from "../../lib/proposals";
 import ProposalDeck from "./ProposalDeck";
 import { ProposalDateField, ProposalTimeField } from "./ProposalScheduleField";
-import { withAgreementStep, smsUrl } from "./SignPayLinkModal";
+import { smsUrl } from "./SignPayLinkModal";
 import { useAuth } from "../../context/AuthContext";
 import "./ProposalBuilder.css";
 
@@ -69,16 +70,10 @@ function useTeamTheme() {
   return theme;
 }
 
-function isPostAcceptStatus(status) {
-  return ["client_approved", "signed"].includes(status);
-}
-
 function clientTextMessage(proposal) {
   const name = proposal.client?.contact_name;
-  const link = isPostAcceptStatus(proposal.status)
-    ? withAgreementStep(proposal.share_url)
-    : proposal.share_url;
-  if (isPostAcceptStatus(proposal.status)) {
+  const link = withResumeStep(proposal.share_url, proposal.status);
+  if (["client_approved", "signed"].includes(proposal.status)) {
     return proposalSignPaySms(name, link);
   }
   return proposalShareSms(name, link);

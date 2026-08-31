@@ -244,6 +244,7 @@ export function normalizeProposal(value = {}) {
     payment_summary: value?.payment_summary ?? source.payment_summary,
     signature_summary: value?.signature_summary ?? source.signature_summary,
     revision: value?.revision ?? source.revision,
+    change_request: value?.change_request ?? source.change_request ?? null,
   };
 }
 
@@ -289,6 +290,27 @@ export function proposalShareSms(name, link) {
 
 export function proposalSignPaySms(name, link) {
   return `You’re in, ${proposalFirstName(name)}. Sign and pay and we'll lock it in.\n\n${link}`;
+}
+
+export function clientResumeStep(status) {
+  if (status === "signed") return "payment";
+  if (status === "client_approved") return "agreement";
+  if (status === "changes_requested") return "proposal";
+  return null;
+}
+
+export function withResumeStep(url, status) {
+  if (!url) return "";
+  const step = clientResumeStep(status);
+  if (!step) return url;
+  try {
+    const parsed = new URL(url, typeof window !== "undefined" ? window.location.origin : "https://team.studio7.miami");
+    parsed.searchParams.set("step", step);
+    return parsed.toString();
+  } catch {
+    const separator = url.includes("?") ? "&" : "?";
+    return `${url}${separator}step=${step}`;
+  }
 }
 
 export function proposalActionPayload(action, proposal, extra = {}) {

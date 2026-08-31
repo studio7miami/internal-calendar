@@ -147,6 +147,43 @@ def test_payment_type_amount_and_status_mapping():
     assert proposals.payment_amount_cents(fixed, "deposit") == 7_500
 
 
+def test_client_share_step_resumes_where_they_stopped():
+    assert proposals._client_share_step("client_approved") == "agreement"
+    assert proposals._client_share_step("signed") == "payment"
+    assert proposals._client_share_step("changes_requested") == "proposal"
+    assert proposals._client_share_step("sent") is None
+    assert proposals._client_share_step("viewed") is None
+
+
+def test_share_url_appends_resume_step(monkeypatch):
+    monkeypatch.delenv("PROPOSAL_PUBLIC_URL", raising=False)
+    monkeypatch.setenv("FRONTEND_URL", "https://studio.example/")
+    assert proposals._share_url("tai", step="payment") == "https://studio.example/p/tai?step=payment"
+    assert proposals._share_url("tai", step="proposal") == "https://studio.example/p/tai?step=proposal"
+
+
+def test_changes_requested_email_is_branded_staff_notice(monkeypatch):
+    monkeypatch.setenv("FRONTEND_URL", "https://team.studio7.miami")
+    subject, html_body, text = proposals._changes_requested_email(
+        {"id": "p1", "title": "Launch", "client_name": "Tai", "session_date": "2026-09-12"},
+        "Can we shift to afternoon?",
+        "Tai",
+    )
+    assert subject.startswith("Changes requested")
+    assert "Tai" in subject
+    assert "Can we shift to afternoon?" in html_body
+    assert "Open proposal" in html_body
+    assert "framerusercontent.com" in html_body
+    assert "/proposals/p1/edit" in html_body
+    assert "Can we shift to afternoon?" in text
+
+
+def test_named_share_tokens_follow_the_client_slug():
+    assert proposals._named_share_tokens("Tai")[0] == "tai"
+    assert "tai-2" in proposals._named_share_tokens("Tai")
+    assert proposals._named_share_tokens("  ") == []
+
+
 def test_public_url_defaults_to_short_p_route(monkeypatch):
     monkeypatch.delenv("PROPOSAL_PUBLIC_URL", raising=False)
     monkeypatch.setenv("FRONTEND_URL", "https://studio.example/")
@@ -196,6 +233,18 @@ def test_blank_drafts_are_the_empty_untitled_ones():
     assert proposals._is_blank_draft(blank) is True
     assert proposals._is_blank_draft(named) is False
     assert proposals._is_blank_draft({**blank, "status": "sent"}) is False
+
+
+def test_serialization_includes_resume_step_for_signed(monkeypatch):
+    monkeypatch.setenv("PROPOSAL_PUBLIC_URL", "https://studio.example/p")
+    result = proposals._serialize({"id": "p1", "status": "signed"}, "tai")
+    assert result["share_url"] == "https://studio.example/p/tai?step=payment"
+    result = proposals._serialize({"id": "p1", "status": "client_approved"}, "tai")
+    assert result["share_url"] == "https://studio.example/p/tai?step=agreement"
+    result = proposals._serialize({"id": "p1", "status": "changes_requested"}, "tai")
+    assert result["share_url"] == "https://studio.example/p/tai?step=proposal"
+    result = proposals._serialize({"id": "p1", "status": "sent"}, "tai")
+    assert result["share_url"] == "https://studio.example/p/tai"
 
 
 def test_serialization_keeps_new_flat_fields(monkeypatch):

@@ -1025,6 +1025,38 @@
   margin-top: 20px;
 }
 
+.s7-deck-actions--note {
+  flex-direction: column;
+}
+
+.s7-changes-banner {
+  margin: 0 0 20px;
+  padding: 18px 22px;
+  border: 1px solid rgba(17, 17, 17, 0.08);
+  border-radius: 24px;
+  background: #fcfcfa;
+}
+
+.s7-changes-banner .s7-flow-kicker {
+  margin: 0 0 6px;
+}
+
+.s7-changes-banner p {
+  margin: 0;
+  color: #111;
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.s7-changes-received {
+  margin: 0;
+  color: #6f6f6b;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+
 .s7-public-error {
   margin-bottom: 16px;
   padding: 12px 16px;
@@ -1782,8 +1814,29 @@
   border: 0;
   background: transparent;
   color: #6f6f6b;
+  cursor: pointer;
   font-family: inherit;
   font-size: 12px;
+}
+
+.s7-flow-back:hover {
+  color: #111;
+}
+
+.s7-flow-timer {
+  flex-shrink: 0;
+  min-width: 3.25em;
+  color: #6f6f6b;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+  text-align: right;
+}
+
+.s7-flow-timer.is-low {
+  color: #111;
 }
 
 .s7-flow-back svg {
@@ -3076,6 +3129,7 @@
 
   .s7-bento-flow-card {
     min-height: 0;
+    height: 100%;
   }
 
   .s7-bento-flow--frame .s7-bento-flow-card {
@@ -3083,7 +3137,11 @@
   }
 
   .s7-bento-flow--text.s7-bento-flow--frame .s7-bento-flow-card {
-    padding: 16px;
+    display: flex;
+    height: 100%;
+    min-height: 0;
+    padding: 16px 18px;
+    border-radius: 16px;
   }
 
   .s7-bento-flow--frame .s7-bento-flow__media {
@@ -3093,16 +3151,28 @@
     border-radius: 8px;
   }
 
+  .s7-bento-flow--text .s7-bento-flow__copy,
   .s7-bento-flow--frame .s7-bento-flow__copy {
-    flex-shrink: 0;
-    padding: 6px 4px 0;
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+    padding: 0;
   }
 
-  .s7-bento-flow__copy p {
+  .s7-bento-flow .s7-bento-tile h3 {
+    margin-top: 8px;
+    font-size: 16px;
+    line-height: 1.15;
+  }
+
+  .s7-bento-flow__copy p,
+  .s7-bento-flow--text .s7-bento-flow__copy p {
     display: block;
-    margin-top: 4px;
-    font-size: 11px;
-    line-height: 1.35;
+    margin-top: 8px;
+    overflow: visible;
+    font-size: 12px;
+    line-height: 1.4;
   }
 
   .s7-bento-stat strong {
@@ -3199,12 +3269,10 @@
     min-height: 0;
   }
 
-  .s7-deck--flow-tiles .s7-bento-grid--steps {
-    grid-template-columns: 1fr 1fr;
-  }
-
+  .s7-deck--flow-tiles .s7-bento-grid--steps,
   .s7-deck--flow-lane .s7-bento-grid--steps {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
   }
 
   .s7-deck--flow-lane .s7-bento-flow--frame .s7-bento-flow__copy p {
@@ -3355,17 +3423,40 @@
     line-height: 1.4;
   }
 
-  .s7-bento-flow__copy p {
+  .s7-bento-flow {
+    height: auto;
+    min-height: 0;
+  }
+
+  .s7-bento-flow .s7-bento-grid--steps {
+    flex: 0 0 auto;
+    align-content: start;
+    grid-auto-rows: auto;
+  }
+
+  .s7-bento-flow__copy p,
+  .s7-bento-flow--text .s7-bento-flow__copy p {
     display: block;
-    margin-top: 3px;
+    margin-top: 6px;
     overflow: visible;
-    font-size: 11px;
-    line-height: 1.35;
+    font-size: 12px;
+    line-height: 1.4;
   }
 
   .s7-deck--flow-lane .s7-bento-grid--steps {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: 1fr 1fr;
     align-content: start;
+    gap: 10px;
+  }
+
+  .s7-bento-flow--text.s7-bento-flow--frame .s7-bento-flow-card {
+    min-height: 128px;
+    padding: 14px 16px;
+    border-radius: 16px;
+  }
+
+  .s7-bento-flow .s7-bento-tile h3 {
+    font-size: 15px;
   }
 
   .s7-deck--flow-lane .s7-bento-flow--frame .s7-bento-flow__copy p {

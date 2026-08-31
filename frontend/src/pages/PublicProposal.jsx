@@ -13,6 +13,23 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 
+const PROPOSAL_TIMER_MS = 10 * 60 * 1000;
+
+function readFlowStep() {
+  try {
+    const step = new URLSearchParams(window.location.search).get("step");
+    if (step === "proposal" || step === "agreement" || step === "payment") return step;
+  } catch {}
+  return null;
+}
+
+function formatTimer(ms) {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 export default function PublicProposal() {
   const { token } = useParams();
   const [proposal, setProposal] = useState(null);
@@ -30,7 +47,8 @@ export default function PublicProposal() {
   const restarting = searchParams.get("restart") === "1";
   const checkoutSuccess = !restarting && searchParams.get("checkout") === "success";
   const [confirmHold, setConfirmHold] = useState(checkoutSuccess);
-  const [reviewProposal, setReviewProposal] = useState(searchParams.get("step") === "proposal");
+  const [viewStep, setViewStep] = useState(readFlowStep);
+  const [remainingMs, setRemainingMs] = useState(PROPOSAL_TIMER_MS);
   const [loaderPhase, setLoaderPhase] = useState("hold");
   const signatureRef = useRef(null);
 
@@ -94,13 +112,50 @@ export default function PublicProposal() {
   }, []);
 
   useEffect(() => {
+    if (!proposal || !token || loaderPhase !== "done") return undefined;
+    if (new URLSearchParams(window.location.search).get("preview")) return undefined;
+    const key = `s7-proposal-timer:${token}`;
+    let start = 0;
+    try {
+      start = Number(window.sessionStorage.getItem(key)) || 0;
+    } catch {}
+    if (!start) {
+      start = Date.now();
+      try {
+        window.sessionStorage.setItem(key, String(start));
+      } catch {}
+    }
+    const tick = () => setRemainingMs(Math.max(0, start + PROPOSAL_TIMER_MS - Date.now()));
+    tick();
+    const id = window.setInterval(tick, 250);
+    return () => window.clearInterval(id);
+  }, [proposal, token, loaderPhase]);
+
+  useEffect(() => {
     if (!proposal?.status) return;
+    const step = new URLSearchParams(window.location.search).get("step");
+    if (proposal.status === "changes_requested") {
+      setViewStep("proposal");
+      setFlowStep("proposal");
+      return;
+    }
+    if (proposal.status === "signed") {
+      if (step === "proposal" || step === "agreement" || step === "payment") {
+        setViewStep(step);
+        return;
+      }
+      setViewStep("payment");
+      setFlowStep("payment");
+      return;
+    }
     const accepted = ["client_approved", "approved"].includes(proposal.status);
     const alreadyPast = ["signed", "deposit_paid", "paid"].includes(proposal.status);
     if (!accepted || alreadyPast) return;
-    const step = new URLSearchParams(window.location.search).get("step");
-    if (step === "proposal") return;
-    setReviewProposal(false);
+    if (step === "proposal") {
+      setViewStep("proposal");
+      return;
+    }
+    setViewStep("agreement");
     if (step !== "agreement") setFlowStep("agreement");
   }, [proposal?.id, proposal?.status]);
 
@@ -150,7 +205,7 @@ export default function PublicProposal() {
   };
 
   const approve = async () => {
-    setReviewProposal(false);
+    setViewStep("agreement");
     setFlowStep("agreement");
     setProposal((current) => (current ? { ...current, status: "client_approved" } : current));
     window.scrollTo(0, 0);
@@ -164,6 +219,8 @@ export default function PublicProposal() {
   };
 
   const sign = async () => {
+    setViewStep("payment");
+    setFlowStep("payment");
     const data = await post("sign", { signer_name: signerName, signer_email: signerEmail, signature_data: signature, consent });
     if (data) await load();
   };
@@ -225,34 +282,46 @@ export default function PublicProposal() {
   const lockedIn = fullyPaid || (depositPaid && !collectRemaining);
   const signed = fullyPaid || depositPaid || proposal?.status === "signed" || !!proposal?.signature_summary;
   const approved = signed || ["client_approved", "approved"].includes(proposal?.status);
-  const reviewingAccepted = approved && !signed && !lockedIn && !collectRemaining && reviewProposal;
-  const currentStep = lockedIn ? 4 : collectRemaining || proposal?.status === "signed" ? 3 : reviewingAccepted ? 1 : approved ? 2 : 1;
+  const canBrowse = (approved || signed) && !lockedIn;
+  const viewing = viewStep || (signed ? "payment" : approved ? "agreement" : "proposal");
+  const reviewingAccepted = approved && viewing === "proposal";
+  const showPayment = (signed && viewing === "payment") || (collectRemaining && viewing !== "agreement" && viewing !== "proposal");
+  const currentStep = lockedIn ? 4 : showPayment ? 3 : viewing === "agreement" || (approved && viewing !== "proposal") ? 2 : 1;
+  const furthestStep = lockedIn ? 4 : signed ? 3 : approved ? 2 : 1;
   const totals = proposal ? proposalTotals(proposal) : proposalTotals({});
-  const stage = lockedIn ? "thanks" : collectRemaining || proposal?.status === "signed" ? "payment" : reviewingAccepted ? "proposal" : approved ? "agreement" : "proposal";
-  const browseAccepted = approved && !signed && !lockedIn && !collectRemaining;
+  const stage = lockedIn ? "thanks" : showPayment ? "payment" : viewing === "proposal" || !approved ? "proposal" : "agreement";
+  const alreadySigned = signed && !["client_approved", "approved"].includes(proposal?.status);
 
   const showAcceptedProposal = () => {
-    setReviewProposal(true);
+    setViewStep("proposal");
     setFlowStep("proposal");
     window.scrollTo(0, 0);
   };
 
   const showAgreement = () => {
-    setReviewProposal(false);
+    setViewStep("agreement");
     setFlowStep("agreement");
     window.scrollTo(0, 0);
   };
 
+  const showPay = () => {
+    setViewStep("payment");
+    setFlowStep("payment");
+    window.scrollTo(0, 0);
+  };
+
   const onSelectStep = (next) => {
-    if (browseAccepted && next === 1) {
+    if (next === 1 && canBrowse) {
       showAcceptedProposal();
       return;
     }
-    if (browseAccepted && next === 2) {
+    if (next === 2 && canBrowse) {
       showAgreement();
       return;
     }
-    if (isMockTrial) rewindTo(next === 1 ? "proposal" : next === 2 ? "agreement" : "payment");
+    if (next === 3 && signed && !lockedIn) {
+      showPay();
+    }
   };
   const showAllSet = checkoutSuccess && signed && (confirmHold || !fullyPaid);
 
@@ -274,20 +343,36 @@ export default function PublicProposal() {
       <div className={loaderPhase !== "done" ? "s7-public-reveal" : undefined}>
       <FlowHeader
         step={currentStep}
-        onSelect={browseAccepted || isMockTrial ? onSelectStep : undefined}
+        furthest={furthestStep}
+        onSelect={canBrowse ? onSelectStep : undefined}
+        remainingMs={ready && loaderPhase === "done" ? remainingMs : null}
       />
 
       {error && <div className="s7-public-error s7-public-error--fixed">{error}</div>}
 
       {stage === "proposal" ? (
         <div className="s7-public-content">
+          {proposal.status === "changes_requested" ? (
+            <div className="s7-changes-banner">
+              <p className="s7-flow-kicker">Changes requested</p>
+              <p>{proposal.change_request?.message || "We've received your notes and will follow up."}</p>
+            </div>
+          ) : null}
           <ProposalDeck proposal={proposal} theme="atlas" finish="foil" clientFrame />
-          <div className="s7-deck-actions">
-            <Button variant="ghost" className="s7-btn s7-btn--outline" onClick={() => setChangesOpen(true)}><MessageSquareText /> Request changes</Button>
-            {reviewingAccepted ? (
-              <Button className="s7-btn s7-btn--soft" onClick={showAgreement}><CheckCircle2 /> Continue to agreement</Button>
+          <div className={proposal.status === "changes_requested" ? "s7-deck-actions s7-deck-actions--note" : "s7-deck-actions"}>
+            {proposal.status === "changes_requested" ? (
+              <p className="s7-changes-received">We've received your notes and will follow up.</p>
             ) : (
-              <Button className="s7-btn s7-btn--soft" disabled={!!working} onClick={approve}><CheckCircle2 /> Approve proposal</Button>
+              <>
+                {alreadySigned ? null : (
+                  <Button variant="ghost" className="s7-btn s7-btn--outline" onClick={() => setChangesOpen(true)}><MessageSquareText /> Request changes</Button>
+                )}
+                {reviewingAccepted || alreadySigned ? (
+                  <Button className="s7-btn s7-btn--soft" onClick={showAgreement}><CheckCircle2 /> Continue to agreement</Button>
+                ) : (
+                  <Button className="s7-btn s7-btn--soft" disabled={!!working} onClick={approve}><CheckCircle2 /> Approve proposal</Button>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -309,7 +394,7 @@ export default function PublicProposal() {
               remaining={collectRemaining}
               working={working}
               onCheckout={checkout}
-              onBack={isMockTrial && !collectRemaining ? () => rewindTo("agreement") : undefined}
+              onBack={showAgreement}
             />
           ) : (
             <Agreement
@@ -327,7 +412,9 @@ export default function PublicProposal() {
               signatureRef={signatureRef}
               onSign={sign}
               working={working}
-              onBack={browseAccepted ? showAcceptedProposal : isMockTrial ? () => rewindTo("proposal") : undefined}
+              alreadySigned={alreadySigned}
+              onContinue={showPay}
+              onBack={showAcceptedProposal}
             />
           )}
         </section>
@@ -359,7 +446,7 @@ const FLOW_STEPS = [
   { step: 3, label: "Pay" },
 ];
 
-function FlowHeader({ step, onSelect }) {
+function FlowHeader({ step, furthest, onSelect, remainingMs }) {
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-background">
       <div className="mx-auto flex w-full max-w-6xl items-center gap-4 px-4 py-2.5 sm:gap-6 sm:px-5 sm:py-3">
@@ -368,13 +455,21 @@ function FlowHeader({ step, onSelect }) {
           alt="Studio 7 Miami"
           className="h-11 w-auto shrink-0 object-contain sm:h-12 lg:h-14"
         />
-        <BookingStepper step={step} steps={FLOW_STEPS} onSelect={onSelect} />
+        <BookingStepper step={step} furthest={furthest} steps={FLOW_STEPS} onSelect={onSelect} />
+        {remainingMs != null ? (
+          <span
+            className={`s7-flow-timer${remainingMs <= 60 * 1000 ? " is-low" : ""}`}
+            aria-label="Time remaining"
+          >
+            {formatTimer(remainingMs)}
+          </span>
+        ) : null}
       </div>
     </header>
   );
 }
 
-function Agreement({ agreement, proposal, totals, signerName, setSignerName, signerEmail, setSignerEmail, signature, setSignature, consent, setConsent, signatureRef, onSign, working, onBack }) {
+function Agreement({ agreement, proposal, totals, signerName, setSignerName, signerEmail, setSignerEmail, signature, setSignature, consent, setConsent, signatureRef, onSign, working, onBack, alreadySigned, onContinue }) {
   return (
     <div className="s7-flow-page">
       {onBack ? (
@@ -388,6 +483,7 @@ function Agreement({ agreement, proposal, totals, signerName, setSignerName, sig
             <p className="s7-flow-kicker">Service agreement</p>
             <AgreementSnapshot agreement={agreement} proposal={proposal} totals={totals} />
           </div>
+          {alreadySigned ? null : (
           <div className="s7-flow-card s7-sign-card">
             <label><span>Full legal name</span><Input value={signerName} onChange={(e) => setSignerName(e.target.value)} className="s7-flow-input" /></label>
             <label><span>Email</span><Input type="email" value={signerEmail} onChange={(e) => setSignerEmail(e.target.value)} className="s7-flow-input" /></label>
@@ -397,9 +493,14 @@ function Agreement({ agreement, proposal, totals, signerName, setSignerName, sig
               <span>I agree to sign electronically and accept the exact proposal and agreement shown above. <em>(required)</em></span>
             </label>
           </div>
+          )}
         </div>
         <SessionGlance proposal={proposal} totals={totals}>
-          <Button className="s7-btn s7-btn--dark s7-btn--wide" disabled={!signerName.trim() || !signerEmail.trim() || !signature || !consent || !!working} onClick={onSign}>{working === "sign" ? "Signing…" : "Sign & continue"}</Button>
+          {alreadySigned ? (
+            <Button className="s7-btn s7-btn--dark s7-btn--wide" onClick={onContinue}>Continue to payment</Button>
+          ) : (
+            <Button className="s7-btn s7-btn--dark s7-btn--wide" disabled={!signerName.trim() || !signerEmail.trim() || !signature || !consent || !!working} onClick={onSign}>{working === "sign" ? "Signing…" : "Sign & continue"}</Button>
+          )}
         </SessionGlance>
       </div>
     </div>

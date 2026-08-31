@@ -266,10 +266,61 @@ def _share_url(token: str, *, step: Optional[str] = None) -> str:
 
 
 def _client_share_step(status: Optional[str]) -> Optional[str]:
-    """Accepted clients skip the proposal deck and land on the agreement."""
-    if status in ("client_approved", "signed"):
+    """Resume the public flow where the client left off."""
+    if status == "signed":
+        return "payment"
+    if status == "client_approved":
         return "agreement"
+    if status == "changes_requested":
+        return "proposal"
     return None
+
+
+def _named_share_tokens(client_name: str) -> list[str]:
+    slug = client_share_slug(client_name)
+    if not slug:
+        return []
+    return [slug, *[f"{slug}-{index}" for index in range(2, 81)]]
+
+
+def _active_share_token(proposal: dict) -> Optional[str]:
+    """Plaintext named slug for this proposal. Revoked named URLs still resolve publicly."""
+    fallback: Optional[str] = None
+    for token in _named_share_tokens(proposal.get("client_name") or ""):
+        row = _share_row_by_token(token)
+        if not row or str(row.get("proposal_id")) != str(proposal["id"]):
+            continue
+        if not row.get("revoked"):
+            return token
+        if fallback is None:
+            fallback = token
+    return fallback
+
+
+def _staff_proposal_url(proposal_id: str) -> str:
+    frontend = (os.environ.get("FRONTEND_URL") or "https://team.studio7.miami").rstrip("/")
+    if "localhost" in frontend.lower() or "127.0.0.1" in frontend:
+        frontend = "https://team.studio7.miami"
+    return f"{frontend}/proposals/{proposal_id}/edit"
+
+
+def _open_change_request(proposal_id: str) -> Optional[dict]:
+    if _db is None:
+        return None
+    try:
+        found = (
+            _db.table("proposal_change_requests")
+            .select("id,client_name,message,status,created_at")
+            .eq("proposal_id", proposal_id)
+            .eq("status", "open")
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return dict(found.data[0]) if found.data else None
+    except Exception:
+        logger.exception("Could not load open change request for %s", proposal_id)
+        return None
 
 
 def verify_stripe_signature(
@@ -965,6 +1016,19 @@ async def read_proposal(proposal_id: str, user: dict = Depends(_current_user)):
     return _serialize(proposal)
 
 
+@router.get("/proposals/{proposal_id}/client-link")
+async def client_link(proposal_id: str, user: dict = Depends(_current_user)):
+    _require(user, "view_proposals")
+    proposal = _proposal(proposal_id)
+    if proposal.get("status") == "archived":
+        raise HTTPException(status_code=409, detail="Archived proposals do not have a client link")
+    token = _active_share_token(proposal)
+    if not token:
+        raise HTTPException(status_code=409, detail="Send the proposal before copying a client link")
+    step = _client_share_step(proposal.get("status"))
+    return {"share_url": _share_url(token, step=step), "step": step}
+
+
 def _editable_updates(proposal: dict, raw: dict) -> dict:
     status = str(proposal.get("status") or "")
     if status in ("draft", "changes_requested"):
@@ -1229,6 +1293,120 @@ def _proposal_email(proposal: dict, link: str) -> tuple[str, str, str]:
     return subject, body, text
 
 
+def _changes_requested_email(proposal: dict, message: str, client_name: str) -> tuple[str, str, str]:
+    font = "Manrope, Helvetica, Arial, sans-serif"
+    logo = "https://framerusercontent.com/assets/3HwVggLmyKfOrpHHCI76j8tFoTY.png"
+    client = (client_name or proposal.get("client_name") or "A client").strip() or "A client"
+    title = str(proposal.get("title") or "Content proposal").strip() or "Content proposal"
+    date_text = str(proposal.get("session_date") or "")
+    notes = (message or "").strip()
+    href = html.escape(_staff_proposal_url(str(proposal.get("id") or "")), quote=True)
+    subject = f"Changes requested — {client}"[:200]
+    intro = html.escape(f"{client} asked for updates on {title}.")
+    notes_html = html.escape(notes).replace("\n", "<br>")
+
+    def spec_row(label: str, value: str, last: bool = False) -> str:
+        border = "none" if last else "1px solid rgba(17,17,17,0.08)"
+        return (
+            f'<tr><td style="padding:13px 0;border-bottom:{border};font-family:{font};'
+            'font-size:10px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;'
+            f'color:#6F6F6B;vertical-align:top;">{html.escape(label)}</td>'
+            f'<td style="padding:13px 0 13px 16px;border-bottom:{border};font-family:{font};'
+            f'font-size:14px;color:#111;text-align:right;line-height:1.45;">{value}</td></tr>'
+        )
+
+    specs = [
+        ("Client", html.escape(client)),
+        ("Session", html.escape(title)),
+        ("Date", html.escape(date_text)),
+        ("Notes", notes_html),
+    ]
+    specs = [(label, value) for label, value in specs if value]
+    spec_html = "".join(spec_row(label, value, index == len(specs) - 1) for index, (label, value) in enumerate(specs))
+    body = f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light">
+<meta name="x-apple-disable-message-reformatting">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&display=swap" rel="stylesheet">
+<title>{html.escape(subject)}</title>
+<style>
+  .s7-email-title {{
+    margin: 0 0 10px;
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    color: #111;
+  }}
+  .s7-email-pad {{
+    padding: 36px 28px 12px;
+  }}
+  @media only screen and (max-width: 600px) {{
+    .s7-email-title {{
+      font-size: 22px !important;
+      letter-spacing: -0.03em !important;
+    }}
+    .s7-email-pad {{
+      padding: 28px 16px 12px !important;
+    }}
+  }}
+</style>
+</head>
+<body style="margin:0;padding:0;background:#F7F7F5;font-family:{font};color:#111;-webkit-text-size-adjust:100%;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">{html.escape(f"{client} requested changes.")}</div>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#F7F7F5;"><tr><td align="center">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:100%;max-width:600px;background:#F7F7F5;">
+<tr><td bgcolor="#000000" style="background:#000;padding:0;text-align:center;line-height:0;"><img src="{logo}" width="600" alt="Studio 7 Miami" style="display:block;width:100%;max-width:600px;height:auto;border:0;background:#000;"></td></tr>
+<tr><td class="s7-email-pad" style="padding:36px 28px 12px;"><p style="margin:0 0 8px;font-size:10px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#6F6F6B;">Content proposal</p>
+<h1 class="s7-email-title" style="margin:0 0 10px;font-size:28px;font-weight:600;letter-spacing:-.02em;line-height:1.15;color:#111;">A client requested changes</h1>
+<p style="margin:0;font-size:15px;line-height:1.6;color:#6F6F6B;">{intro}</p></td></tr>
+<tr><td style="padding:20px 28px 8px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#FCFCFA;border:1px solid rgba(17,17,17,.08);border-radius:24px;">
+<tr><td style="padding:22px 24px 8px;"><p style="margin:0;font-size:10px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#6F6F6B;">What they asked for</p></td></tr>
+<tr><td style="padding:0 24px 8px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">{spec_html}</table></td></tr></table></td></tr>
+<tr><td style="padding:20px 28px 8px;" align="center"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#111111" style="background:#111;border-radius:999px;">
+<a href="{href}" style="display:inline-block;padding:14px 28px;font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;text-decoration:none;color:#F7F7F5;">Open proposal</a>
+</td></tr></table></td></tr>
+<tr><td style="padding:28px 28px 40px;text-align:center;"><p style="margin:0 0 6px;font-size:12px;line-height:1.6;color:#6F6F6B;">Studio 7 Miami<br>638 NW 62nd St, Miami, FL 33150</p>
+<p style="margin:0;font-size:12px;line-height:1.6;"><a href="https://studio7.miami" style="color:#111;text-decoration:none;">studio7.miami</a><span style="color:#C8C8C4;"> · </span><a href="https://book.studio7.miami" style="color:#111;text-decoration:none;">book.studio7.miami</a></p>
+</td></tr></table></td></tr></table></body></html>"""
+    text = "\n".join(filter(None, [
+        f"{client} requested changes on {title}.",
+        "",
+        f"Client: {client}",
+        f"Session: {title}",
+        f"Date: {date_text}" if date_text else None,
+        "",
+        notes,
+        "",
+        _staff_proposal_url(str(proposal.get("id") or "")),
+        "",
+        "Studio 7 Miami",
+        "638 NW 62nd St, Miami, FL 33150",
+        "https://studio7.miami",
+    ]))
+    return subject, body, text
+
+
+async def _notify_changes_requested(proposal: dict, message: str, client_name: str) -> None:
+    to_email = (os.environ.get("PROPOSAL_CHANGES_EMAIL") or "info@studio7.miami").strip()
+    if not to_email:
+        return
+    subject, html_body, text_body = _changes_requested_email(proposal, message, client_name)
+    try:
+        delivered, error, _provider = await invite_email.deliver_html_email(
+            to_email=to_email,
+            subject=subject,
+            html_body=html_body,
+            text_body=text_body,
+        )
+        if not delivered:
+            logger.warning("Changes-requested email to %s failed: %s", to_email, error)
+    except Exception:
+        logger.exception("Could not send changes-requested email to %s", to_email)
+    if PROPOSAL_MOCK_INBOX and PROPOSAL_MOCK_INBOX.lower() != to_email.lower():
+        await _copy_to_mock_inbox(proposal, subject, html_body, text_body)
+
+
 async def _send(proposal: dict, version: int, expires_days: int, user: dict, *, channel: str = "email") -> dict:
     if proposal["status"] not in (
         "draft", "changes_requested", "approved", "sent", "viewed", "client_approved", "signed"
@@ -1469,6 +1647,7 @@ async def public_proposal(token: str, request: Request):
     )
     current = _proposal(proposal["id"])
     public_status = _public_status(current.get("status", proposal["status"]))
+    change_request = _open_change_request(proposal["id"])
     return {
         "proposal": {
             **revision["snapshot"],
@@ -1478,11 +1657,13 @@ async def public_proposal(token: str, request: Request):
             "approved_at": current.get("client_approved_at"),
             "signed_at": current.get("signed_at"),
             "revision_number": revision["revision_number"],
+            "change_request": change_request,
         },
         "revision": {"id": revision["id"], "revision_number": revision["revision_number"], "created_at": revision["created_at"]},
         "agreement": revision["agreement_snapshot"],
         "payment_summary": payments[0] if payments else None,
         "signature_summary": signatures[0] if signatures else None,
+        "change_request": change_request,
     }
 
 
@@ -1511,10 +1692,10 @@ async def public_change_request(token: str, data: ChangeRequestIn, request: Requ
     _event(proposal["id"], "changes_requested", share_id=share["id"], metadata={"change_request_id": row["id"]})
     _notify(proposal.get("created_by"), proposal["id"], "proposal_changes_requested", "Client requested changes", data.message[:300])
     background_tasks.add_task(
-        _mock_process_email,
-        proposal,
-        "Client requested changes",
+        _notify_changes_requested,
+        {**proposal, "status": "changes_requested"},
         data.message.strip(),
+        row["client_name"],
     )
     return {"id": row["id"], "status": "open"}
 

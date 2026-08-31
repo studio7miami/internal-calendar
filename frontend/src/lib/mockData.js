@@ -1,3 +1,5 @@
+import { clientResumeStep, withResumeStep } from "./proposals";
+
 const STORAGE_KEY = "s7_local_mock_proposals_v10";
 const MOCK_PREFIX = "mock-proposal-";
 
@@ -239,14 +241,23 @@ const initialProposals = () => {
       day: 10,
       rate: 4800,
     }),
-    baseProposal({
-      id: `${MOCK_PREFIX}editorial-refresh`,
-      title: "Editorial Refresh",
-      status: "changes_requested",
-      client: "Maya Chen",
-      day: 14,
-      rate: 2750,
-    }),
+    {
+      ...baseProposal({
+        id: `${MOCK_PREFIX}editorial-refresh`,
+        title: "Editorial Refresh",
+        status: "changes_requested",
+        client: "Maya Chen",
+        day: 14,
+        rate: 2750,
+      }),
+      change_request: {
+        id: `${MOCK_PREFIX}editorial-refresh-change`,
+        client_name: "Maya Chen",
+        message: "Could we shift the session later in the afternoon?",
+        status: "open",
+        created_at: nowIso(),
+      },
+    },
     {
       ...portrait,
       current_revision_id: `${portrait.id}-revision-1`,
@@ -488,6 +499,7 @@ function mockPublicPayload(proposal) {
     proposal: {
       ...proposal,
       status: proposal.status,
+      change_request: proposal.change_request || null,
     },
     revision: {
       id: proposal.current_revision_id || `${proposal.id}-revision-1`,
@@ -497,6 +509,7 @@ function mockPublicPayload(proposal) {
     agreement: mockAgreement(proposal),
     payment_summary: proposal.payment_summary || null,
     signature_summary: proposal.signature_summary || null,
+    change_request: proposal.change_request || null,
   };
 }
 
@@ -642,11 +655,19 @@ export function installLocalMocking(instance) {
       }
 
       if (method === "post" && publicAction === "change-request") {
+        const body = requestData(config.data);
         const updated = {
           ...current,
           status: "changes_requested",
           version: Number(current.version || 0) + 1,
           updated_at: nowIso(),
+          change_request: {
+            id: `${current.id}-change`,
+            client_name: body.client_name || current.client_name,
+            message: body.message || "",
+            status: "open",
+            created_at: nowIso(),
+          },
         };
         proposals[index] = updated;
         saveProposals(proposals);
@@ -730,6 +751,18 @@ export function installLocalMocking(instance) {
       }
     }
 
+    if (actionMatch && actionMatch[1].startsWith(MOCK_PREFIX) && method === "get" && actionMatch[2] === "client-link") {
+      const proposals = loadProposals();
+      const found = proposals.find((proposal) => proposal.id === actionMatch[1]);
+      if (!found) return use({ detail: "Mock proposal not found" }, 404);
+      if (found.status === "archived") {
+        return use({ detail: "Archived proposals do not have a client link" }, 409);
+      }
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const shareUrl = withResumeStep(`${origin}/p/${found.id}`, found.status);
+      return use({ share_url: shareUrl, step: clientResumeStep(found.status) });
+    }
+
     if (actionMatch && actionMatch[1].startsWith(MOCK_PREFIX) && method === "post") {
       const proposals = loadProposals();
       const index = proposals.findIndex((proposal) => proposal.id === actionMatch[1]);
@@ -777,9 +810,7 @@ export function installLocalMocking(instance) {
       if (actionMatch[2] === "send" || actionMatch[2] === "resend") {
         const preserve = ["client_approved", "signed"].includes(proposals[index].status);
         updated.status = preserve ? proposals[index].status : "sent";
-        updated.share_url = preserve
-          ? `${window.location.origin}/p/${actionMatch[1]}?step=agreement`
-          : `${window.location.origin}/p/${actionMatch[1]}`;
+        updated.share_url = withResumeStep(`${window.location.origin}/p/${actionMatch[1]}`, updated.status);
         updated.sent_at = nowIso();
       }
       proposals[index] = updated;

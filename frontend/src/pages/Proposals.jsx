@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import { Archive, CheckCircle2, Copy, FileText, Layers, MessageSquare, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Send } from "lucide-react";
+import { Archive, CheckCircle2, Copy, FileText, Layers, Link2, MessageSquare, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Send } from "lucide-react";
 import { api, formatApiError } from "../lib/api";
 import {
   normalizeProposal,
@@ -57,6 +57,7 @@ export default function Proposals() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [working, setWorking] = useState("");
   const [signPayModal, setSignPayModal] = useState(null);
   const can = (permission) => user?.role === "admin" || !!user?.permissions?.[permission];
@@ -115,6 +116,27 @@ export default function Proposals() {
 
   const create = () => navigate("/proposals/new");
 
+  const copyLink = async (proposal) => {
+    setWorking(`${proposal.id}:copy-link`);
+    setError("");
+    try {
+      const { data } = await api.get(`/proposals/${proposal.id}/client-link`);
+      const url = data.share_url;
+      if (!url) throw new Error("missing link");
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        window.prompt("Copy this link", url);
+      }
+      setNotice("Link copied");
+      window.setTimeout(() => setNotice(""), 2200);
+    } catch (err) {
+      setError(formatApiError(err.response?.data?.detail) || "Could not copy the client link.");
+    } finally {
+      setWorking("");
+    }
+  };
+
   const act = async (proposal, action) => {
     setWorking(`${proposal.id}:${action}`);
     try {
@@ -167,6 +189,12 @@ export default function Proposals() {
         </div>
       )}
 
+      {notice && (
+        <div className="rounded-[7px] border border-[#111]/10 bg-[#F3F2EE] px-4 py-3 text-sm text-[#111] dark:border-white/10 dark:bg-white/[0.06] dark:text-zinc-100">
+          {notice}
+        </div>
+      )}
+
       {loading ? (
         <ProposalListSkeleton />
       ) : visible.length ? (
@@ -177,6 +205,7 @@ export default function Proposals() {
           working={working}
           onOpen={openProposal}
           onAct={act}
+          onCopy={copyLink}
         />
       ) : (
         <div className="rounded-[28px] bg-[#F3F2EE] px-8 py-10 text-center dark:bg-white/[0.04]">
@@ -360,7 +389,7 @@ function ProposalListSkeleton() {
   );
 }
 
-function ProposalList({ proposals, canEdit, canManage, working, onOpen, onAct }) {
+function ProposalList({ proposals, canEdit, canManage, working, onOpen, onAct, onCopy }) {
   return (
     <div className="grid gap-2 sm:grid-cols-2">
       {proposals.map((proposal) => (
@@ -372,6 +401,7 @@ function ProposalList({ proposals, canEdit, canManage, working, onOpen, onAct })
           working={working}
           onOpen={onOpen}
           onAct={onAct}
+          onCopy={onCopy}
         />
       ))}
     </div>
@@ -387,7 +417,7 @@ function BoardFact({ label, value }) {
   );
 }
 
-function ProposalBand({ proposal, canEdit, canManage, working, onOpen, onAct }) {
+function ProposalBand({ proposal, canEdit, canManage, working, onOpen, onAct, onCopy }) {
   const glance = proposalGlance(proposal);
   const menu = (
     <ProposalActions
@@ -397,6 +427,7 @@ function ProposalBand({ proposal, canEdit, canManage, working, onOpen, onAct }) 
       working={working}
       onOpen={onOpen}
       onAct={onAct}
+      onCopy={onCopy}
       compact
       menuOnly
     />
@@ -429,7 +460,11 @@ function canMarkAccepted(status) {
   return ["draft", "approved", "sent", "viewed"].includes(status);
 }
 
-function ProposalActions({ proposal, canEdit, canManage, working, onOpen, onAct, compact = false, menuOnly = false }) {
+function canCopyLink(status) {
+  return ["sent", "viewed", "client_approved", "signed", "changes_requested", "deposit_paid", "paid"].includes(status);
+}
+
+function ProposalActions({ proposal, canEdit, canManage, working, onOpen, onAct, onCopy, compact = false, menuOnly = false }) {
   if (!canEdit && !canManage) return null;
 
   return (
@@ -452,6 +487,11 @@ function ProposalActions({ proposal, canEdit, canManage, working, onOpen, onAct,
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          {canEdit && canCopyLink(proposal.status) && (
+            <DropdownMenuItem onClick={() => onCopy(proposal)} disabled={!!working}>
+              <Link2 className="mr-2 h-4 w-4" /> Copy link
+            </DropdownMenuItem>
+          )}
           {canEdit && canMarkAccepted(proposal.status) && (
             <DropdownMenuItem onClick={() => onAct(proposal, "mark-accepted")} disabled={!!working}>
               <CheckCircle2 className="mr-2 h-4 w-4" /> Mark accepted

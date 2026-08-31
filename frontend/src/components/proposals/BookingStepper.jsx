@@ -1,11 +1,12 @@
 import { Check } from "lucide-react";
 import { cn } from "../../lib/utils";
 
-export default function BookingStepper({ step, steps, onSelect }) {
+export default function BookingStepper({ step, steps, onSelect, furthest }) {
   const total = steps.length;
   const complete = step > total;
+  const reached = complete ? total : Math.min(Math.max(furthest ?? step, 1), total);
   const current = complete ? { label: "Confirmed" } : steps[Math.min(Math.max(step, 1), total) - 1];
-  const pct = complete ? 100 : Math.round(((step - 1) / (total - 1)) * 100);
+  const pct = complete ? 100 : Math.round(((reached - 1) / (total - 1)) * 100);
 
   return (
     <div
@@ -25,9 +26,9 @@ export default function BookingStepper({ step, steps, onSelect }) {
           />
           <ol className={cn("relative grid", total === 4 ? "grid-cols-4" : total === 3 ? "grid-cols-3" : "grid-cols-5")}>
             {steps.map((item) => {
-              const done = complete || item.step < step;
+              const done = complete || (item.step < reached && item.step !== step);
               const active = !complete && item.step === step;
-              const canSelect = Boolean(onSelect) && done;
+              const canSelect = Boolean(onSelect) && item.step <= reached && item.step !== step;
               return (
                 <li key={item.step} className="flex justify-center">
                   <span
