@@ -2,9 +2,24 @@ import React from "react";
 import { formatMoney, proposalTotals } from "../../lib/proposals";
 import "./AgreementLetter.css";
 
+export function clientPartyNames(proposal, agreement) {
+  const named = String(
+    agreement?.client?.name || proposal?.client?.contact_name || proposal?.client_name || "",
+  ).trim();
+  return {
+    displayName: named || "The Client",
+    midName: named || "the Client",
+  };
+}
+
+export function agreementPdfFilename(clientName) {
+  const name = String(clientName || "").trim() || "Client";
+  return `${name} \u2013 Studio 7 Miami Proposal.pdf`;
+}
+
 export function agreementLetterModel(proposal, agreement, signature) {
   const totals = proposalTotals(proposal);
-  const clientName = agreement?.client?.name || proposal?.client?.contact_name || "the Client";
+  const { displayName, midName } = clientPartyNames(proposal, agreement);
   const title = agreement?.title || proposal?.title || "Content proposal";
   const schedule = agreement?.schedule || proposal?.schedule || {};
   const pricing = agreement?.pricing || proposal?.pricing || {};
@@ -19,7 +34,8 @@ export function agreementLetterModel(proposal, agreement, signature) {
   const sessionDate = formatLetterDate(schedule.session_date);
   const signedAt = formatLetterDateTime(signature?.signed_at || proposal?.signed_at);
   return {
-    clientName,
+    clientName: displayName,
+    clientMid: midName,
     title,
     sessionDate,
     arrival: formatLetterTime(schedule.arrival_time),
@@ -52,7 +68,11 @@ export default function AgreementLetter({ proposal, agreement, signature }) {
     <div className="s7-letter-page">
       <article className="s7-letter">
         <header className="s7-letter__head">
-          <p className="s7-letter__brand">Studio 7 Miami</p>
+          <img
+            src="/brand/logo.png"
+            alt="Studio 7 Miami"
+            className="brand-logo brand-logo-nav brand-logo-nav-sidebar brand-logo-on-light-canvas s7-letter__logo"
+          />
           <div>
             <p className="s7-letter__kicker">Service agreement</p>
             <h1 className="s7-letter__title">{model.title}</h1>
@@ -68,14 +88,14 @@ export default function AgreementLetter({ proposal, agreement, signature }) {
         <section>
           <h2>Parties</h2>
           <p>
-            This Service Agreement is entered into between Studio 7 Miami (“Studio 7”) and {model.clientName} (“Client”)
+            This Service Agreement is entered into between Studio 7 Miami (“Studio 7”) and {model.clientMid} (“The Client”)
             for the creative services described in the proposal titled “{model.title}.”
           </p>
         </section>
         <section>
           <h2>Session</h2>
           <p>
-            Studio 7 will provide production services for {model.clientName}
+            Studio 7 will provide production services for {model.clientMid}
             {sessionBits.length ? ` ${sessionBits.join(", ")}` : ""}.
           </p>
         </section>
@@ -88,9 +108,8 @@ export default function AgreementLetter({ proposal, agreement, signature }) {
         </section>
         <section>
           <h2>Deliverables &amp; turnaround</h2>
-          <p>
-            Deliverables: {model.deliverables}. Estimated turnaround: {model.turnaround}.
-          </p>
+          <p>Deliverables: {model.deliverables}.</p>
+          <p>Estimated turnaround: {model.turnaround}.</p>
         </section>
         <section>
           <h2>Payment terms</h2>
@@ -99,33 +118,27 @@ export default function AgreementLetter({ proposal, agreement, signature }) {
         <section>
           <h2>Acceptance</h2>
           <p>
-            {model.terms} By signing below, {model.clientName} acknowledges they have reviewed the proposal and agree
+            {model.terms} By signing below, {model.clientMid} acknowledges they have reviewed the proposal and agree
             to these terms as presented.
           </p>
         </section>
 
         <div className="s7-letter__sign">
-          <div>
-            {model.signatureImage ? (
-              <img src={model.signatureImage} alt="Signature" />
-            ) : (
-              <div className="s7-letter__line" />
-            )}
-            <small>Signature</small>
-            <strong>{model.signerName || "To be signed"}</strong>
-          </div>
-          <div>
-            <small>Signed</small>
-            <strong>{model.signedAt || "Pending"}</strong>
-            {model.signerEmail ? <strong>{model.signerEmail}</strong> : null}
-          </div>
+          {model.signatureImage ? (
+            <img src={model.signatureImage} alt="Signature" />
+          ) : (
+            <div className="s7-letter__line" />
+          )}
+          {model.signerName ? <p>{model.signerName}</p> : null}
+          {model.signedAt ? <p>{model.signedAt}</p> : null}
+          {model.signerEmail ? <p>{model.signerEmail}</p> : null}
         </div>
 
-        <p className="s7-letter__foot">
-          Studio 7 Miami<br />
-          638 NW 62nd St, Miami, FL 33150<br />
-          studio7.miami
-        </p>
+        <footer className="s7-letter__foot">
+          <span>638 NW 62nd St, Miami, FL 33150</span>
+          <span>Studio 7 Miami</span>
+          <span>hello@studio7.miami</span>
+        </footer>
       </article>
     </div>
   );
@@ -144,13 +157,16 @@ function formatLetterDateTime(value) {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString(undefined, {
+  const datePart = date.toLocaleDateString(undefined, {
     month: "long",
     day: "numeric",
     year: "numeric",
+  });
+  const timePart = date.toLocaleTimeString(undefined, {
     hour: "numeric",
     minute: "2-digit",
   });
+  return `${datePart} at ${timePart}`;
 }
 
 function formatLetterTime(value) {

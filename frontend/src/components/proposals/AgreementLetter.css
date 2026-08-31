@@ -23,19 +23,16 @@
 
 .s7-letter__head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 24px;
   padding-bottom: 18px;
   border-bottom: 1px solid rgba(17, 17, 17, 0.1);
 }
 
-.s7-letter__brand {
-  margin: 0;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+.s7-letter__logo {
+  display: block;
+  flex-shrink: 0;
 }
 
 .s7-letter__kicker {
@@ -110,10 +107,11 @@
   line-height: 1.65;
 }
 
+.s7-letter section p + p {
+  margin-top: 6px;
+}
+
 .s7-letter__sign {
-  display: grid;
-  grid-template-columns: 1.2fr 1fr;
-  gap: 28px;
   margin-top: 36px;
   padding-top: 22px;
   border-top: 1px solid rgba(17, 17, 17, 0.1);
@@ -130,33 +128,32 @@
 }
 
 .s7-letter__sign .s7-letter__line {
+  max-width: 280px;
   height: 72px;
   border-bottom: 1px solid rgba(17, 17, 17, 0.16);
 }
 
-.s7-letter__sign small {
-  display: block;
-  margin-top: 8px;
-  color: #6f6f6b;
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.s7-letter__sign strong {
-  display: block;
-  margin-top: 4px;
+.s7-letter__sign p {
+  margin: 10px 0 0;
+  color: #111;
   font-size: 13px;
   font-weight: 500;
+  line-height: 1.45;
 }
 
 .s7-letter__foot {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
   margin-top: 40px;
   color: #6f6f6b;
   font-size: 11px;
   line-height: 1.55;
 }
+
+.s7-letter__foot span:nth-child(1) { text-align: left; }
+.s7-letter__foot span:nth-child(2) { text-align: center; }
+.s7-letter__foot span:nth-child(3) { text-align: right; }
 
 @media print {
   .s7-letter-page {
@@ -179,7 +176,11 @@
   }
 
   .s7-letter__meta,
-  .s7-letter__sign {
+  .s7-letter__foot {
     grid-template-columns: 1fr;
+  }
+
+  .s7-letter__foot span {
+    text-align: center;
   }
 }

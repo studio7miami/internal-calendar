@@ -6,7 +6,9 @@ import io
 import re
 import unicodedata
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import quote
 
 from fpdf import FPDF
 
@@ -16,6 +18,31 @@ INK = (17, 17, 17)
 MUTED = (111, 111, 107)
 PAPER = (252, 252, 250)
 MARGIN = 25.4  # 1 inch
+EN_DASH = "\u2013"
+LOGO_HEIGHT_MM = 9
+
+
+def _logo_path() -> Optional[Path]:
+    here = Path(__file__).resolve().parent
+    repo = here.parent
+    for candidate in (
+        here / "brand" / "logo.png",
+        repo / "frontend" / "public" / "brand" / "logo.png",
+        repo / "frontend" / "build" / "brand" / "logo.png",
+    ):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _client_party(proposal: dict, agreement: dict) -> tuple[str, str]:
+    raw = ""
+    client_obj = agreement.get("client") if isinstance(agreement.get("client"), dict) else None
+    if isinstance(client_obj, dict):
+        raw = str(client_obj.get("name") or "").strip()
+    if not raw:
+        raw = str(proposal.get("client_name") or "").strip()
+    return _text(raw or "The Client"), _text(raw or "the Client")
 
 
 def _text(value: Any, fallback: str = "") -> str:
@@ -53,7 +80,7 @@ def _datetime_long(value: Any) -> str:
     try:
         stamp = datetime.fromisoformat(raw.replace("Z", "+00:00"))
         clock = stamp.strftime("%I:%M %p").lstrip("0")
-        return f"{_pretty_day(stamp)} · {clock}"
+        return f"{_pretty_day(stamp)} at {clock}"
     except ValueError:
         return raw
 
@@ -104,14 +131,23 @@ class AgreementPDF(FPDF):
         self.set_fill_color(*PAPER)
         self.rect(0, 0, self.w, self.h, "F")
         self.set_y(self.t_margin)
-        self.set_font("Helvetica", "B", 9)
-        self.set_text_color(*INK)
-        self.cell(0, 5, "STUDIO 7 MIAMI", align="L")
+        logo = _logo_path()
+        row_h = LOGO_HEIGHT_MM if logo else 5
+        if logo:
+            try:
+                self.image(str(logo), x=self.l_margin, y=self.t_margin, h=LOGO_HEIGHT_MM)
+            except Exception:
+                logo = None
+                row_h = 5
+        if not logo:
+            self.set_font("Helvetica", "B", 9)
+            self.set_text_color(*INK)
+            self.cell(0, row_h, "STUDIO 7 MIAMI", align="L")
         self.set_font("Helvetica", "", 8)
         self.set_text_color(*GOLD)
         self.set_xy(self.l_margin, self.t_margin)
-        self.cell(0, 5, "SERVICE AGREEMENT", align="R")
-        self.ln(8)
+        self.cell(0, row_h, "SERVICE AGREEMENT", align="R")
+        self.ln(row_h + 3)
         self.set_draw_color(17, 17, 17)
         self.set_line_width(0.2)
         y = self.get_y()
@@ -119,12 +155,18 @@ class AgreementPDF(FPDF):
         self.ln(10)
 
     def footer(self) -> None:
-        self.set_y(-16)
+        self.set_y(-18)
         self.set_font("Helvetica", "", 8)
         self.set_text_color(*MUTED)
-        self.cell(0, 4, "Studio 7 Miami  ·  638 NW 62nd St, Miami, FL 33150", align="L")
-        self.set_xy(self.l_margin, -16)
-        self.cell(0, 4, "studio7.miami", align="R")
+        usable = self.w - self.l_margin - self.r_margin
+        col = usable / 3
+        y = self.get_y()
+        self.set_xy(self.l_margin, y)
+        self.multi_cell(col, 4, "638 NW 62nd St, Miami, FL 33150", align="L")
+        self.set_xy(self.l_margin + col, y)
+        self.multi_cell(col, 4, "Studio 7 Miami", align="C")
+        self.set_xy(self.l_margin + col * 2, y)
+        self.multi_cell(col, 4, "hello@studio7.miami", align="R")
 
 
 def _heading(pdf: AgreementPDF, label: str) -> None:
@@ -161,10 +203,7 @@ def render_agreement_pdf(
 ) -> bytes:
     agreement = agreement if isinstance(agreement, dict) else {}
     signature = signature if isinstance(signature, dict) else {}
-    client = _text(
-        (agreement.get("client") or {}).get("name") if isinstance(agreement.get("client"), dict) else "",
-        _text(proposal.get("client_name"), "the Client"),
-    )
+    client_display, client = _client_party(proposal, agreement)
     title = _text(agreement.get("title") or proposal.get("title"), "Content proposal")
     schedule = agreement.get("schedule") if isinstance(agreement.get("schedule"), dict) else {}
     if not schedule:
@@ -219,7 +258,7 @@ def render_agreement_pdf(
 
     top = pdf.get_y()
     col = (pdf.w - pdf.l_margin - pdf.r_margin) / 3
-    _meta_cell(pdf, pdf.l_margin, col - 3, top, "Client", client)
+    _meta_cell(pdf, pdf.l_margin, col - 3, top, "Client", client_display)
     _meta_cell(pdf, pdf.l_margin + col, col - 3, top, "Session", session_date)
     _meta_cell(pdf, pdf.l_margin + col * 2, col, top, "Studio", "Studio 7 Miami")
     pdf.set_y(top + 16)
@@ -227,7 +266,7 @@ def render_agreement_pdf(
     _heading(pdf, "Parties")
     _body(
         pdf,
-        f'This Service Agreement is entered into between Studio 7 Miami ("Studio 7") and {client} ("Client") '
+        f'This Service Agreement is entered into between Studio 7 Miami ("Studio 7") and {client} ("The Client") '
         f'for the creative services described in the proposal titled "{title}."',
     )
     _heading(pdf, "Session")
@@ -240,7 +279,8 @@ def render_agreement_pdf(
         "The remaining balance is due under the payment terms below.",
     )
     _heading(pdf, "Deliverables & turnaround")
-    _body(pdf, f"Deliverables: {deliverables}. Estimated turnaround: {turnaround}.")
+    _body(pdf, f"Deliverables: {deliverables}.")
+    _body(pdf, f"Estimated turnaround: {turnaround}.")
     _heading(pdf, "Payment terms")
     _body(pdf, payment_terms)
     _heading(pdf, "Acceptance")
@@ -255,49 +295,50 @@ def render_agreement_pdf(
     pdf.line(pdf.l_margin, y, pdf.w - pdf.r_margin, y)
     pdf.ln(6)
 
-    signer = _text(signature.get("signer_name"), "To be signed")
-    signed_at = _datetime_long(signature.get("signed_at")) or "Pending"
+    signer = _text(signature.get("signer_name"))
+    signed_at = _datetime_long(signature.get("signed_at"))
     signer_email = _text(signature.get("signer_email"))
     image = _text(signature.get("signature_data"))
     sign_w = 80
+    y = pdf.get_y()
     if image.startswith("data:image"):
         try:
             header, b64 = image.split(",", 1)
             raw = base64.b64decode(b64)
             kind = "PNG" if "png" in header.lower() else "JPEG"
-            pdf.image(io.BytesIO(raw), x=pdf.l_margin, y=pdf.get_y(), w=sign_w, h=22, type=kind)
-            pdf.ln(24)
+            pdf.image(io.BytesIO(raw), x=pdf.l_margin, y=y, w=sign_w, h=22, type=kind)
+            pdf.set_y(y + 24)
         except Exception:
-            pdf.ln(22)
+            pdf.set_draw_color(17, 17, 17)
+            pdf.line(pdf.l_margin, y + 22, pdf.l_margin + sign_w, y + 22)
+            pdf.set_y(y + 24)
     else:
-        pdf.ln(16)
         pdf.set_draw_color(17, 17, 17)
-        line_y = pdf.get_y()
-        pdf.line(pdf.l_margin, line_y, pdf.l_margin + sign_w, line_y)
-        pdf.ln(3)
-
-    pdf.set_font("Helvetica", "B", 7)
-    pdf.set_text_color(*GOLD)
-    pdf.cell(sign_w + 8, 5, "SIGNATURE")
-    pdf.cell(0, 5, "SIGNED")
-    pdf.ln(6)
+        pdf.line(pdf.l_margin, y + 16, pdf.l_margin + sign_w, y + 16)
+        pdf.set_y(y + 20)
     pdf.set_font("Helvetica", "", 11)
     pdf.set_text_color(*INK)
-    pdf.cell(sign_w + 8, 6, signer)
-    pdf.cell(0, 6, signed_at)
-    if signer_email:
-        pdf.ln(6)
-        pdf.set_x(pdf.l_margin + sign_w + 8)
-        pdf.cell(0, 6, signer_email)
+    for line in (signer, signed_at, signer_email):
+        if not line:
+            continue
+        pdf.set_x(pdf.l_margin)
+        pdf.multi_cell(0, 6, line)
 
     out = pdf.output()
     return bytes(out) if not isinstance(out, (bytes, bytearray)) else bytes(out)
 
 
 def agreement_filename(proposal: dict) -> str:
-    slug = re.sub(
-        r"[^a-z0-9]+",
-        "-",
-        _text(proposal.get("client_name") or proposal.get("title"), "studio-7").lower(),
-    ).strip("-")
-    return f"{slug or 'studio-7'}-agreement.pdf"
+    name = str(proposal.get("client_name") or "").strip()
+    client = proposal.get("client")
+    if not name and isinstance(client, dict):
+        name = str(client.get("contact_name") or client.get("name") or "").strip()
+    safe = re.sub(r'[\x00-\x1f\\/:*?"<>|]+', " ", name or "Client").strip() or "Client"
+    safe = re.sub(r"\s+", " ", safe)
+    return f"{safe} {EN_DASH} Studio 7 Miami Proposal.pdf"
+
+
+def agreement_content_disposition(filename: str) -> str:
+    ascii_name = filename.replace(EN_DASH, "-").encode("ascii", "ignore").decode("ascii").strip()
+    ascii_name = ascii_name.replace('"', "") or "Studio 7 Miami Proposal.pdf"
+    return f'inline; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(filename)}'

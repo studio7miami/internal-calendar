@@ -1,5 +1,7 @@
 import React, { useState } from "react";
-import { formatMoney, proposalTotals } from "../../lib/proposals";
+import { formatMoney, normalizeProposal, proposalTotals } from "../../lib/proposals";
+import { luisLiveDraft } from "../../lib/liveLuisProposal";
+import AgreementLetter, { agreementPdfFilename } from "./AgreementLetter";
 
 const LOGO = "https://book.studio7.miami/images/studio7-logo.png";
 
@@ -28,7 +30,7 @@ export default function EmailConfirmPreview({ proposal }) {
           <div><span>From</span><strong>Studio 7 Miami &lt;hello@studio7.miami&gt;</strong></div>
           <div><span>To</span><strong>{model.email}</strong></div>
           <div><span>Subject</span><strong>{EMAIL_TONES[tone].subject}</strong></div>
-          {tone === "foil" ? <div><span>Attached</span><strong>Agreement.pdf</strong></div> : null}
+          {tone === "foil" ? <div><span>Attached</span><strong>{agreementPdfFilename(model.name)}</strong></div> : null}
         </div>
         {tone === "foil" ? <FoilEmail model={model} /> : null}
         {tone === "seven" ? <ReminderEmail model={model} when="7 days" /> : null}
@@ -45,6 +47,7 @@ function emailModel(proposal) {
   const name = proposal?.client?.contact_name || "Alex Rivera";
   const token = typeof window !== "undefined" ? window.location.pathname.split("/").pop() : "mock-proposal-client-trial";
   return {
+    name,
     firstName: name.trim().split(/\s+/)[0],
     email: proposal?.client?.email || "alex@example.com",
     title: proposal?.title || "Portrait Session",
@@ -53,6 +56,7 @@ function emailModel(proposal) {
     deposit: formatMoney(totals.deposit, currency),
     remaining: formatMoney(Math.max(0, (totals.total || 0) - (totals.deposit || 0)), currency),
     depositDue: formatSessionDate(offsetDate(proposal?.schedule?.session_date, -14)),
+    paymentType: proposal?.payment_type || "deposit",
     payUrl: `${typeof window !== "undefined" ? window.location.origin : ""}/p/${token}?pay=remaining`,
   };
 }
@@ -81,21 +85,22 @@ function PayBalance({ href, amount }) {
 }
 
 function FoilEmail({ model }) {
+  const isDeposit = model.paymentType !== "full";
+  const paymentLabel = isDeposit ? "Payment (1 out of 2)" : "Payment";
+  const paymentValue = isDeposit ? model.deposit : model.total;
   return (
     <div className="s7-email s7-email--foil">
       <img src={LOGO} alt="Studio 7 Miami" />
       <span className="s7-email__foil">Confirmed</span>
       <h1>You&apos;re booked.</h1>
       <p>
-        {model.firstName}, your {model.title} is on the calendar for {model.date}.
-        The signed agreement is attached.
+        {model.firstName}, we have you on the calendar for {model.date}.
       </p>
       <div className="s7-email__facts">
         <div><small>Project</small><strong>{model.title}</strong></div>
         <div><small>Date</small><strong>{model.date}</strong></div>
-        <div><small>Deposit</small><strong>{model.deposit}</strong></div>
+        <div><small>{paymentLabel}</small><strong>{paymentValue}</strong></div>
       </div>
-      <p className="s7-email__note">Agreement.pdf is attached to this email.</p>
     </div>
   );
 }
@@ -140,6 +145,38 @@ function DepositDueEmail({ model }) {
       </div>
       <PayBalance href={model.payUrl} amount={model.remaining} />
       <p className="s7-email__sign">With love,<br />Studio 7 Miami</p>
+    </div>
+  );
+}
+
+const MOCK_CLIENT_SIGNATURE =
+  "data:image/svg+xml;charset=utf-8," +
+  encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 110" fill="none">
+    <path d="M18 72c18-32 38-48 52-28 10 14-6 34 10 40 22 8 34-36 58-34 16 1 24 18 42 16 28-4 40-30 72-22 22 6 40 22 68 14" stroke="#111" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M44 78c36-8 86-10 140 4" stroke="#111" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M96 28c2 18 1 38-8 54" stroke="#111" stroke-width="1.8" stroke-linecap="round"/>
+  </svg>`);
+
+export function SignedAgreementSendPreview() {
+  const proposal = normalizeProposal(luisLiveDraft());
+  const model = emailModel(proposal);
+  const signature = {
+    signer_name: "Luis Corrales",
+    signer_email: "luis@corrales.co",
+    signed_at: "2026-08-31T16:05:00-04:00",
+    signature_data: MOCK_CLIENT_SIGNATURE,
+  };
+  return (
+    <div className="s7-email-stage s7-email-stage--letter">
+      <div className="s7-email-chrome">
+        <div><span>From</span><strong>Studio 7 Miami &lt;hello@studio7.miami&gt;</strong></div>
+        <div><span>To</span><strong>{model.email}</strong></div>
+        <div><span>Subject</span><strong>You&apos;re booked — your agreement is attached</strong></div>
+        <div><span>Attached</span><strong>{agreementPdfFilename("Luis Corrales")}</strong></div>
+      </div>
+      <FoilEmail model={model} />
+      <p className="s7-email__note s7-letter-attach-label">Attached PDF · US Letter · 1-inch margins</p>
+      <AgreementLetter proposal={proposal} agreement={proposal} signature={signature} />
     </div>
   );
 }

@@ -3683,10 +3683,16 @@
   }
 }
 
-.s7-email-stage {
-  max-width: 640px;
-  margin: 0 auto;
-  padding: 8px 20px 64px;
+.s7-letter-attach-label {
+  margin: 28px 0 12px !important;
+  text-align: center;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 10px !important;
+}
+
+.s7-email-stage--letter {
+  max-width: 8.5in;
 }
 
 .s7-email-chrome {

@@ -972,9 +972,11 @@ async def _copy_to_mock_inbox(
 ) -> tuple[bool, Optional[str]]:
     """Send Tai a real To: copy. BCC is easy for Resend to drop, and Text skips client mail."""
     inbox = PROPOSAL_MOCK_INBOX
+    intended = str(proposal.get("client_email") or "").strip()
     if not inbox:
         return False, "No mock inbox"
-    intended = str(proposal.get("client_email") or "").strip()
+    if intended and inbox.lower() == intended.lower():
+        return False, "Copy inbox is the client"
     copy_subject = f"[Copy · {intended or 'no client email'}] {subject}"
     try:
         delivered, error, _provider = await invite_email.deliver_html_email(
@@ -993,7 +995,10 @@ async def _copy_to_mock_inbox(
 
 async def _mock_process_email(proposal: dict, headline: str, detail: str) -> None:
     inbox = PROPOSAL_MOCK_INBOX
+    client_email = str(proposal.get("client_email") or "").strip().lower()
     if not inbox:
+        return
+    if client_email and inbox.lower() == client_email:
         return
     client = str(proposal.get("client_name") or "Client").strip() or "Client"
     intended = str(proposal.get("client_email") or "").strip()
@@ -1027,12 +1032,25 @@ async def _mock_process_email(proposal: dict, headline: str, detail: str) -> Non
         logger.exception("Could not send proposal mock email to %s", inbox)
 
 
-def _booked_email(proposal: dict) -> tuple[str, str, str]:
+def _booked_email(proposal: dict, payment_type: str = "deposit") -> tuple[str, str, str]:
     font = "Manrope, Helvetica, Arial, sans-serif"
     logo = "https://framerusercontent.com/assets/3HwVggLmyKfOrpHHCI76j8tFoTY.png"
     first = html.escape(_client_first_name(proposal))
     title = html.escape(str(proposal.get("title") or "your session"))
-    date_text = html.escape(str(proposal.get("session_date") or ""))
+    date_pretty = agreement_pdf._date_long(proposal.get("session_date"))
+    if date_pretty == "Date to be confirmed":
+        date_pretty = ""
+    date_html = html.escape(date_pretty)
+    total_cents, deposit_cents, _percent = agreement_pdf._totals(proposal, {})
+    currency = str((proposal.get("pricing") or {}).get("currency") or "USD")
+    is_deposit = str(payment_type or "deposit") != "full"
+    amount = deposit_cents if is_deposit else total_cents
+    payment_label = "Payment (1 out of 2)" if is_deposit else "Payment"
+    payment_value = html.escape(agreement_pdf._money(amount, currency))
+    calendar_line = f"{first}, we have you on the calendar"
+    if date_html:
+        calendar_line += f" for {date_html}"
+    calendar_line += "."
     subject = "You're booked — your agreement is attached"
     body = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1044,7 +1062,14 @@ def _booked_email(proposal: dict) -> tuple[str, str, str]:
 <tr><td style="padding:36px 28px 12px;">
 <p style="margin:0 0 8px;font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#C9A227;">Confirmed</p>
 <h1 style="margin:0 0 12px;font-size:28px;font-weight:600;letter-spacing:-.02em;">You're booked.</h1>
-<p style="margin:0;font-size:15px;line-height:1.6;color:#6F6F6B;">{first}, your {title} is on the calendar{f' for {date_text}' if date_text else ''}. The signed agreement is attached as a PDF.</p>
+<p style="margin:0 0 22px;font-size:15px;line-height:1.6;color:#6F6F6B;">{calendar_line}</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<tr>
+<td style="padding:0 12px 0 0;width:33%;vertical-align:top;"><p style="margin:0 0 4px;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#C9A227;">Project</p><p style="margin:0;font-size:14px;">{title}</p></td>
+<td style="padding:0 12px;width:33%;vertical-align:top;"><p style="margin:0 0 4px;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#C9A227;">Date</p><p style="margin:0;font-size:14px;">{date_html or "To be confirmed"}</p></td>
+<td style="padding:0 0 0 12px;width:33%;vertical-align:top;"><p style="margin:0 0 4px;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#C9A227;">{html.escape(payment_label)}</p><p style="margin:0;font-size:14px;">{payment_value}</p></td>
+</tr>
+</table>
 </td></tr>
 <tr><td style="padding:28px 28px 40px;text-align:center;">
 <p style="margin:0;font-size:12px;line-height:1.6;color:#6F6F6B;">Studio 7 Miami<br>638 NW 62nd St, Miami, FL 33150</p>
@@ -1052,8 +1077,10 @@ def _booked_email(proposal: dict) -> tuple[str, str, str]:
     text = "\n".join(filter(None, [
         "You're booked.",
         "",
-        f"{_client_first_name(proposal)}, your {proposal.get('title') or 'session'} is on the calendar.",
-        "The signed agreement is attached as a PDF.",
+        f"{_client_first_name(proposal)}, we have you on the calendar{f' for {date_pretty}' if date_pretty else ''}.",
+        f"Project: {proposal.get('title') or 'your session'}",
+        f"Date: {date_pretty or 'To be confirmed'}",
+        f"{payment_label}: {agreement_pdf._money(amount, currency)}",
         "",
         "Studio 7 Miami",
         "638 NW 62nd St, Miami, FL 33150",
@@ -1061,7 +1088,12 @@ def _booked_email(proposal: dict) -> tuple[str, str, str]:
     return subject, body, text
 
 
-async def _send_agreement_pdf_email(proposal: dict, revision: dict, signature: Optional[dict] = None) -> None:
+async def _send_agreement_pdf_email(
+    proposal: dict,
+    revision: dict,
+    signature: Optional[dict] = None,
+    payment_type: str = "deposit",
+) -> None:
     to_email = str(proposal.get("client_email") or "").strip()
     pdf = agreement_pdf.render_agreement_pdf(
         proposal=proposal,
@@ -1069,7 +1101,7 @@ async def _send_agreement_pdf_email(proposal: dict, revision: dict, signature: O
         signature=signature,
     )
     filename = agreement_pdf.agreement_filename(proposal)
-    subject, html_body, text_body = _booked_email(proposal)
+    subject, html_body, text_body = _booked_email(proposal, payment_type)
     files = [{"filename": filename, "content": pdf}]
     if to_email:
         try:
@@ -1084,17 +1116,18 @@ async def _send_agreement_pdf_email(proposal: dict, revision: dict, signature: O
                 logger.warning("Booked email to %s failed: %s", to_email, error)
         except Exception:
             logger.exception("Could not send booked email to %s", to_email)
-    if PROPOSAL_MOCK_INBOX:
+    copy_inbox = (PROPOSAL_MOCK_INBOX or "").strip()
+    if copy_inbox and copy_inbox.lower() != to_email.lower():
         try:
             await invite_email.deliver_html_email(
-                to_email=PROPOSAL_MOCK_INBOX,
+                to_email=copy_inbox,
                 subject=f"[Copy] {subject}"[:200],
                 html_body=html_body,
                 text_body=text_body,
                 attachments=files,
             )
         except Exception:
-            logger.exception("Could not send agreement PDF copy to %s", PROPOSAL_MOCK_INBOX)
+            logger.exception("Could not send agreement PDF copy to %s", copy_inbox)
 
 
 def _notify_approvers(proposal: dict) -> None:
@@ -1904,11 +1937,6 @@ async def mark_accepted(
         metadata={"reason": "mark_accepted"},
     )
     payload = _serialize(updated, token)
-    await _mock_process_email(
-        {**updated, "status": "client_approved"},
-        "Marked accepted",
-        f"Sign + pay link: {payload.get('share_url') or '—'}",
-    )
     return payload
 
 
@@ -1959,7 +1987,7 @@ async def public_agreement_pdf(token: str, request: Request):
     return Response(
         content=pdf,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        headers={"Content-Disposition": agreement_pdf.agreement_content_disposition(filename)},
     )
 
 
@@ -2083,7 +2111,7 @@ async def public_change_request(token: str, data: ChangeRequestIn, request: Requ
 
 
 @router.post("/public/proposals/{token}/approve")
-async def public_approve(token: str, data: PublicApproveIn, request: Request, background_tasks: BackgroundTasks):
+async def public_approve(token: str, data: PublicApproveIn, request: Request):
     _public_rate_limit(request)
     share, proposal, _revision = _public_share(token)
     if proposal["status"] in ("client_approved", "signed", "deposit_paid", "paid"):
@@ -2106,17 +2134,11 @@ async def public_approve(token: str, data: PublicApproveIn, request: Request, ba
     client_name = data.client_name or proposal["client_name"]
     _event(proposal["id"], "client_approved", share_id=share["id"], metadata={"client_name": client_name})
     _notify(proposal.get("created_by"), proposal["id"], "proposal_client_approved", "Client approved proposal", f"{client_name} approved the proposal.")
-    background_tasks.add_task(
-        _mock_process_email,
-        {**proposal, "status": "client_approved", "client_name": client_name},
-        "Client accepted the proposal",
-        f"{client_name} accepted. Next is the agreement and deposit.",
-    )
     return {"ok": True, "status": "client_approved", "approved_at": timestamp, "version": next_version}
 
 
 @router.post("/public/proposals/{token}/sign", status_code=201)
-async def public_sign(token: str, data: SignatureIn, request: Request, background_tasks: BackgroundTasks):
+async def public_sign(token: str, data: SignatureIn, request: Request):
     _public_rate_limit(request)
     share, proposal, revision = _public_share(token)
     if proposal["status"] not in ("sent", "viewed", "client_approved", "signed", "deposit_paid", "paid"):
@@ -2154,12 +2176,6 @@ async def public_sign(token: str, data: SignatureIn, request: Request, backgroun
     }).eq("id", proposal["id"]).eq("version", proposal["version"]).execute()
     _event(proposal["id"], "signed", share_id=share["id"], metadata={"signature_id": row["id"]})
     _notify(proposal.get("created_by"), proposal["id"], "proposal_signed", "Proposal signed", f"{data.signer_name} signed the proposal.")
-    background_tasks.add_task(
-        _mock_process_email,
-        {**proposal, "status": "signed"},
-        "Agreement signed",
-        f"{data.signer_name} signed the agreement ({data.signer_email}).",
-    )
     return {"id": row["id"], "status": "signed", "signed_at": timestamp, "version": next_version}
 
 
@@ -2373,7 +2389,9 @@ async def _process_stripe_event(event: dict) -> None:
             _db.table("proposal_signatures").select("signer_name,signer_email,signed_at,signature_data")
             .eq("proposal_id", proposal["id"]).order("signed_at", desc=True).limit(1).execute().data or []
         )
-        await _send_agreement_pdf_email(proposal, revision, signatures[0] if signatures else None)
+        await _send_agreement_pdf_email(
+            proposal, revision, signatures[0] if signatures else None, payment_type,
+        )
 
 
 @router.post("/webhooks/stripe")

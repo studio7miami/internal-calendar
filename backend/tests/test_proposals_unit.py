@@ -438,4 +438,7 @@ def test_agreement_pdf_is_a_letter_document():
     )
     assert pdf.startswith(b"%PDF")
     assert b"SERVICE AGREEMENT" in pdf or b"Studio 7" in pdf or len(pdf) > 800
-    assert agreement_pdf.agreement_filename({"client_name": "Tai"}) == "tai-agreement.pdf"
+    assert agreement_pdf.agreement_filename({"client_name": "Tai"}) == "Tai – Studio 7 Miami Proposal.pdf"
+    assert agreement_pdf.agreement_filename({"client_name": "Luis Corrales"}) == "Luis Corrales – Studio 7 Miami Proposal.pdf"
+    assert agreement_pdf._client_party({}, {}) == ("The Client", "the Client")
+    assert agreement_pdf._client_party({"client_name": "Tai"}, {}) == ("Tai", "Tai")

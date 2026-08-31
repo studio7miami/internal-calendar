@@ -5,8 +5,8 @@ import { formatMoney, normalizeProposal, proposalTotals } from "../lib/proposals
 import { luisLiveDraft } from "../lib/liveLuisProposal";
 import { formatApiErrorFromAxios, publicProposalApi } from "../lib/api";
 import ProposalDeck, { ATLAS_FINISHES } from "../components/proposals/ProposalDeck";
-import EmailConfirmPreview from "../components/proposals/EmailConfirmPreview";
-import AgreementLetter from "../components/proposals/AgreementLetter";
+import EmailConfirmPreview, { SignedAgreementSendPreview } from "../components/proposals/EmailConfirmPreview";
+import AgreementLetter, { clientPartyNames } from "../components/proposals/AgreementLetter";
 import BookingStepper from "../components/proposals/BookingStepper";
 import SignaturePad from "../components/proposals/SignaturePad";
 import ProposalLoader, { ProposalLoaderGallery } from "../components/proposals/ProposalLoader";
@@ -332,6 +332,9 @@ export default function PublicProposal() {
   if (new URLSearchParams(window.location.search).get("preview") === "loader") {
     return <PublicShell><ProposalLoaderGallery /></PublicShell>;
   }
+  if (new URLSearchParams(window.location.search).get("preview") === "signed-agreement") {
+    return <PublicShell><SignedAgreementSendPreview /></PublicShell>;
+  }
 
   if (!proposal && error) {
     return <PublicShell><div className="s7-public-unavailable"><h1>Proposal unavailable</h1><p>{error}</p></div></PublicShell>;
@@ -535,9 +538,9 @@ function FlowHeader({ step, furthest, onSelect, remainingMs }) {
     <header className="sticky top-0 z-20 border-b border-border bg-background">
       <div className="mx-auto flex w-full max-w-6xl items-center gap-4 px-4 py-2.5 sm:gap-6 sm:px-5 sm:py-3">
         <img
-          src="https://book.studio7.miami/images/studio7-logo.png"
+          src="/brand/logo.png"
           alt="Studio 7 Miami"
-          className="h-11 w-auto shrink-0 object-contain sm:h-12 lg:h-14"
+          className="brand-logo brand-logo-nav h-11 w-auto max-w-[12rem] shrink-0 object-contain sm:h-12 lg:h-14"
         />
         <BookingStepper step={step} furthest={furthest} steps={FLOW_STEPS} onSelect={onSelect} />
         {remainingMs > 0 ? (
@@ -609,7 +612,7 @@ function Agreement({ agreement, proposal, totals, signerName, setSignerName, sig
 }
 
 function AgreementSnapshot({ agreement, proposal, totals }) {
-  const clientName = agreement?.client?.name || proposal?.client?.contact_name || "the Client";
+  const { midName: clientName } = clientPartyNames(proposal, agreement);
   const title = agreement?.title || proposal?.title || "Content proposal";
   const schedule = agreement?.schedule || proposal?.schedule || {};
   const pricing = agreement?.pricing || proposal?.pricing || {};
@@ -630,7 +633,7 @@ function AgreementSnapshot({ agreement, proposal, totals }) {
       <section>
         <h3>Parties</h3>
         <p>
-          This Service Agreement is entered into between Studio 7 Miami (“Studio 7”) and {clientName} (“Client”)
+          This Service Agreement is entered into between Studio 7 Miami (“Studio 7”) and {clientName} (“The Client”)
           for the creative services described in the proposal titled “{title}.”
         </p>
       </section>
@@ -652,10 +655,8 @@ function AgreementSnapshot({ agreement, proposal, totals }) {
       </section>
       <section>
         <h3>Deliverables &amp; turnaround</h3>
-        <p>
-          Deliverables: {deliverables}.{"\n"}
-          Estimated turnaround: {turnaround}.
-        </p>
+        <p>Deliverables: {deliverables}.</p>
+        <p>Estimated turnaround: {turnaround}.</p>
       </section>
       <section>
         <h3>Payment terms</h3>
