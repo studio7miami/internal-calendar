@@ -123,6 +123,94 @@ def mint_share_token(client_name: str = "") -> str:
     return token
 
 
+def choose_named_share_token(client_name: str, proposal_id: str, occupancy: dict[str, str]) -> str:
+    """Pick luis-corrales unless another proposal already owns that hash (including revoked)."""
+    slug = client_share_slug(client_name)
+    if not slug:
+        return secrets.token_urlsafe(24)
+    token = slug
+    suffix = 2
+    while suffix <= 80:
+        owner = occupancy.get(hash_share_token(token))
+        if owner is None or str(owner) == str(proposal_id):
+            return token
+        token = f"{slug}-{suffix}"
+        suffix += 1
+    return f"{slug}-{secrets.token_urlsafe(6)}"
+
+
+def _share_row_by_token(token: str) -> Optional[dict]:
+    if _db is None:
+        return None
+    found = (
+        _db.table("proposal_shares")
+        .select("*")
+        .eq("token_hash", hash_share_token(token))
+        .limit(1)
+        .execute()
+    )
+    return dict(found.data[0]) if found.data else None
+
+
+def _write_share(
+    proposal: dict,
+    user: dict,
+    revision_id: str,
+    token: str,
+    expires_days: int,
+    existing: Optional[dict],
+) -> str:
+    expires_at = (datetime.now(timezone.utc) + timedelta(days=expires_days)).isoformat()
+    if existing:
+        share_id = existing["id"]
+        _db.table("proposal_shares").update({
+            "revoked": False,
+            "revoked_at": None,
+            "revision_id": revision_id,
+            "expires_at": expires_at,
+            "sent_to_email": proposal.get("client_email") or "",
+            "created_by": user["id"],
+        }).eq("id", share_id).execute()
+    else:
+        share_id = str(uuid.uuid4())
+        _db.table("proposal_shares").insert({
+            "id": share_id,
+            "proposal_id": proposal["id"],
+            "revision_id": revision_id,
+            "token_hash": hash_share_token(token),
+            "sent_to_email": proposal.get("client_email") or "",
+            "created_by": user["id"],
+            "expires_at": expires_at,
+            "revoked": False,
+            "created_at": _now(),
+        }).execute()
+    _db.table("proposal_shares").update({
+        "revoked": True, "revoked_at": _now()
+    }).eq("proposal_id", proposal["id"]).eq("revoked", False).neq("id", share_id).execute()
+    return token
+
+
+def issue_share_token(proposal: dict, user: dict, revision_id: str, expires_days: int = 30) -> str:
+    """Reuse this proposal's named URL (tai) instead of minting tai-2, tai-3 on every send."""
+    slug = client_share_slug(proposal.get("client_name") or "")
+    if not slug:
+        token = secrets.token_urlsafe(24)
+        while _share_row_by_token(token):
+            token = secrets.token_urlsafe(24)
+        return _write_share(proposal, user, revision_id, token, expires_days, None)
+
+    token = slug
+    suffix = 2
+    while suffix <= 80:
+        row = _share_row_by_token(token)
+        if row is None or str(row.get("proposal_id")) == str(proposal["id"]):
+            return _write_share(proposal, user, revision_id, token, expires_days, row)
+        token = f"{slug}-{suffix}"
+        suffix += 1
+    token = f"{slug}-{secrets.token_urlsafe(6)}"
+    return _write_share(proposal, user, revision_id, token, expires_days, _share_row_by_token(token))
+
+
 def _normalize_public_token(token: str) -> str:
     cleaned = (token or "").strip()
     # Named links are short (luis-corrales). Random tokens are longer.
@@ -793,7 +881,10 @@ def _public_share(token: str) -> tuple[dict, dict, dict]:
         raise HTTPException(status_code=404, detail="Proposal link not found")
     share = dict(result.data[0])
     if share.get("revoked"):
-        raise HTTPException(status_code=410, detail="Proposal link was revoked")
+        latest = _latest_active_share(share["proposal_id"])
+        if not latest:
+            raise HTTPException(status_code=410, detail="Proposal link was revoked")
+        share = latest
     expires = _parse_ts(share.get("expires_at"))
     if expires and expires < datetime.now(timezone.utc):
         raise HTTPException(status_code=410, detail="Proposal link expired")
@@ -1111,22 +1202,7 @@ async def _send(proposal: dict, version: int, expires_days: int, user: dict, *, 
         revision_id = revision["id"]
         send_updates["current_revision_id"] = revision_id
     booking = _upsert_proposal_hold(proposal, calendar, user)
-    _db.table("proposal_shares").update({
-        "revoked": True, "revoked_at": _now()
-    }).eq("proposal_id", proposal["id"]).eq("revoked", False).execute()
-    token = mint_share_token(proposal.get("client_name") or "")
-    share = {
-        "id": str(uuid.uuid4()),
-        "proposal_id": proposal["id"],
-        "revision_id": revision_id,
-        "token_hash": hash_share_token(token),
-        "sent_to_email": proposal["client_email"] or "",
-        "created_by": user["id"],
-        "expires_at": (datetime.now(timezone.utc) + timedelta(days=expires_days)).isoformat(),
-        "revoked": False,
-        "created_at": _now(),
-    }
-    _db.table("proposal_shares").insert(share).execute()
+    token = issue_share_token(proposal, user, revision_id, expires_days)
     link = _share_url(token, step=_client_share_step(proposal.get("status")))
     delivered = False
     error = None
@@ -1151,8 +1227,9 @@ async def _send(proposal: dict, version: int, expires_days: int, user: dict, *, 
             **send_updates,
         },
     )
+    share_row = _share_row_by_token(token) or {}
     _event(
-        proposal["id"], "sent", user_id=user["id"], share_id=share["id"],
+        proposal["id"], "sent", user_id=user["id"], share_id=share_row.get("id"),
         metadata={
             "email_delivered": delivered,
             "email_error": error,
@@ -1234,27 +1311,11 @@ async def archive_proposal(
 
 
 def _mint_share_token(proposal: dict, user: dict, expires_days: int = 30) -> str:
-    """Create a fresh share link for an already-revisioned proposal (no email)."""
+    """Create or reuse a share link for an already-revisioned proposal (no email)."""
     revision_id = proposal.get("current_revision_id")
     if not revision_id:
         raise HTTPException(status_code=409, detail="Send the proposal once before creating a client link")
-    _db.table("proposal_shares").update({
-        "revoked": True, "revoked_at": _now()
-    }).eq("proposal_id", proposal["id"]).eq("revoked", False).execute()
-    token = mint_share_token(proposal.get("client_name") or "")
-    share = {
-        "id": str(uuid.uuid4()),
-        "proposal_id": proposal["id"],
-        "revision_id": revision_id,
-        "token_hash": hash_share_token(token),
-        "sent_to_email": proposal.get("client_email") or "",
-        "created_by": user["id"],
-        "expires_at": (datetime.now(timezone.utc) + timedelta(days=expires_days)).isoformat(),
-        "revoked": False,
-        "created_at": _now(),
-    }
-    _db.table("proposal_shares").insert(share).execute()
-    return token
+    return issue_share_token(proposal, user, revision_id, expires_days)
 
 
 @router.post("/proposals/{proposal_id}/mark-accepted")

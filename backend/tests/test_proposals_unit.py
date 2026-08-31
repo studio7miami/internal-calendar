@@ -160,6 +160,18 @@ def test_client_share_token_uses_the_client_name():
     assert " " not in proposals.mint_share_token("Ava Reynolds")
 
 
+def test_named_share_reuses_this_proposal_even_when_revoked_row_exists():
+    proposal_id = "proposal-tai"
+    other = "proposal-other"
+    occupancy = {
+        proposals.hash_share_token("tai"): proposal_id,
+        proposals.hash_share_token("tai-2"): proposal_id,
+        proposals.hash_share_token("tai-3"): proposal_id,
+    }
+    assert proposals.choose_named_share_token("Tai", proposal_id, occupancy) == "tai"
+    assert proposals.choose_named_share_token("Tai", other, occupancy) == "tai-4"
+
+
 def test_blank_drafts_are_the_empty_untitled_ones():
     blank = {"status": "draft", "title": "Untitled proposal", "client_name": "", "rate_cents": 0, "creative_brief": {}}
     named = {**blank, "client_name": "Luis Corrales"}
