@@ -2,12 +2,13 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Check, CheckCircle2, CreditCard, MessageSquareText, X } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { formatMoney, normalizeProposal, proposalTotals } from "../lib/proposals";
+import { luisLiveDraft } from "../lib/liveLuisProposal";
 import { formatApiError, publicProposalApi } from "../lib/api";
 import ProposalDeck, { ATLAS_FINISHES } from "../components/proposals/ProposalDeck";
 import EmailConfirmPreview from "../components/proposals/EmailConfirmPreview";
 import BookingStepper from "../components/proposals/BookingStepper";
 import SignaturePad from "../components/proposals/SignaturePad";
-import ProposalLoader from "../components/proposals/ProposalLoader";
+import ProposalLoader, { ProposalLoaderGallery } from "../components/proposals/ProposalLoader";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
@@ -30,6 +31,7 @@ export default function PublicProposal() {
   const checkoutSuccess = !restarting && searchParams.get("checkout") === "success";
   const [confirmHold, setConfirmHold] = useState(checkoutSuccess);
   const [reviewProposal, setReviewProposal] = useState(searchParams.get("step") === "proposal");
+  const [loaderPhase, setLoaderPhase] = useState("hold");
   const signatureRef = useRef(null);
 
   const setFlowStep = (step) => {
@@ -63,7 +65,25 @@ export default function PublicProposal() {
     }
   }, [token, checkoutSuccess]);
 
-  useEffect(() => { load({ welcome: true }); }, [load]);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("preview") === "enter") {
+      const timer = window.setTimeout(() => {
+        setProposal(normalizeProposal(luisLiveDraft()));
+      }, 1600);
+      return () => window.clearTimeout(timer);
+    }
+    load({ welcome: true });
+  }, [load]);
+
+  useEffect(() => {
+    if (!proposal) return undefined;
+    const leave = window.setTimeout(() => setLoaderPhase("leave"), 40);
+    const done = window.setTimeout(() => setLoaderPhase("done"), 860);
+    return () => {
+      window.clearTimeout(leave);
+      window.clearTimeout(done);
+    };
+  }, [proposal]);
 
   useEffect(() => {
     const previous = document.title;
@@ -186,29 +206,29 @@ export default function PublicProposal() {
   if (new URLSearchParams(window.location.search).get("preview") === "allset") {
     return <PublicShell><AllSetGallery /></PublicShell>;
   }
-
-  if (!proposal && !error) {
-    if (checkoutSuccess) {
-      return <PublicShell><AllSet variant="lift" /></PublicShell>;
-    }
-    return (
-      <PublicShell>
-        <ProposalLoader />
-      </PublicShell>
-    );
+  if (new URLSearchParams(window.location.search).get("preview") === "loader") {
+    return <PublicShell><ProposalLoaderGallery /></PublicShell>;
   }
-  if (!proposal) return <PublicShell><div className="s7-public-unavailable"><h1>Proposal unavailable</h1><p>{error}</p></div></PublicShell>;
 
-  const fullyPaid = proposal.status === "paid";
-  const depositPaid = proposal.status === "deposit_paid";
+  if (!proposal && error) {
+    return <PublicShell><div className="s7-public-unavailable"><h1>Proposal unavailable</h1><p>{error}</p></div></PublicShell>;
+  }
+
+  if (!proposal && checkoutSuccess) {
+    return <PublicShell><AllSet variant="lift" /></PublicShell>;
+  }
+
+  const ready = Boolean(proposal);
+  const fullyPaid = proposal?.status === "paid";
+  const depositPaid = proposal?.status === "deposit_paid";
   const collectRemaining = !fullyPaid && searchParams.get("pay") === "remaining";
   const lockedIn = fullyPaid || (depositPaid && !collectRemaining);
-  const signed = fullyPaid || depositPaid || proposal.status === "signed" || !!proposal.signature_summary;
-  const approved = signed || ["client_approved", "approved"].includes(proposal.status);
+  const signed = fullyPaid || depositPaid || proposal?.status === "signed" || !!proposal?.signature_summary;
+  const approved = signed || ["client_approved", "approved"].includes(proposal?.status);
   const reviewingAccepted = approved && !signed && !lockedIn && !collectRemaining && reviewProposal;
-  const currentStep = lockedIn ? 4 : collectRemaining || proposal.status === "signed" ? 3 : reviewingAccepted ? 1 : approved ? 2 : 1;
-  const totals = proposalTotals(proposal);
-  const stage = lockedIn ? "thanks" : collectRemaining || proposal.status === "signed" ? "payment" : reviewingAccepted ? "proposal" : approved ? "agreement" : "proposal";
+  const currentStep = lockedIn ? 4 : collectRemaining || proposal?.status === "signed" ? 3 : reviewingAccepted ? 1 : approved ? 2 : 1;
+  const totals = proposal ? proposalTotals(proposal) : proposalTotals({});
+  const stage = lockedIn ? "thanks" : collectRemaining || proposal?.status === "signed" ? "payment" : reviewingAccepted ? "proposal" : approved ? "agreement" : "proposal";
   const browseAccepted = approved && !signed && !lockedIn && !collectRemaining;
 
   const showAcceptedProposal = () => {
@@ -240,16 +260,18 @@ export default function PublicProposal() {
     return <PublicShell><AllSet variant="lift" /></PublicShell>;
   }
 
-  if (new URLSearchParams(window.location.search).get("preview") === "deck") {
+  if (ready && new URLSearchParams(window.location.search).get("preview") === "deck") {
     return <PublicShell><DeckThemePreview proposal={proposal} /></PublicShell>;
   }
 
-  if (new URLSearchParams(window.location.search).get("preview") === "email") {
+  if (ready && new URLSearchParams(window.location.search).get("preview") === "email") {
     return <PublicShell><EmailConfirmPreview proposal={proposal} /></PublicShell>;
   }
 
   return (
     <PublicShell>
+      {ready ? (
+      <div className={loaderPhase !== "done" ? "s7-public-reveal" : undefined}>
       <FlowHeader
         step={currentStep}
         onSelect={browseAccepted || isMockTrial ? onSelectStep : undefined}
@@ -322,6 +344,11 @@ export default function PublicProposal() {
           onSend={requestChanges}
         />
       )}
+      </div>
+      ) : null}
+      {(!ready || loaderPhase !== "done") ? (
+        <ProposalLoader overlay leaving={ready && loaderPhase === "leave"} />
+      ) : null}
     </PublicShell>
   );
 }
