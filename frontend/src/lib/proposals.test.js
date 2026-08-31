@@ -1,6 +1,7 @@
 import {
   formatDeliverablesCount,
   isBlankProposal,
+  isDefaultProposalTitle,
   normalizeProposal,
   normalizeProposalList,
   proposalActionPayload,
@@ -165,5 +166,11 @@ describe("proposal helpers", () => {
   test("labels accepted proposals for the list", () => {
     expect(statusLabel("client_approved")).toBe("Accepted");
     expect(statusLabel("sent")).toBe("Shared");
+  });
+
+  test("treats untitled as an empty title in the editor", () => {
+    expect(isDefaultProposalTitle("")).toBe(true);
+    expect(isDefaultProposalTitle("Untitled proposal")).toBe(true);
+    expect(isDefaultProposalTitle("Corrales & Co.")).toBe(false);
   });
 });

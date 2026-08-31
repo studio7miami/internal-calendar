@@ -43,6 +43,11 @@ export function proposalFilterLabel(filter) {
   return PROPOSAL_FILTERS.find((item) => item.value === filter)?.label?.toLowerCase() || "matching";
 }
 
+export function isDefaultProposalTitle(title) {
+  const value = String(title || "").trim().toLowerCase();
+  return !value || value === "untitled proposal" || value === "untitled";
+}
+
 export function isBlankProposal(proposal) {
   const title = String(proposal?.title || "").trim().toLowerCase();
   const client = String(proposal?.client?.contact_name || proposal?.client_name || "").trim();

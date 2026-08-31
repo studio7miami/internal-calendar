@@ -114,8 +114,10 @@ test("maps field edits through the proposal editor contract", () => {
   const onChange = jest.fn();
   renderEditor({ onChange });
 
+  fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Test session" } });
   fireEvent.change(screen.getByLabelText("Client Name"), { target: { value: "Maya Chen" } });
 
+  expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ title: "Test session" }));
   expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
     client: expect.objectContaining({ contact_name: "Maya Chen" }),
   }));

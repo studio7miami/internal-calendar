@@ -11,6 +11,7 @@ import {
 import {
   CONTENT_CARD_COUNT,
   deriveSessionSchedule,
+  isDefaultProposalTitle,
   PROPOSAL_SECTIONS,
   proposalShareSms,
   proposalSignPaySms,
@@ -251,13 +252,7 @@ export default function ProposalEditor({
           </div>
 
           <div className="pb-panel-copy">
-            <input
-              className="pb-title pb-panel-title"
-              aria-label="Proposal title"
-              value={proposal.title || ""}
-              onChange={(e) => patch("title", e.target.value)}
-              placeholder="Content Proposal Builder"
-            />
+            <h1 className="pb-title pb-panel-title">Content Proposal Builder</h1>
             <div className="pb-sub">Fill in the fields — updates live</div>
           </div>
         </header>
@@ -371,9 +366,11 @@ function SectionFields({ section, proposal, patch, patchGroup, patchSchedule, on
       {section === "client" && (
         <ClientFields
           value={proposal.client || {}}
+          title={proposal.title || ""}
           sessionDate={proposal.schedule?.session_date || ""}
           startTime={proposal.schedule?.arrival_time || ""}
           patch={(key, value) => patchGroup("client", key, value)}
+          onTitle={(value) => patch("title", value)}
           onSessionDate={(value) => patchSchedule({ session_date: value })}
           onStartTime={onSessionStartTime}
         />
@@ -494,9 +491,16 @@ function Field({ label, children }) {
   return <label className="pb-field"><span>{label}</span>{children}</label>;
 }
 
-function ClientFields({ value, patch, sessionDate, startTime, onSessionDate, onStartTime }) {
+function ClientFields({ value, title, patch, sessionDate, startTime, onTitle, onSessionDate, onStartTime }) {
   return (
     <div>
+      <Field label="Title">
+        <input
+          value={isDefaultProposalTitle(title) ? "" : (title || "")}
+          onChange={(e) => onTitle(e.target.value)}
+          placeholder="Corrales & Co."
+        />
+      </Field>
       <Field label="Client Name"><input value={value.contact_name || ""} onChange={(e) => patch("contact_name", e.target.value)} /></Field>
       <ProposalDateField label="Session Date" value={sessionDate || ""} onChange={onSessionDate} />
       <ProposalTimeField label="Start Time" value={startTime || ""} onChange={onStartTime} />

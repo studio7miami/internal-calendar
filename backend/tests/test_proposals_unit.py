@@ -172,6 +172,17 @@ def test_named_share_reuses_this_proposal_even_when_revoked_row_exists():
     assert proposals.choose_named_share_token("Tai", other, occupancy) == "tai-4"
 
 
+def test_sent_proposals_can_rename_title_only():
+    sent = {"status": "sent", "title": "Untitled proposal"}
+    assert proposals._editable_updates(sent, {"title": "Test session", "client_name": "Tai"}) == {
+        "title": "Test session"
+    }
+    assert proposals._editable_updates(sent, {"title": "Untitled proposal", "client_name": "Tai"}) == {}
+    with pytest.raises(proposals.HTTPException) as error:
+        proposals._editable_updates({"status": "paid", "title": "Done"}, {"title": "Nope"})
+    assert error.value.status_code == 409
+
+
 def test_blank_drafts_are_the_empty_untitled_ones():
     blank = {"status": "draft", "title": "Untitled proposal", "client_name": "", "rate_cents": 0, "creative_brief": {}}
     named = {**blank, "client_name": "Luis Corrales"}

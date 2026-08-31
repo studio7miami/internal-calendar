@@ -49,6 +49,7 @@ SNAPSHOT_FIELDS = (
     "deliverables", "turnaround",
 )
 EDITABLE_FIELDS = set(SNAPSHOT_FIELDS) | {"assigned_to"}
+TITLE_EDITABLE_STATUSES = {"approved", "sent", "viewed", "client_approved"}
 ACTIVE_BOOKING_STATUSES = {"approved", "pending"}
 
 
@@ -952,6 +953,39 @@ async def read_proposal(proposal_id: str, user: dict = Depends(_current_user)):
     return _serialize(proposal)
 
 
+def _editable_updates(proposal: dict, raw: dict) -> dict:
+    status = str(proposal.get("status") or "")
+    if status in ("draft", "changes_requested"):
+        return {key: value for key, value in raw.items() if key in EDITABLE_FIELDS}
+    if status in TITLE_EDITABLE_STATUSES:
+        if "title" not in raw:
+            return {}
+        incoming = raw.get("title") or ""
+        current = proposal.get("title") or ""
+        if incoming == current:
+            return {}
+        return {"title": incoming}
+    raise HTTPException(status_code=409, detail="Only draft or change-requested proposals can be edited")
+
+
+def _sync_revision_title(proposal: dict, title: str) -> None:
+    revision_id = proposal.get("current_revision_id")
+    if not revision_id or _db is None:
+        return
+    try:
+        revision = _one("proposal_revisions", revision_id)
+    except HTTPException:
+        return
+    snapshot = dict(revision.get("snapshot") or {})
+    agreement = dict(revision.get("agreement_snapshot") or {})
+    snapshot["title"] = title
+    agreement["title"] = title
+    _db.table("proposal_revisions").update({
+        "snapshot": snapshot,
+        "agreement_snapshot": agreement,
+    }).eq("id", revision_id).execute()
+
+
 @router.patch("/proposals/{proposal_id}")
 async def update_proposal(
     proposal_id: str,
@@ -960,13 +994,12 @@ async def update_proposal(
 ):
     _require(user, "edit_proposals")
     proposal = _proposal(proposal_id)
-    if proposal["status"] not in ("draft", "changes_requested"):
-        raise HTTPException(status_code=409, detail="Only draft or change-requested proposals can be edited")
     raw = data.model_dump(exclude_unset=True, mode="json")
     version = raw.pop("version", proposal.get("version"))
+    raw.pop("expected_version", None)
     if version is None:
         raise HTTPException(status_code=409, detail="Proposal version is required")
-    updates = {key: value for key, value in raw.items() if key in EDITABLE_FIELDS}
+    updates = _editable_updates(proposal, raw)
     if not updates:
         return _serialize(proposal)
     merged = {**proposal, **updates}
@@ -975,6 +1008,8 @@ async def update_proposal(
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=exc.errors()) from exc
     updated = _optimistic_update(proposal_id, int(version), updates)
+    if "title" in updates:
+        _sync_revision_title(updated, updates["title"])
     _event(proposal_id, "updated", user_id=user["id"], metadata={"fields": sorted(updates)})
     return _serialize(updated)
 
