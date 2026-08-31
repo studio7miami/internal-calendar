@@ -14,7 +14,7 @@ def test_proposal_permissions_are_configurable_and_admin_is_always_full():
     member = permissions.resolve_effective("member", {})
     admin = permissions.resolve_effective("admin", {"admin": {"manage_proposals": False}})
 
-    assert manager["view_proposals"] is True
+    assert manager["view_proposals"] is False
     assert manager["send_proposals"] is False
     assert member["view_proposals"] is False
     assert admin["manage_proposals"] is True
@@ -133,6 +133,21 @@ def test_public_url_defaults_to_short_p_route(monkeypatch):
     monkeypatch.delenv("PROPOSAL_PUBLIC_URL", raising=False)
     monkeypatch.setenv("FRONTEND_URL", "https://studio.example/")
     assert proposals._share_url("token123") == "https://studio.example/p/token123"
+
+
+def test_client_share_token_uses_the_client_name():
+    assert proposals.client_share_slug("Luis Corrales") == "luis-corrales"
+    assert proposals.mint_share_token("Luis Corrales") == "luis-corrales"
+    assert proposals.mint_share_token("  ") != ""
+    assert " " not in proposals.mint_share_token("Ava Reynolds")
+
+
+def test_blank_drafts_are_the_empty_untitled_ones():
+    blank = {"status": "draft", "title": "Untitled proposal", "client_name": "", "rate_cents": 0, "creative_brief": {}}
+    named = {**blank, "client_name": "Luis Corrales"}
+    assert proposals._is_blank_draft(blank) is True
+    assert proposals._is_blank_draft(named) is False
+    assert proposals._is_blank_draft({**blank, "status": "sent"}) is False
 
 
 def test_serialization_keeps_new_flat_fields(monkeypatch):

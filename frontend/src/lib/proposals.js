@@ -43,6 +43,20 @@ export function proposalFilterLabel(filter) {
   return PROPOSAL_FILTERS.find((item) => item.value === filter)?.label?.toLowerCase() || "matching";
 }
 
+export function isBlankProposal(proposal) {
+  const title = String(proposal?.title || "").trim().toLowerCase();
+  const client = String(proposal?.client?.contact_name || proposal?.client_name || "").trim();
+  if (client) return false;
+  if (title && title !== "untitled proposal" && title !== "untitled") return false;
+  if (proposal?.schedule?.session_date || proposal?.session_date) return false;
+  const rate = Number(proposal?.pricing?.session_rate ?? ((proposal?.rate_cents || 0) / 100)) || 0;
+  if (rate > 0) return false;
+  const vision = proposal?.vision || proposal?.creative_brief || {};
+  if (Object.values(vision).some((value) => String(value || "").trim())) return false;
+  const status = String(proposal?.status || "draft");
+  return status === "draft";
+}
+
 export const PROPOSAL_SECTIONS = [
   { id: "client", label: "Client" },
   { id: "vision", label: "Vision" },

@@ -11,6 +11,7 @@ import html
 import json
 import logging
 import os
+import re
 import secrets
 import time
 import uuid
@@ -86,6 +87,71 @@ def _parse_ts(value: Any) -> Optional[datetime]:
 
 def hash_share_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def client_share_slug(name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", (name or "").strip().lower()).strip("-")
+    return slug[:48]
+
+
+def _share_token_taken(token: str) -> bool:
+    if _db is None:
+        return False
+    found = (
+        _db.table("proposal_shares")
+        .select("id")
+        .eq("token_hash", hash_share_token(token))
+        .limit(1)
+        .execute()
+    )
+    return bool(found.data)
+
+
+def mint_share_token(client_name: str = "") -> str:
+    """Public path segment, e.g. luis-corrales, then luis-corrales-2 if needed."""
+    slug = client_share_slug(client_name)
+    if not slug:
+        return secrets.token_urlsafe(24)
+    token = slug
+    suffix = 2
+    while _share_token_taken(token):
+        token = f"{slug}-{suffix}"
+        suffix += 1
+        if suffix > 80:
+            return f"{slug}-{secrets.token_urlsafe(6)}"
+    return token
+
+
+def _is_blank_draft(row: dict) -> bool:
+    if str(row.get("status") or "") != "draft":
+        return False
+    if str(row.get("client_name") or "").strip():
+        return False
+    title = str(row.get("title") or "").strip().lower()
+    if title and title not in ("untitled proposal", "untitled"):
+        return False
+    if row.get("session_date"):
+        return False
+    if int(row.get("rate_cents") or 0) > 0:
+        return False
+    brief = row.get("creative_brief") or {}
+    if isinstance(brief, dict) and any(str(value or "").strip() for value in brief.values()):
+        return False
+    return True
+
+
+def _purge_blank_drafts(rows: list[dict]) -> list[dict]:
+    kept: list[dict] = []
+    for row in rows:
+        if not _is_blank_draft(row):
+            kept.append(row)
+            continue
+        try:
+            _db.table("proposals").delete().eq("id", row["id"]).eq("status", "draft").execute()
+        except Exception:
+            logger.exception("Could not delete blank proposal draft %s", row.get("id"))
+            kept.append(row)
+    return kept
 
 
 def _share_url(token: str, *, step: Optional[str] = None) -> str:
@@ -647,6 +713,7 @@ async def list_proposals(
     if status:
         query = query.eq("status", status)
     rows = query.order("updated_at", desc=True).execute().data or []
+    rows = _purge_blank_drafts(rows)
     return [_serialize(dict(row)) for row in rows]
 
 
@@ -905,13 +972,13 @@ async def _send(proposal: dict, version: int, expires_days: int, user: dict) -> 
     _db.table("proposal_shares").update({
         "revoked": True, "revoked_at": _now()
     }).eq("proposal_id", proposal["id"]).eq("revoked", False).execute()
-    token = secrets.token_urlsafe(32)
+    token = mint_share_token(proposal.get("client_name") or "")
     share = {
         "id": str(uuid.uuid4()),
         "proposal_id": proposal["id"],
         "revision_id": revision_id,
         "token_hash": hash_share_token(token),
-        "sent_to_email": proposal["client_email"],
+        "sent_to_email": proposal["client_email"] or "",
         "created_by": user["id"],
         "expires_at": (datetime.now(timezone.utc) + timedelta(days=expires_days)).isoformat(),
         "revoked": False,
@@ -1012,13 +1079,13 @@ def _mint_share_token(proposal: dict, user: dict, expires_days: int = 30) -> str
     _db.table("proposal_shares").update({
         "revoked": True, "revoked_at": _now()
     }).eq("proposal_id", proposal["id"]).eq("revoked", False).execute()
-    token = secrets.token_urlsafe(32)
+    token = mint_share_token(proposal.get("client_name") or "")
     share = {
         "id": str(uuid.uuid4()),
         "proposal_id": proposal["id"],
         "revision_id": revision_id,
         "token_hash": hash_share_token(token),
-        "sent_to_email": proposal.get("client_email"),
+        "sent_to_email": proposal.get("client_email") or "",
         "created_by": user["id"],
         "expires_at": (datetime.now(timezone.utc) + timedelta(days=expires_days)).isoformat(),
         "revoked": False,

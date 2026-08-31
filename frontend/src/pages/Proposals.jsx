@@ -4,12 +4,16 @@ import { useNavigate } from "react-router-dom";
 import { Archive, CheckCircle2, Copy, FileText, Layers, MessageSquare, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Send } from "lucide-react";
 import { api, formatApiError } from "../lib/api";
 import {
+  normalizeProposal,
   normalizeProposalList,
   proposalActionPayload,
   proposalFilterLabel,
   proposalMatchesFilter,
+  serializeProposal,
   statusLabel,
+  isBlankProposal,
 } from "../lib/proposals";
+import { luisLiveDraft, isLuisProposal } from "../lib/liveLuisProposal";
 import { getProposalStage } from "../lib/proposalStatusTheme";
 import { proposalGlance } from "../lib/proposalGlance";
 import SignPayLinkModal from "../components/proposals/SignPayLinkModal";
@@ -57,19 +61,34 @@ export default function Proposals() {
   const [signPayModal, setSignPayModal] = useState(null);
   const can = (permission) => user?.role === "admin" || !!user?.permissions?.[permission];
   const canCreate = can("edit_proposals");
+  const seededLuis = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
       const { data } = await api.get("/proposals");
-      setProposals(normalizeProposalList(data));
+      let list = normalizeProposalList(data).filter((proposal) => !isBlankProposal(proposal));
+      const canEdit = user?.role === "admin" || !!user?.permissions?.edit_proposals;
+      if (canEdit && !list.some(isLuisProposal) && !seededLuis.current) {
+        seededLuis.current = true;
+        try {
+          const { data: created } = await api.post(
+            "/proposals",
+            serializeProposal(normalizeProposal(luisLiveDraft()), { includeVersion: false }),
+          );
+          list = [normalizeProposal(created), ...list];
+        } catch {
+          seededLuis.current = false;
+        }
+      }
+      setProposals(list);
     } catch (err) {
       setError(formatApiError(err.response?.data?.detail) || "Could not load proposals.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -124,7 +143,7 @@ export default function Proposals() {
   return (
     <div className="space-y-7" data-testid="proposals-page">
       <header>
-        <div className="label-tech">Sales workspace</div>
+        <div className="label-tech">Workspace</div>
         <h1 className={pageTitleClass}>Proposals</h1>
       </header>
 

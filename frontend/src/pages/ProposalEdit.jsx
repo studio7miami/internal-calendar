@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 import { api, formatApiError } from "../lib/api";
-import { EMPTY_PROPOSAL, normalizeProposal, proposalActionPayload, serializeProposal, statusLabel } from "../lib/proposals";
+import { EMPTY_PROPOSAL, isBlankProposal, normalizeProposal, proposalActionPayload, serializeProposal, statusLabel } from "../lib/proposals";
 import ProposalEditor from "../components/proposals/ProposalEditor";
 import { Button } from "../components/ui/button";
 import { pageBtnOutlineClass } from "../lib/pageTheme";
@@ -55,6 +55,10 @@ export default function ProposalEdit({ createNew = false }) {
     setSaveState("saving");
     const timer = window.setTimeout(async () => {
       const snapshot = proposal;
+      if (isBlankProposal(snapshot)) {
+        if (editRevision.current === revision) setSaveState(snapshot.id ? "saved" : "new");
+        return;
+      }
       try {
         const { data } = snapshot.id
           ? await api.patch(`/proposals/${snapshot.id}`, serializeProposal(snapshot))
