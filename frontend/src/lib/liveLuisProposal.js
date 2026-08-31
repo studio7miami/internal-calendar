@@ -70,7 +70,7 @@ export function luisLiveDraft() {
     },
     share: {
       subject: "Your Studio 7 proposal — Corrales & Co.",
-      message: "Hi Luis — here is the creative plan we prepared for you.",
+      message: "Luis — here’s what we put together for you.",
       expires_days: 30,
     },
   };

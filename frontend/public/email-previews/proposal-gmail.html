@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Proposal email · Gmail sizes</title>
+    <style>
+      :root { color-scheme: light; }
+      body {
+        margin: 0;
+        background: #e8e8e4;
+        font-family: Manrope, system-ui, sans-serif;
+        color: #111;
+      }
+      header { padding: 20px 20px 8px; }
+      header p { margin: 0; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: #6f6f6b; }
+      header h1 { margin: 6px 0 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+      .row {
+        display: flex;
+        gap: 16px;
+        align-items: flex-start;
+        overflow-x: auto;
+        padding: 12px 20px 32px;
+      }
+      .pane {
+        flex: 0 0 auto;
+        background: #fff;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 10px 30px rgba(17, 17, 17, 0.08);
+      }
+      .chrome {
+        background: #f6f6f4;
+        border-bottom: 1px solid rgba(17, 17, 17, 0.06);
+        padding: 12px 14px;
+        font-size: 12px;
+        line-height: 1.45;
+        color: #5f6368;
+      }
+      .chrome strong { color: #111; font-weight: 600; }
+      iframe { display: block; width: 100%; border: 0; background: #f7f7f5; }
+      .desktop { width: 680px; }
+      .desktop iframe { height: 860px; }
+      .tablet { width: 768px; }
+      .tablet iframe { height: 900px; }
+      .phone { width: 390px; }
+      .phone iframe { height: 760px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <p>Email preview</p>
+      <h1>How the proposal email reads in Gmail</h1>
+    </header>
+    <div class="row">
+      <section class="pane desktop">
+        <div class="chrome">
+          Desktop Gmail · 680px<br />
+          <strong>From</strong> Studio 7 Miami<br />
+          <strong>Subject</strong> Your Studio 7 proposal
+        </div>
+        <iframe title="Desktop" src="./proposal.html"></iframe>
+      </section>
+      <section class="pane tablet">
+        <div class="chrome">
+          Tablet Gmail · 768px<br />
+          <strong>From</strong> Studio 7 Miami<br />
+          <strong>Subject</strong> Your Studio 7 proposal
+        </div>
+        <iframe title="Tablet" src="./proposal.html"></iframe>
+      </section>
+      <section class="pane phone">
+        <div class="chrome">
+          Mobile Gmail · 390px<br />
+          <strong>From</strong> Studio 7 Miami<br />
+          <strong>Subject</strong> Your Studio 7 proposal
+        </div>
+        <iframe title="Phone" src="./proposal.html"></iframe>
+      </section>
+    </div>
+  </body>
+</html>

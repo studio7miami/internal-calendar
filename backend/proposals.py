@@ -978,7 +978,88 @@ def _upsert_proposal_hold(proposal: dict, calendar: dict, user: dict) -> dict:
     return dict(result.data[0] if result.data else booking)
 
 
+def _client_first_name(proposal: dict) -> str:
+    return (str(proposal.get("client_name") or "there").strip().split() or ["there"])[0]
+
+
 def _proposal_email(proposal: dict, link: str) -> tuple[str, str, str]:
+    font = "Manrope, Helvetica, Arial, sans-serif"
+    logo = "https://framerusercontent.com/assets/3HwVggLmyKfOrpHHCI76j8tFoTY.png"
+    settings = proposal.get("share_settings") or {}
+    if not isinstance(settings, dict):
+        settings = {}
+    first = _client_first_name(proposal)
+    subject = str(settings.get("subject") or "Your Studio 7 proposal").strip()[:200]
+    client = html.escape(str(proposal.get("client_name") or "there"))
+    title = html.escape(str(proposal.get("title") or "Content proposal"))
+    date_text = str(proposal.get("session_date") or "")
+    deliverables_text = str(proposal.get("deliverables") or "")
+    currency = str((proposal.get("pricing") or {}).get("currency") or "USD").upper()
+    symbol = "$" if currency == "USD" else f"{currency} "
+    rate = f"{symbol}{_effective_rate_cents(proposal) / 100:,.2f}"
+    href = html.escape(link, quote=True)
+    location = "Studio 7 Miami — 638 NW 62nd St, Miami, FL 33150"
+    intro = html.escape(f"{first} — here’s what we put together for you.")
+
+    def spec_row(label: str, value: str, last: bool = False) -> str:
+        border = "none" if last else "1px solid rgba(17,17,17,0.08)"
+        return (
+            f'<tr><td style="padding:13px 0;border-bottom:{border};font-family:{font};'
+            'font-size:10px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;'
+            f'color:#6F6F6B;vertical-align:top;">{html.escape(label)}</td>'
+            f'<td style="padding:13px 0 13px 16px;border-bottom:{border};font-family:{font};'
+            f'font-size:14px;color:#111;text-align:right;line-height:1.45;">{value}</td></tr>'
+        )
+
+    specs = [
+        ("Session", title),
+        ("Client", client),
+        ("Date", html.escape(date_text)),
+        ("Deliverables", html.escape(deliverables_text)),
+        (
+            "Location",
+            '<span style="display:block">Studio 7 Miami</span>'
+            '<span style="display:block">638 NW 62nd St, Miami, FL 33150</span>',
+        ),
+        ("Total", html.escape(rate)),
+    ]
+    specs = [(label, value) for label, value in specs if value]
+    spec_html = "".join(spec_row(label, value, index == len(specs) - 1) for index, (label, value) in enumerate(specs))
+    body = f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light">
+<meta name="x-apple-disable-message-reformatting">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&display=swap" rel="stylesheet">
+<title>{html.escape(subject)}</title></head>
+<body style="margin:0;padding:0;background:#F7F7F5;font-family:{font};color:#111;-webkit-text-size-adjust:100%;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">{html.escape(f"{first} — here’s what we put together for you.")}</div>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#F7F7F5;"><tr><td align="center">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:100%;max-width:600px;background:#F7F7F5;">
+<tr><td bgcolor="#000000" style="background:#000;padding:0;text-align:center;line-height:0;"><img src="{logo}" width="600" alt="Studio 7 Miami" style="display:block;width:100%;max-width:600px;height:auto;border:0;background:#000;"></td></tr>
+<tr><td style="padding:36px 28px 12px;"><p style="margin:0 0 8px;font-size:10px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#6F6F6B;">Content proposal</p>
+<h1 style="margin:0 0 10px;font-size:28px;font-weight:600;letter-spacing:-.02em;line-height:1.15;color:#111;">Your session is ready to review</h1>
+<p style="margin:0;font-size:15px;line-height:1.6;color:#6F6F6B;">{intro}</p></td></tr>
+<tr><td style="padding:20px 28px 8px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#FCFCFA;border:1px solid rgba(17,17,17,.08);border-radius:24px;">
+<tr><td style="padding:22px 24px 8px;"><p style="margin:0;font-size:10px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#6F6F6B;">Your session at a glance</p></td></tr>
+<tr><td style="padding:0 24px 8px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">{spec_html}</table></td></tr></table></td></tr>
+<tr><td style="padding:20px 28px 8px;" align="center"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#111111" style="background:#111;border-radius:999px;">
+<a href="{href}" style="display:inline-block;padding:14px 28px;font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;text-decoration:none;color:#F7F7F5;">View your proposal</a>
+</td></tr></table></td></tr>
+<tr><td style="padding:28px 28px 40px;text-align:center;"><p style="margin:0 0 6px;font-size:12px;line-height:1.6;color:#6F6F6B;">Studio 7 Miami<br>638 NW 62nd St, Miami, FL 33150</p>
+<p style="margin:0;font-size:12px;line-height:1.6;"><a href="https://studio7.miami" style="color:#111;text-decoration:none;">studio7.miami</a><span style="color:#C8C8C4;"> · </span><a href="https://book.studio7.miami" style="color:#111;text-decoration:none;">book.studio7.miami</a></p>
+</td></tr></table></td></tr></table></body></html>"""
+    text = "\n".join(filter(None, [
+        f"{first} — here’s what we put together for you.",
+        "",
+        f"Session: {proposal.get('title') or 'Content proposal'}",
+        f"Client: {proposal.get('client_name') or ''}",
+        f"Date: {date_text}" if date_text else None,
+        f"Deliverables: {deliverables_text}" if deliverables_text else None,
+        f"Location: {location.replace(' — ', ', ')}", f"Total: {rate}", "",
+        link, "", "Studio 7 Miami", "638 NW 62nd St, Miami, FL 33150",
+        "https://studio7.miami",
+    ]))
+    return subject, body, text
     font = "Manrope, Helvetica, Arial, sans-serif"
     logo = "https://framerusercontent.com/assets/3HwVggLmyKfOrpHHCI76j8tFoTY.png"
     settings = proposal.get("share_settings") or {}

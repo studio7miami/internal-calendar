@@ -10,6 +10,7 @@ import {
   proposalTotals,
   sectionIsComplete,
   serializeProposal,
+  statusLabel,
 } from "./proposals";
 
 describe("proposal helpers", () => {
@@ -159,5 +160,10 @@ describe("proposal helpers", () => {
     expect(proposalSignPaySms("Luis Corrales", "https://team.studio7.miami/p/luis-corrales?step=agreement")).toBe(
       "You’re in, Luis. Sign and pay and we'll lock it in.\n\nhttps://team.studio7.miami/p/luis-corrales?step=agreement",
     );
+  });
+
+  test("labels accepted proposals for the list", () => {
+    expect(statusLabel("client_approved")).toBe("Accepted");
+    expect(statusLabel("sent")).toBe("Shared");
   });
 });

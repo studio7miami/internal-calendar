@@ -324,6 +324,14 @@ function statusMeta(status) {
 }
 
 function StatusMark({ status }) {
+  if (status === "client_approved") {
+    return (
+      <span className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-[rgba(226,175,29,0.22)] px-2.5 text-[11px] font-medium text-[#8A6412]">
+        <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+        Accepted
+      </span>
+    );
+  }
   const tab = statusMeta(status);
   const stage = getProposalStage(status);
   const Icon = tab.Icon;

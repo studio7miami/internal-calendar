@@ -22,7 +22,7 @@ const STATUS_LABELS = {
   approved: "Draft",
   sent: "Shared",
   viewed: "Shared",
-  client_approved: "Shared",
+  client_approved: "Accepted",
   signed: "Shared",
   deposit_paid: "Won",
   paid: "Won",

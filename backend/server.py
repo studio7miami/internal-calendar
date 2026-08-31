@@ -1029,6 +1029,46 @@ async def preview_new_booking_request_email(
     return {"subject": subject, "html": html_body, "text": text_body}
 
 
+@api.get("/admin/email-preview/proposal")
+async def preview_proposal_email(
+    fmt: str = Query(
+        "html",
+        description='Return shape: "json" or "html"',
+    ),
+    send: bool = Query(False, description="If true, also send this preview to tai@taistu.com"),
+    _: dict = Depends(require_admin),
+):
+    """Preview the client proposal email (Luis sample). Optional send to the mock inbox."""
+    f = (fmt or "html").strip().lower()
+    if f not in ("json", "html"):
+        raise HTTPException(status_code=400, detail='fmt must be "json" or "html"')
+    sample = {
+        "client_name": "Luis Corrales",
+        "client_email": "tai@taistu.com",
+        "title": "Corrales & Co.",
+        "session_date": "2026-08-24",
+        "deliverables": "15",
+        "pricing": {"currency": "USD"},
+        "rate_cents": 385000,
+        "share_settings": {},
+    }
+    subject, html_body, text_body = proposals._proposal_email(
+        sample, "https://team.studio7.miami/p/luis-corrales"
+    )
+    sent = None
+    if send:
+        delivered, error, _provider = await invite_email.deliver_html_email(
+            to_email="tai@taistu.com",
+            subject=subject,
+            html_body=html_body,
+            text_body=text_body,
+        )
+        sent = {"delivered": delivered, "error": error, "to": "tai@taistu.com"}
+    if f == "html":
+        return HTMLResponse(content=html_body)
+    return {"subject": subject, "html": html_body, "text": text_body, "send": sent}
+
+
 @api.get("/users")
 async def list_users(user: dict = Depends(get_current_user)):
     p = user_permissions_for(user)
