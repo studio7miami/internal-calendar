@@ -1655,7 +1655,7 @@ async def public_proposal(token: str, request: Request):
         .eq("proposal_id", proposal["id"]).order("created_at", desc=True).execute().data or []
     )
     signatures = (
-        _db.table("proposal_signatures").select("id,signer_name,signer_email,signed_at")
+        _db.table("proposal_signatures").select("id,signer_name,signer_email,signed_at,signature_data")
         .eq("proposal_id", proposal["id"]).order("signed_at", desc=True).execute().data or []
     )
     current = _proposal(proposal["id"])

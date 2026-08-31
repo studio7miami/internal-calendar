@@ -30,6 +30,19 @@ function formatTimer(ms) {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+function formatSignedAt(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString(undefined, {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 export default function PublicProposal() {
   const { token } = useParams();
   const [proposal, setProposal] = useState(null);
@@ -75,8 +88,11 @@ export default function PublicProposal() {
       const normalized = normalizeProposal(data);
       setProposal(normalized);
       setClientName((current) => current || normalized.client?.contact_name || "");
-      setSignerName((current) => current || normalized.client?.contact_name || "");
-      setSignerEmail((current) => current || normalized.client?.email || "");
+      setSignerName((current) => normalized.signature_summary?.signer_name || current || normalized.client?.contact_name || "");
+      setSignerEmail((current) => normalized.signature_summary?.signer_email || current || normalized.client?.email || "");
+      if (normalized.signature_summary?.signature_data) {
+        setSignature((current) => current || normalized.signature_summary.signature_data);
+      }
       return normalized;
     } catch (err) {
       setError(formatApiError(err.response?.data?.detail) || "This proposal could not be opened.");
@@ -413,6 +429,8 @@ export default function PublicProposal() {
               onSign={sign}
               working={working}
               alreadySigned={alreadySigned}
+              signedAt={proposal.signature_summary?.signed_at || proposal.signed_at}
+              signatureImage={proposal.signature_summary?.signature_data || signature}
               onContinue={showPay}
               onBack={showAcceptedProposal}
             />
@@ -469,7 +487,8 @@ function FlowHeader({ step, furthest, onSelect, remainingMs }) {
   );
 }
 
-function Agreement({ agreement, proposal, totals, signerName, setSignerName, signerEmail, setSignerEmail, signature, setSignature, consent, setConsent, signatureRef, onSign, working, onBack, alreadySigned, onContinue }) {
+function Agreement({ agreement, proposal, totals, signerName, setSignerName, signerEmail, setSignerEmail, signature, setSignature, consent, setConsent, signatureRef, onSign, working, onBack, alreadySigned, onContinue, signedAt, signatureImage }) {
+  const signedLabel = formatSignedAt(signedAt);
   return (
     <div className="s7-flow-page">
       {onBack ? (
@@ -483,17 +502,33 @@ function Agreement({ agreement, proposal, totals, signerName, setSignerName, sig
             <p className="s7-flow-kicker">Service agreement</p>
             <AgreementSnapshot agreement={agreement} proposal={proposal} totals={totals} />
           </div>
-          {alreadySigned ? null : (
           <div className="s7-flow-card s7-sign-card">
-            <label><span>Full legal name</span><Input value={signerName} onChange={(e) => setSignerName(e.target.value)} className="s7-flow-input" /></label>
-            <label><span>Email</span><Input type="email" value={signerEmail} onChange={(e) => setSignerEmail(e.target.value)} className="s7-flow-input" /></label>
-            <div className="s7-signature"><span>Sign here</span><SignaturePad ref={signatureRef} onChange={setSignature} /></div>
-            <label className="s7-check-row">
-              <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
-              <span>I agree to sign electronically and accept the exact proposal and agreement shown above. <em>(required)</em></span>
+            <label>
+              <span>Full legal name</span>
+              <Input value={signerName} onChange={(e) => setSignerName(e.target.value)} className="s7-flow-input" readOnly={alreadySigned} />
             </label>
+            <label>
+              <span>Email</span>
+              <Input type="email" value={signerEmail} onChange={(e) => setSignerEmail(e.target.value)} className="s7-flow-input" readOnly={alreadySigned} />
+            </label>
+            <div className="s7-signature">
+              <span>Sign here</span>
+              {alreadySigned ? (
+                <div className="s7-signature__locked">
+                  {signatureImage ? <img src={signatureImage} alt="Signature" /> : null}
+                  {signedLabel ? <time dateTime={signedAt}>{signedLabel}</time> : null}
+                </div>
+              ) : (
+                <SignaturePad ref={signatureRef} onChange={setSignature} />
+              )}
+            </div>
+            {alreadySigned ? null : (
+              <label className="s7-check-row">
+                <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+                <span>I agree to sign electronically and accept the exact proposal and agreement shown above. <em>(required)</em></span>
+              </label>
+            )}
           </div>
-          )}
         </div>
         <SessionGlance proposal={proposal} totals={totals}>
           {alreadySigned ? (

@@ -647,6 +647,7 @@ export function installLocalMocking(instance) {
             signer_name: body.signer_name || current.client_name,
             signer_email: body.signer_email || current.client_email,
             signed_at: nowIso(),
+            signature_data: body.signature_data || "",
           },
         };
         proposals[index] = updated;
