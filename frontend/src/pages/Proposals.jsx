@@ -29,6 +29,9 @@ import { cn } from "../lib/utils";
 import { pageBtnOutlineClass, pageTitleClass } from "../lib/pageTheme";
 import { useAuth } from "../context/AuthContext";
 
+const selectedSurfaceClass =
+  "border border-black/[0.08] bg-[#FCFCFA] dark:border-white/10 dark:bg-white/[0.05]";
+
 const FILTER_TABS = [
   { value: "all", label: "All", Icon: Layers },
   { value: "draft", label: "Draft", Icon: FileText },
@@ -200,7 +203,7 @@ export default function Proposals() {
       )}
 
       {notice && (
-        <div className="rounded-[7px] border border-[#111]/10 bg-[#F3F2EE] px-4 py-3 text-sm text-[#111] dark:border-white/10 dark:bg-white/[0.06] dark:text-zinc-100">
+        <div className={cn("rounded-[7px] px-4 py-3 text-sm text-[#111] dark:text-zinc-100", selectedSurfaceClass)}>
           {notice}
         </div>
       )}
@@ -218,7 +221,7 @@ export default function Proposals() {
           onCopy={copyLink}
         />
       ) : (
-        <div className="rounded-[28px] bg-[#F3F2EE] px-8 py-10 text-center dark:bg-white/[0.04]">
+        <div className={cn("rounded-[28px] px-8 py-10 text-center", selectedSurfaceClass)}>
           <p className="font-medium">
             {filter === "all" ? "No proposals yet." : `No ${proposalFilterLabel(filter)} proposals.`}
           </p>
@@ -241,7 +244,7 @@ export default function Proposals() {
 
 function PillSearch({ value, onChange }) {
   return (
-    <label className="flex min-w-0 flex-1 items-center gap-2.5 rounded-full bg-[#EFEFEA] px-4 py-2.5 dark:bg-white/[0.06]">
+    <label className={cn("flex min-w-0 flex-1 items-center gap-2.5 rounded-full px-4 py-2.5", selectedSurfaceClass)}>
       <Search className="h-4 w-4 shrink-0 text-[#9a9a96]" />
       <input
         value={value}
@@ -305,7 +308,7 @@ function ProposalToolbar({ filter, onFilter, search, onSearch, canCreate, onCrea
       <PillSearch value={search} onChange={onSearch} />
       <div
         ref={trackRef}
-        className="relative flex items-center gap-1 overflow-x-auto rounded-full bg-[#F3F2EE] px-1.5 py-1.5 dark:bg-white/[0.05]"
+        className={cn("relative flex items-center gap-1 overflow-x-auto rounded-full px-1.5 py-1.5", selectedSurfaceClass)}
         role="tablist"
         aria-label="Proposal filters"
       >
@@ -365,7 +368,7 @@ function statusMeta(status) {
 function StatusMark({ status }) {
   if (status === "client_approved") {
     return (
-      <span className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-[rgba(226,175,29,0.22)] px-2.5 text-[11px] font-medium text-[#8A6412]">
+      <span className={cn("inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[11px] font-medium text-[#8A6412] dark:text-[#e2af1d]", selectedSurfaceClass)}>
         <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={1.75} />
         Accepted
       </span>
@@ -375,14 +378,14 @@ function StatusMark({ status }) {
   const stage = getProposalStage(status);
   const Icon = tab.Icon;
   const tone = {
-    won: "bg-[#e2af1d] text-[#111]",
-    shared: "bg-[rgba(226,175,29,0.22)] text-[#8A6412]",
-    changes_requested: "bg-[#F0D3B0] text-[#8A4A1C]",
-    draft: "bg-[#F4E8D2] text-[#8A6A38]",
-    archived: "bg-[#EDE4D4] text-[#8A8070]",
+    won: "text-[#111] dark:text-[#f4f4f1]",
+    shared: "text-[#8A6412] dark:text-[#e2af1d]",
+    changes_requested: "text-[#8A4A1C] dark:text-orange-300",
+    draft: "text-[#6F6F6B] dark:text-[#c8c8c3]",
+    archived: "text-[#8A8070] dark:text-[#a8a8a3]",
   }[stage];
   return (
-    <span className={cn("inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[11px] font-medium", tone)}>
+    <span className={cn("inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[11px] font-medium", selectedSurfaceClass, tone)}>
       <Icon className="h-3.5 w-3.5" strokeWidth={1.75} />
       {tab.label}
     </span>
@@ -393,7 +396,7 @@ function ProposalListSkeleton() {
   return (
     <div className="grid gap-2 sm:grid-cols-2">
       {[1, 2, 3, 4].map((item) => (
-        <div key={item} className="h-[7.5rem] animate-pulse rounded-[28px] bg-[#F3F2EE] dark:bg-white/[0.04]" />
+        <div key={item} className={cn("h-[7.5rem] animate-pulse rounded-[28px]", selectedSurfaceClass)} />
       ))}
     </div>
   );
@@ -444,7 +447,7 @@ function ProposalBand({ proposal, canEdit, canManage, working, onOpen, onAct, on
   );
 
   return (
-    <CardShell className="flex flex-col gap-4 rounded-[28px] bg-[#F3F2EE] p-4 dark:bg-white/[0.04]" onClick={() => onOpen(proposal)}>
+    <CardShell className={cn("flex flex-col gap-4 rounded-[28px] p-4", selectedSurfaceClass)} onClick={() => onOpen(proposal)}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 text-left">
           <p className="truncate font-['Manrope',system-ui,sans-serif] text-[15px] font-semibold leading-tight">
