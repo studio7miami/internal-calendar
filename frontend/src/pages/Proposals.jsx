@@ -29,8 +29,17 @@ import { cn } from "../lib/utils";
 import { pageBtnOutlineClass, pageTitleClass } from "../lib/pageTheme";
 import { useAuth } from "../context/AuthContext";
 
-const selectedSurfaceClass =
-  "border border-black/[0.08] bg-[#FCFCFA] dark:border-white/10 dark:bg-white/[0.05]";
+const mistSurfaceClass =
+  "border border-white/50 bg-[#FCFCFA]/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.06]";
+
+const statusGlowClass = {
+  won: "border border-[#e2af1d]/50 bg-[#e2af1d]/40 text-[#111] backdrop-blur-md",
+  shared: "border border-[#e2af1d]/40 bg-[rgba(226,175,29,0.28)] text-[#8A6412] backdrop-blur-md",
+  accepted: "border border-[#e2af1d]/40 bg-[rgba(226,175,29,0.28)] text-[#8A6412] backdrop-blur-md",
+  changes_requested: "border border-[#C46A28]/40 bg-[#F0D3B0]/75 text-[#8A4A1C] backdrop-blur-md",
+  draft: "border border-[#C8B896]/45 bg-[#F4E8D2]/75 text-[#8A6A38] backdrop-blur-md",
+  archived: "border border-black/10 bg-[#EDE4D4]/65 text-[#8A8070] backdrop-blur-md",
+};
 
 const FILTER_TABS = [
   { value: "all", label: "All", Icon: Layers },
@@ -203,7 +212,7 @@ export default function Proposals() {
       )}
 
       {notice && (
-        <div className={cn("rounded-[7px] px-4 py-3 text-sm text-[#111] dark:text-zinc-100", selectedSurfaceClass)}>
+        <div className={cn("rounded-[7px] px-4 py-3 text-sm text-[#111] dark:text-zinc-100", mistSurfaceClass)}>
           {notice}
         </div>
       )}
@@ -221,7 +230,7 @@ export default function Proposals() {
           onCopy={copyLink}
         />
       ) : (
-        <div className={cn("rounded-[28px] px-8 py-10 text-center", selectedSurfaceClass)}>
+        <div className={cn("rounded-[28px] px-8 py-10 text-center", mistSurfaceClass)}>
           <p className="font-medium">
             {filter === "all" ? "No proposals yet." : `No ${proposalFilterLabel(filter)} proposals.`}
           </p>
@@ -244,7 +253,7 @@ export default function Proposals() {
 
 function PillSearch({ value, onChange }) {
   return (
-    <label className={cn("flex min-w-0 flex-1 items-center gap-2.5 rounded-full px-4 py-2.5", selectedSurfaceClass)}>
+    <label className={cn("flex min-w-0 flex-1 items-center gap-2.5 rounded-full px-4 py-2.5", mistSurfaceClass)}>
       <Search className="h-4 w-4 shrink-0 text-[#9a9a96]" />
       <input
         value={value}
@@ -308,7 +317,7 @@ function ProposalToolbar({ filter, onFilter, search, onSearch, canCreate, onCrea
       <PillSearch value={search} onChange={onSearch} />
       <div
         ref={trackRef}
-        className={cn("relative flex items-center gap-1 overflow-x-auto rounded-full px-1.5 py-1.5", selectedSurfaceClass)}
+        className={cn("relative flex items-center gap-1 overflow-x-auto rounded-full px-1.5 py-1.5", mistSurfaceClass)}
         role="tablist"
         aria-label="Proposal filters"
       >
@@ -368,7 +377,7 @@ function statusMeta(status) {
 function StatusMark({ status }) {
   if (status === "client_approved") {
     return (
-      <span className={cn("inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[11px] font-medium text-[#8A6412] dark:text-[#e2af1d]", selectedSurfaceClass)}>
+      <span className={cn("inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[11px] font-medium", statusGlowClass.accepted)}>
         <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={1.75} />
         Accepted
       </span>
@@ -377,15 +386,8 @@ function StatusMark({ status }) {
   const tab = statusMeta(status);
   const stage = getProposalStage(status);
   const Icon = tab.Icon;
-  const tone = {
-    won: "text-[#111] dark:text-[#f4f4f1]",
-    shared: "text-[#8A6412] dark:text-[#e2af1d]",
-    changes_requested: "text-[#8A4A1C] dark:text-orange-300",
-    draft: "text-[#6F6F6B] dark:text-[#c8c8c3]",
-    archived: "text-[#8A8070] dark:text-[#a8a8a3]",
-  }[stage];
   return (
-    <span className={cn("inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[11px] font-medium", selectedSurfaceClass, tone)}>
+    <span className={cn("inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[11px] font-medium", statusGlowClass[stage] || statusGlowClass.draft)}>
       <Icon className="h-3.5 w-3.5" strokeWidth={1.75} />
       {tab.label}
     </span>
@@ -396,7 +398,7 @@ function ProposalListSkeleton() {
   return (
     <div className="grid gap-2 sm:grid-cols-2">
       {[1, 2, 3, 4].map((item) => (
-        <div key={item} className={cn("h-[7.5rem] animate-pulse rounded-[28px]", selectedSurfaceClass)} />
+        <div key={item} className={cn("h-[7.5rem] animate-pulse rounded-[28px]", mistSurfaceClass)} />
       ))}
     </div>
   );
@@ -447,7 +449,7 @@ function ProposalBand({ proposal, canEdit, canManage, working, onOpen, onAct, on
   );
 
   return (
-    <CardShell className={cn("flex flex-col gap-4 rounded-[28px] p-4", selectedSurfaceClass)} onClick={() => onOpen(proposal)}>
+    <CardShell className={cn("flex flex-col gap-4 rounded-[28px] p-4", mistSurfaceClass)} onClick={() => onOpen(proposal)}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 text-left">
           <p className="truncate font-['Manrope',system-ui,sans-serif] text-[15px] font-semibold leading-tight">
