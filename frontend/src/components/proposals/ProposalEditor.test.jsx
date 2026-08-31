@@ -91,13 +91,23 @@ test("renders the classic panel + canvas layout with card stack deck", () => {
   expect(container.querySelectorAll(".s7-slide")).toHaveLength(5);
 });
 
-test("opens send dialog with email and text options", () => {
-  renderEditor({ proposal: { ...proposal, status: "approved" } });
+test("opens send dialog with email and text options", async () => {
+  const onAction = jest.fn().mockResolvedValue({
+    ...proposal,
+    status: "sent",
+    share_url: "https://team.studio7.miami/p/ava-reynolds",
+  });
+  renderEditor({
+    proposal: { ...proposal, status: "approved" },
+    onAction,
+  });
 
   fireEvent.click(screen.getByRole("button", { name: /^Send$/i }));
-  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  expect(await screen.findByRole("dialog")).toBeInTheDocument();
+  expect(onAction).toHaveBeenCalledWith("send", { channel: "text" });
   expect(screen.getByRole("button", { name: /^Email$/i })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /^Text$/i })).toBeInTheDocument();
+  const text = screen.getByRole("link", { name: /^Text/i });
+  expect(text).toHaveAttribute("href", expect.stringMatching(/^sms:/));
 });
 
 test("maps field edits through the proposal editor contract", () => {

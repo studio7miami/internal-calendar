@@ -65,6 +65,14 @@ export default function PublicProposal() {
   useEffect(() => { load({ welcome: true }); }, [load]);
 
   useEffect(() => {
+    const previous = document.title;
+    document.title = "Studio 7 Miami · Proposal";
+    return () => {
+      document.title = previous;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!proposal?.status) return;
     const accepted = ["client_approved", "approved"].includes(proposal.status);
     const alreadyPast = ["signed", "deposit_paid", "paid"].includes(proposal.status);
