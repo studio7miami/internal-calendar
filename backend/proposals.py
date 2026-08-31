@@ -123,6 +123,14 @@ def mint_share_token(client_name: str = "") -> str:
     return token
 
 
+def _normalize_public_token(token: str) -> str:
+    cleaned = (token or "").strip()
+    # Named links are short (luis-corrales). Random tokens are longer.
+    if not re.fullmatch(r"[A-Za-z0-9_-]{3,200}", cleaned):
+        raise HTTPException(status_code=404, detail="Proposal link not found")
+    return cleaned
+
+
 def _is_blank_draft(row: dict) -> bool:
     if str(row.get("status") or "") != "draft":
         return False
@@ -778,9 +786,8 @@ def _notify_approvers(proposal: dict) -> None:
 
 
 def _public_share(token: str) -> tuple[dict, dict, dict]:
-    if len(token) < 20 or len(token) > 200:
-        raise HTTPException(status_code=404, detail="Proposal link not found")
-    digest = hash_share_token(token)
+    cleaned = _normalize_public_token(token)
+    digest = hash_share_token(cleaned)
     result = _db.table("proposal_shares").select("*").eq("token_hash", digest).limit(1).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Proposal link not found")

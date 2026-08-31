@@ -29,6 +29,14 @@ def test_share_tokens_are_only_stored_as_sha256():
     assert len(digest) == 64
 
 
+def test_named_client_links_are_accepted_as_public_tokens():
+    assert proposals.client_share_slug("Luis Corrales") == "luis-corrales"
+    assert proposals._normalize_public_token("luis-corrales") == "luis-corrales"
+    with pytest.raises(proposals.HTTPException) as error:
+        proposals._normalize_public_token("ab")
+    assert error.value.status_code == 404
+
+
 def test_stripe_signature_uses_raw_body_and_rejects_stale_or_modified_payload():
     payload = b'{"id":"evt_123","type":"checkout.session.completed"}'
     secret = "whsec_test"
