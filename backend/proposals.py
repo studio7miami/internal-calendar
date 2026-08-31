@@ -28,6 +28,7 @@ import permissions
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["proposals"])
+PROPOSAL_MOCK_INBOX = (os.environ.get("PROPOSAL_EMAIL_COPY") or "tai@taistu.com").strip()
 
 _db: Any = None
 _auth_dependency: Optional[Callable[..., Awaitable[dict]]] = None
@@ -685,6 +686,60 @@ def _notify(user_id: Optional[str], proposal_id: str, kind: str, title: str, mes
         logger.exception("Could not create proposal notification")
 
 
+async def _deliver_proposal_mail(
+    proposal: dict, subject: str, html_body: str, text_body: str
+) -> tuple[bool, Optional[str]]:
+    to_email = str(proposal.get("client_email") or "").strip()
+    if not to_email:
+        return False, "Missing client email"
+    copy = PROPOSAL_MOCK_INBOX
+    bcc = [copy] if copy and copy.lower() != to_email.lower() else []
+    delivered, error, _provider = await invite_email.deliver_html_email(
+        to_email=to_email,
+        subject=subject,
+        html_body=html_body,
+        text_body=text_body,
+        bcc=bcc or None,
+    )
+    return delivered, error
+
+
+async def _mock_process_email(proposal: dict, headline: str, detail: str) -> None:
+    inbox = PROPOSAL_MOCK_INBOX
+    if not inbox:
+        return
+    client = str(proposal.get("client_name") or "Client").strip() or "Client"
+    intended = str(proposal.get("client_email") or "").strip()
+    subject = f"[Proposal] {headline} — {client}"
+    text = "\n".join([
+        headline,
+        "",
+        detail,
+        "",
+        f"Client: {client}",
+        f"Intended for: {intended or '—'}",
+        f"Status: {proposal.get('status') or '—'}",
+    ])
+    html_body = (
+        "<!doctype html><html><body style='font-family:Manrope,Helvetica,Arial,sans-serif;"
+        "color:#111;line-height:1.55'>"
+        f"<p>{html.escape(headline)}</p>"
+        f"<p>{html.escape(detail)}</p>"
+        f"<p>Client: {html.escape(client)}<br>Intended for: {html.escape(intended or '—')}<br>"
+        f"Status: {html.escape(str(proposal.get('status') or '—'))}</p>"
+        "</body></html>"
+    )
+    try:
+        await invite_email.deliver_html_email(
+            to_email=inbox,
+            subject=subject[:200],
+            html_body=html_body,
+            text_body=text,
+        )
+    except Exception:
+        logger.exception("Could not send proposal mock email to %s", inbox)
+
+
 def _notify_approvers(proposal: dict) -> None:
     try:
         users = (
@@ -1031,9 +1086,7 @@ async def _send(proposal: dict, version: int, expires_days: int, user: dict, *, 
     error = None
     if channel != "text":
         subject, html_body, text_body = _proposal_email(proposal, link)
-        delivered, error = await invite_email.deliver_html_email(
-            to_email=proposal["client_email"], subject=subject, html_body=html_body, text_body=text_body
-        )
+        delivered, error = await _deliver_proposal_mail(proposal, subject, html_body, text_body)
     updated = _optimistic_update(
         proposal["id"], version,
         {
@@ -1280,6 +1333,11 @@ async def public_change_request(token: str, data: ChangeRequestIn, request: Requ
     }).eq("id", proposal["id"]).eq("version", proposal["version"]).execute()
     _event(proposal["id"], "changes_requested", share_id=share["id"], metadata={"change_request_id": row["id"]})
     _notify(proposal.get("created_by"), proposal["id"], "proposal_changes_requested", "Client requested changes", data.message[:300])
+    await _mock_process_email(
+        proposal,
+        "Client requested changes",
+        data.message.strip(),
+    )
     return {"id": row["id"], "status": "open"}
 
 
@@ -1307,6 +1365,11 @@ async def public_approve(token: str, data: PublicApproveIn, request: Request):
     client_name = data.client_name or proposal["client_name"]
     _event(proposal["id"], "client_approved", share_id=share["id"], metadata={"client_name": client_name})
     _notify(proposal.get("created_by"), proposal["id"], "proposal_client_approved", "Client approved proposal", f"{client_name} approved the proposal.")
+    await _mock_process_email(
+        {**proposal, "status": "client_approved", "client_name": client_name},
+        "Client accepted the proposal",
+        f"{client_name} accepted. Next is the agreement and deposit.",
+    )
     return {"ok": True, "status": "client_approved", "approved_at": timestamp, "version": next_version}
 
 
@@ -1349,6 +1412,11 @@ async def public_sign(token: str, data: SignatureIn, request: Request):
     }).eq("id", proposal["id"]).eq("version", proposal["version"]).execute()
     _event(proposal["id"], "signed", share_id=share["id"], metadata={"signature_id": row["id"]})
     _notify(proposal.get("created_by"), proposal["id"], "proposal_signed", "Proposal signed", f"{data.signer_name} signed the proposal.")
+    await _mock_process_email(
+        {**proposal, "status": "signed"},
+        "Agreement signed",
+        f"{data.signer_name} signed the agreement ({data.signer_email}).",
+    )
     return {"id": row["id"], "status": "signed", "signed_at": timestamp, "version": next_version}
 
 
@@ -1537,6 +1605,11 @@ async def _process_stripe_event(event: dict) -> None:
     _notify(
         proposal.get("created_by"), proposal_id, "proposal_paid",
         f"Proposal {label} paid", f"{proposal['client_name']} paid the proposal {label}.",
+    )
+    await _mock_process_email(
+        {**proposal, "status": target_status},
+        f"Proposal {label} paid",
+        f"{proposal.get('client_name') or 'Client'} paid the {label}.",
     )
 
 

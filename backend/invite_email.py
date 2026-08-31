@@ -373,28 +373,34 @@ async def deliver_html_email(
     subject: str,
     html_body: str,
     text_body: str,
+    bcc: Optional[list[str]] = None,
 ) -> Tuple[bool, Optional[str], Optional[str]]:
     """Send arbitrary HTML + plain text via Resend or SMTP (same config as invites)."""
     from_addr = _from_addr()
     if not from_addr:
         return False, "INVITE_FROM_EMAIL is not set", None
     subj = (subject or "Notification").strip()[:200]
+    copies = [addr.strip() for addr in (bcc or []) if addr and addr.strip()]
+    copies = [addr for addr in copies if addr.lower() != str(to_email or "").strip().lower()]
     resend = _resend_key()
     if resend:
         try:
             import httpx
 
+            payload: dict = {
+                "from": from_addr,
+                "to": [to_email],
+                "subject": subj,
+                "html": html_body,
+                "text": text_body,
+            }
+            if copies:
+                payload["bcc"] = copies
             async with httpx.AsyncClient(timeout=20.0) as client:
                 r = await client.post(
                     "https://api.resend.com/emails",
                     headers={"Authorization": f"Bearer {resend}", "Content-Type": "application/json"},
-                    json={
-                        "from": from_addr,
-                        "to": [to_email],
-                        "subject": subj,
-                        "html": html_body,
-                        "text": text_body,
-                    },
+                    json=payload,
                 )
             if r.status_code not in (200, 201):
                 detail = (r.text or "")[:800]
@@ -431,6 +437,8 @@ async def deliver_html_email(
             msg["Subject"] = subj
             msg["From"] = from_addr
             msg["To"] = to_email
+            if copies:
+                msg["Bcc"] = ", ".join(copies)
             msg.set_content(text_body)
             msg.add_alternative(html_body, subtype="html")
             if smtp["port"] == 465:
