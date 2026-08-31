@@ -103,13 +103,24 @@ function normalizeContentItems(items) {
 }
 
 function addMinutesToTime(time, minutes) {
-  if (!time) return "";
-  const [hours, mins] = time.split(":").map(Number);
-  if (Number.isNaN(hours) || Number.isNaN(mins)) return time;
+  const normalized = normalizeClock(time);
+  if (!normalized) return "";
+  const [hours, mins] = normalized.split(":").map(Number);
+  if (Number.isNaN(hours) || Number.isNaN(mins)) return normalized;
   const total = hours * 60 + mins + minutes;
   const nextHours = Math.floor(total / 60) % 24;
   const nextMins = ((total % 60) + 60) % 60;
   return `${String(nextHours).padStart(2, "0")}:${String(nextMins).padStart(2, "0")}`;
+}
+
+export function normalizeClock(value) {
+  if (value == null || value === "") return "";
+  const match = String(value).trim().match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return String(value).trim();
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (Number.isNaN(hours) || Number.isNaN(minutes) || hours > 23 || minutes > 59) return "";
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 }
 
 export function deriveSessionSchedule(startTime) {
@@ -209,10 +220,10 @@ export function normalizeProposal(value = {}) {
       ...(source.schedule || {}),
       calendar_id: source.calendar_id ?? source.schedule?.calendar_id ?? "",
       session_date: source.session_date ?? source.schedule?.session_date ?? source.schedule?.event_date ?? "",
-      arrival_time: source.arrival_time ?? source.schedule?.arrival_time ?? "",
-      setup_time: source.setup_time ?? source.schedule?.setup_time ?? "",
-      shoot_time: source.shoot_time ?? source.schedule?.shoot_time ?? "",
-      wrap_time: source.wrap_time ?? source.schedule?.wrap_time ?? "",
+      arrival_time: normalizeClock(source.arrival_time ?? source.schedule?.arrival_time ?? ""),
+      setup_time: normalizeClock(source.setup_time ?? source.schedule?.setup_time ?? ""),
+      shoot_time: normalizeClock(source.shoot_time ?? source.schedule?.shoot_time ?? ""),
+      wrap_time: normalizeClock(source.wrap_time ?? source.schedule?.wrap_time ?? ""),
     },
     pricing: {
       ...EMPTY_PROPOSAL.pricing,
@@ -239,10 +250,10 @@ export function serializeProposal(proposal, { includeVersion = true } = {}) {
     client_phone: proposal.client?.phone || "",
     calendar_id: proposal.schedule?.calendar_id || null,
     session_date: proposal.schedule?.session_date || null,
-    arrival_time: proposal.schedule?.arrival_time || null,
-    setup_time: proposal.schedule?.setup_time || null,
-    shoot_time: proposal.schedule?.shoot_time || null,
-    wrap_time: proposal.schedule?.wrap_time || null,
+    arrival_time: normalizeClock(proposal.schedule?.arrival_time) || null,
+    setup_time: normalizeClock(proposal.schedule?.setup_time) || null,
+    shoot_time: normalizeClock(proposal.schedule?.shoot_time) || null,
+    wrap_time: normalizeClock(proposal.schedule?.wrap_time) || null,
     creative_brief: { ...(proposal.vision || {}) },
     content_items: proposal.content_items || [],
     pricing: {

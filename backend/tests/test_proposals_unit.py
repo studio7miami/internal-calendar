@@ -58,6 +58,16 @@ def test_proposal_model_validates_schedule_and_money():
         deposit_percent=50,
     )
     assert valid.wrap_time == "12:00"
+    seconds = proposals.ProposalCreate(
+        client_name="A Client",
+        client_email="client@example.com",
+        arrival_time="09:00:00",
+        setup_time="10:00:00",
+        shoot_time="11:00:00",
+        wrap_time="12:00:00",
+    )
+    assert seconds.arrival_time == "09:00"
+    assert seconds.wrap_time == "12:00"
 
     with pytest.raises(ValidationError):
         proposals.ProposalCreate(

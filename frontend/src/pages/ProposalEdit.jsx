@@ -74,6 +74,7 @@ export default function ProposalEdit({ createNew = false }) {
             updated_at: saved.updated_at ?? current.updated_at,
           }));
           setSaveState("saved");
+          setError("");
           if (!snapshot.id && idRef.current) {
             navigate(`/proposals/${idRef.current}/edit`, {
               replace: true,
@@ -89,7 +90,10 @@ export default function ProposalEdit({ createNew = false }) {
             setProposal((current) => ({ ...current, version: latest.version }));
           } catch {}
         }
-        if (editRevision.current === revision) setSaveState("error");
+        if (editRevision.current === revision) {
+          setSaveState("error");
+          setError(formatApiError(err.response?.data?.detail) || "Could not save this proposal.");
+        }
       }
     }, 750);
     return () => window.clearTimeout(timer);

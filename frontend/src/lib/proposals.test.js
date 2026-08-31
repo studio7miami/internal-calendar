@@ -96,6 +96,17 @@ describe("proposal helpers", () => {
     expect(payload.content_items[0].type).toBe("Photo");
   });
 
+  test("normalizes clock values with seconds before save", () => {
+    const payload = serializeProposal(normalizeProposal({
+      arrival_time: "10:00:00",
+      setup_time: "10:30:00",
+      shoot_time: "11:00:00",
+      wrap_time: "14:00:00",
+    }));
+    expect(payload.arrival_time).toBe("10:00");
+    expect(payload.wrap_time).toBe("14:00");
+  });
+
   test("calculates total and percentage deposit from session rate", () => {
     const result = proposalTotals({
       pricing: {

@@ -237,16 +237,24 @@ class ProposalCreate(BaseModel):
     def blank_reference_is_none(cls, value: Any) -> Any:
         return None if value == "" else value
 
-    @field_validator("arrival_time", "setup_time", "shoot_time", "wrap_time")
+    @field_validator("arrival_time", "setup_time", "shoot_time", "wrap_time", mode="before")
     @classmethod
     def validate_time(cls, value: Optional[str]) -> Optional[str]:
         if value is None or value == "":
             return None
-        try:
-            datetime.strptime(value, "%H:%M")
-        except ValueError as exc:
-            raise ValueError("times must use HH:MM") from exc
-        return value
+        if hasattr(value, "hour") and hasattr(value, "minute"):
+            return f"{int(value.hour):02d}:{int(value.minute):02d}"
+        text = str(value).strip()
+        if "T" in text:
+            text = text.split("T", 1)[1]
+        text = text.replace("Z", "").split("+")[0].split("-")[0].strip()
+        parts = text.split(":")
+        if len(parts) >= 2 and parts[0].isdigit() and parts[1][:2].isdigit():
+            hours = int(parts[0])
+            minutes = int(parts[1][:2])
+            if 0 <= hours < 24 and 0 <= minutes < 60:
+                return f"{hours:02d}:{minutes:02d}"
+        raise ValueError("times must use HH:MM")
 
     @model_validator(mode="after")
     def validate_schedule_order(self):
@@ -293,7 +301,7 @@ class ProposalUpdate(BaseModel):
     def blank_reference_is_none(cls, value: Any) -> Any:
         return None if value == "" else value
 
-    @field_validator("arrival_time", "setup_time", "shoot_time", "wrap_time")
+    @field_validator("arrival_time", "setup_time", "shoot_time", "wrap_time", mode="before")
     @classmethod
     def validate_time(cls, value: Optional[str]) -> Optional[str]:
         return ProposalCreate.validate_time(value)
@@ -753,13 +761,18 @@ async def update_proposal(
     if proposal["status"] not in ("draft", "changes_requested"):
         raise HTTPException(status_code=409, detail="Only draft or change-requested proposals can be edited")
     raw = data.model_dump(exclude_unset=True, mode="json")
-    version = raw.pop("version")
+    version = raw.pop("version", proposal.get("version"))
+    if version is None:
+        raise HTTPException(status_code=409, detail="Proposal version is required")
     updates = {key: value for key, value in raw.items() if key in EDITABLE_FIELDS}
     if not updates:
         return _serialize(proposal)
     merged = {**proposal, **updates}
-    ProposalCreate(**{key: merged.get(key) for key in ProposalCreate.model_fields})
-    updated = _optimistic_update(proposal_id, version, updates)
+    try:
+        ProposalCreate(**{key: merged.get(key) for key in ProposalCreate.model_fields})
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors()) from exc
+    updated = _optimistic_update(proposal_id, int(version), updates)
     _event(proposal_id, "updated", user_id=user["id"], metadata={"fields": sorted(updates)})
     return _serialize(updated)
 
