@@ -133,9 +133,27 @@ export default function ProposalEdit({ createNew = false }) {
   };
 
   if (error && !proposal) {
-    return <div className="m-auto text-center"><p className="text-sm text-red-600">{error}</p><Button className={pageBtnOutlineClass} onClick={() => navigate("/proposals")}><ArrowLeft className="mr-2 h-4 w-4" /> Back</Button></div>;
+    return (
+      <div className="proposal-edit-page grid place-items-center px-6">
+        <div className="text-center">
+          <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+          <Button className={`${pageBtnOutlineClass} mt-4`} onClick={() => navigate("/proposals")}>
+            <ArrowLeft className="mr-2 h-4 w-4" /> Back
+          </Button>
+        </div>
+      </div>
+    );
   }
-  if (!proposal) return <div className="m-auto flex items-center gap-2 text-sm text-slate-500"><RefreshCw className="h-4 w-4 animate-spin" /> Loading proposal…</div>;
+  if (!proposal) {
+    return (
+      <div className="proposal-edit-page grid place-items-center">
+        <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-zinc-400">
+          <RefreshCw className="h-4 w-4 animate-spin" />
+          Loading proposal…
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="proposal-edit-page overflow-hidden">
