@@ -1,6 +1,7 @@
 import React from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import ProposalLoader from "../proposals/ProposalLoader";
 
 function hasMembersPageAccess(user) {
   if (user?.role === "admin" || user?.role === "manager") return true;
@@ -12,11 +13,7 @@ function hasMembersPageAccess(user) {
 export default function ProtectedRoute({ children, adminOnly = false, membersPage = false, permission }) {
   const { user, loading } = useAuth();
   if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-white text-slate-500 dark:bg-[#0b0b0c] dark:text-zinc-500">
-        <div className="label-tech">Loading…</div>
-      </div>
-    );
+    return <ProposalLoader />;
   }
   if (!user) return <Navigate to="/login" replace />;
   if (membersPage) {

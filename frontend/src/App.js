@@ -16,6 +16,7 @@ import MembersPreview from "./pages/MembersPreview";
 import Proposals from "./pages/Proposals";
 import ProposalEdit from "./pages/ProposalEdit";
 import PublicProposal from "./pages/PublicProposal";
+import RouteErrorBoundary from "./components/app/RouteErrorBoundary";
 import { Toaster } from "./components/ui/sonner";
 
 function App() {
@@ -72,7 +73,9 @@ function App() {
               path="/proposals/new"
               element={
                 <ProtectedRoute permission="edit_proposals">
-                  <ProposalEdit createNew />
+                  <RouteErrorBoundary>
+                    <ProposalEdit createNew />
+                  </RouteErrorBoundary>
                 </ProtectedRoute>
               }
             />
@@ -80,7 +83,9 @@ function App() {
               path="/proposals/:id/edit"
               element={
                 <ProtectedRoute permission="edit_proposals">
-                  <ProposalEdit />
+                  <RouteErrorBoundary>
+                    <ProposalEdit />
+                  </RouteErrorBoundary>
                 </ProtectedRoute>
               }
             />

@@ -36,6 +36,14 @@ export function AuthProvider({ children }) {
       return;
     }
 
+    try {
+      const cached = localStorage.getItem("s7_user");
+      if (cached) {
+        setUser(JSON.parse(cached));
+        setLoading(false);
+      }
+    } catch {}
+
     api
       .get("/auth/me")
       .then((r) => {

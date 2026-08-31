@@ -64,6 +64,7 @@ export default function PublicProposal() {
   const [remainingMs, setRemainingMs] = useState(PROPOSAL_TIMER_MS);
   const [loaderPhase, setLoaderPhase] = useState("hold");
   const signatureRef = useRef(null);
+  const expiredRef = useRef(false);
 
   const setFlowStep = (step) => {
     try {
@@ -146,6 +147,34 @@ export default function PublicProposal() {
     const id = window.setInterval(tick, 250);
     return () => window.clearInterval(id);
   }, [proposal, token, loaderPhase]);
+
+  useEffect(() => {
+    if (!proposal || !token || loaderPhase !== "done" || remainingMs > 0 || expiredRef.current) return undefined;
+    if (new URLSearchParams(window.location.search).get("preview")) return undefined;
+    if (["deposit_paid", "paid"].includes(proposal.status)) return undefined;
+    expiredRef.current = true;
+    const needsResign = proposal.status === "signed" || !!proposal.signature_summary;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await publicProposalApi.post(`/${token}/expire-window`);
+        if (cancelled || !data) return;
+        const normalized = normalizeProposal(data);
+        setProposal(normalized);
+        setSignature("");
+        setConsent(false);
+        if (needsResign && !["deposit_paid", "paid"].includes(normalized.status)) {
+          setViewStep("agreement");
+          setFlowStep("agreement");
+        }
+      } catch {
+        expiredRef.current = false;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [proposal, token, loaderPhase, remainingMs]);
 
   useEffect(() => {
     if (!proposal?.status) return;
@@ -519,7 +548,7 @@ function Agreement({ agreement, proposal, totals, signerName, setSignerName, sig
                   {signedLabel ? <time dateTime={signedAt}>{signedLabel}</time> : null}
                 </div>
               ) : (
-                <SignaturePad ref={signatureRef} onChange={setSignature} />
+                <SignaturePad key={`${proposal?.id || "pad"}-${proposal?.version || 0}-${alreadySigned ? "locked" : "open"}`} ref={signatureRef} onChange={setSignature} />
               )}
             </div>
             {alreadySigned ? null : (

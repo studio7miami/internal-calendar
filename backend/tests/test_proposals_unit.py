@@ -228,15 +228,36 @@ def test_editor_urls_use_the_client_name_and_suffix_duplicates(monkeypatch):
     )
 
 
-def test_sent_proposals_can_rename_title_only():
-    sent = {"status": "sent", "title": "Untitled proposal"}
+def test_sent_proposals_can_rename_title_and_schedule():
+    sent = {
+        "status": "sent",
+        "title": "Untitled proposal",
+        "session_date": "2026-09-01",
+        "arrival_time": "09:00",
+    }
     assert proposals._editable_updates(sent, {"title": "Test session", "client_name": "Tai"}) == {
         "title": "Test session"
     }
     assert proposals._editable_updates(sent, {"title": "Untitled proposal", "client_name": "Tai"}) == {}
+    assert proposals._editable_updates(sent, {
+        "title": "Untitled proposal",
+        "session_date": "2026-09-08",
+        "arrival_time": "10:00",
+    }) == {"session_date": "2026-09-08", "arrival_time": "10:00"}
     with pytest.raises(proposals.HTTPException) as error:
         proposals._editable_updates({"status": "paid", "title": "Done"}, {"title": "Nope"})
     assert error.value.status_code == 409
+
+
+def test_unpaid_signature_is_voided_when_the_window_expires():
+    assert proposals._signing_window_updates("signed", True) == {
+        "status": "client_approved",
+        "signed_at": None,
+    }
+    assert proposals._signing_window_updates("client_approved", True) == {"signed_at": None}
+    assert proposals._signing_window_updates("client_approved", False) == {}
+    assert proposals._signing_window_updates("deposit_paid", True) == {}
+    assert proposals._signing_window_updates("paid", True) == {}
 
 
 def test_stripe_checkout_name_uses_payment_kind_and_proposal_title():

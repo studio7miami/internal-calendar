@@ -33,16 +33,26 @@ export default function ProposalEdit({ createNew = false }) {
         api.get("/calendars").then(({ data }) => {
           if (!cancelled) setCalendars((Array.isArray(data) ? data : data?.items || []).filter((calendar) => calendar.is_active !== false));
         }).catch(() => {});
-        if (createNew || (seededProposal && (seededProposal.id === routeId || seededProposal.slug === routeId))) {
+        if (createNew) {
           return;
         }
         const { data } = await api.get(`/proposals/${encodeURIComponent(routeId)}`);
         if (!cancelled) {
           const next = normalizeProposal(data);
-          setProposal(next);
           hydrated.current = true;
+          if (editRevision.current) {
+            setProposal((current) => (current ? {
+              ...current,
+              id: next.id || current.id,
+              version: next.version ?? current.version,
+              slug: next.slug || current.slug,
+              status: next.status || current.status,
+            } : next));
+          } else {
+            setProposal(next);
+          }
           if (next.slug && next.slug !== routeId && proposalEditPath(next) !== window.location.pathname) {
-            navigate(proposalEditPath(next), { replace: true });
+            navigate(proposalEditPath(next), { replace: true, state: { proposal: next } });
           }
         }
       } catch (err) {
@@ -139,7 +149,7 @@ export default function ProposalEdit({ createNew = false }) {
 
   if (error && !proposal) {
     return (
-      <div className="proposal-edit-page grid place-items-center px-6">
+      <div className="proposal-edit-page grid h-dvh place-items-center px-6">
         <div className="text-center">
           <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
           <Button className={`${pageBtnOutlineClass} mt-4`} onClick={() => navigate("/proposals")}>
@@ -150,11 +160,15 @@ export default function ProposalEdit({ createNew = false }) {
     );
   }
   if (!proposal) {
-    return <ProposalLoader />;
+    return (
+      <div className="proposal-edit-page flex h-dvh min-h-0 flex-col overflow-hidden">
+        <ProposalLoader />
+      </div>
+    );
   }
 
   return (
-    <div className="proposal-edit-page overflow-hidden">
+    <div className="proposal-edit-page flex h-dvh min-h-0 flex-col overflow-hidden">
       {error && <div className="proposal-edit-error">{error}</div>}
       <ProposalEditor
         proposal={proposal}

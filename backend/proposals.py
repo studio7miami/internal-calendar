@@ -50,6 +50,7 @@ SNAPSHOT_FIELDS = (
 )
 EDITABLE_FIELDS = set(SNAPSHOT_FIELDS) | {"assigned_to"}
 TITLE_EDITABLE_STATUSES = {"approved", "sent", "viewed", "client_approved"}
+SCHEDULE_FIELDS = {"calendar_id", "session_date", "arrival_time", "setup_time", "shoot_time", "wrap_time"}
 ACTIVE_BOOKING_STATUSES = {"approved", "pending"}
 
 
@@ -1103,7 +1104,9 @@ async def create_proposal(data: ProposalCreate, user: dict = Depends(_current_us
 async def read_proposal(proposal_id: str, user: dict = Depends(_current_user)):
     _require(user, "view_proposals")
     proposal = _proposal_by_ref(proposal_id)
-    return _serialize(proposal)
+    if _is_uuid(proposal_id):
+        return _serialize(proposal)
+    return _serialize(proposal, slug=proposal_id)
 
 
 @router.get("/proposals/{proposal_id}/client-link")
@@ -1119,24 +1122,43 @@ async def client_link(proposal_id: str, user: dict = Depends(_current_user)):
     return {"share_url": _share_url(token, step=step), "step": step}
 
 
+def _values_match(left: Any, right: Any) -> bool:
+    if left is None and right in (None, ""):
+        return True
+    if right is None and left in (None, ""):
+        return True
+    left_text = str(left)
+    right_text = str(right)
+    if len(left_text) >= 10 and len(right_text) >= 10 and left_text[4] == "-" and right_text[4] == "-":
+        return left_text[:10] == right_text[:10]
+    if len(left_text) >= 5 and len(right_text) >= 5 and left_text[2] == ":" and right_text[2] == ":":
+        return left_text[:5] == right_text[:5]
+    return left_text == right_text
+
+
 def _editable_updates(proposal: dict, raw: dict) -> dict:
     status = str(proposal.get("status") or "")
     if status in ("draft", "changes_requested"):
         return {key: value for key, value in raw.items() if key in EDITABLE_FIELDS}
     if status in TITLE_EDITABLE_STATUSES:
-        if "title" not in raw:
-            return {}
-        incoming = raw.get("title") or ""
-        current = proposal.get("title") or ""
-        if incoming == current:
-            return {}
-        return {"title": incoming}
+        updates: dict[str, Any] = {}
+        if "title" in raw and (raw.get("title") or "") != (proposal.get("title") or ""):
+            updates["title"] = raw.get("title") or ""
+        for key in SCHEDULE_FIELDS:
+            if key not in raw:
+                continue
+            if not _values_match(raw.get(key), proposal.get(key)):
+                updates[key] = raw.get(key)
+        return updates
     raise HTTPException(status_code=409, detail="Only draft or change-requested proposals can be edited")
 
 
-def _sync_revision_title(proposal: dict, title: str) -> None:
+def _sync_revision_fields(proposal: dict, updates: dict) -> None:
     revision_id = proposal.get("current_revision_id")
     if not revision_id or _db is None:
+        return
+    tracked = {"title", *SCHEDULE_FIELDS}
+    if not any(key in updates for key in tracked):
         return
     try:
         revision = _one("proposal_revisions", revision_id)
@@ -1144,8 +1166,16 @@ def _sync_revision_title(proposal: dict, title: str) -> None:
         return
     snapshot = dict(revision.get("snapshot") or {})
     agreement = dict(revision.get("agreement_snapshot") or {})
-    snapshot["title"] = title
-    agreement["title"] = title
+    schedule = dict(agreement.get("schedule") or {})
+    for key, value in updates.items():
+        if key not in tracked:
+            continue
+        snapshot[key] = value
+        if key == "title":
+            agreement["title"] = value
+        elif key in ("session_date", "arrival_time", "setup_time", "shoot_time", "wrap_time"):
+            schedule[key] = value
+    agreement["schedule"] = schedule
     _db.table("proposal_revisions").update({
         "snapshot": snapshot,
         "agreement_snapshot": agreement,
@@ -1174,8 +1204,9 @@ async def update_proposal(
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=exc.errors()) from exc
     updated = _optimistic_update(proposal_id, int(version), updates)
-    if "title" in updates:
-        _sync_revision_title(updated, updates["title"])
+    _sync_revision_fields(updated, updates)
+    if any(key in updates for key in SCHEDULE_FIELDS):
+        _sync_hold_after_schedule_edit(updated, updates)
     _event(proposal_id, "updated", user_id=user["id"], metadata={"fields": sorted(updates)})
     return _serialize(updated)
 
@@ -1250,6 +1281,27 @@ async def approve_proposal(
         "Proposal approved", f"{proposal['client_name']} proposal is ready to send.",
     )
     return _serialize(updated)
+
+
+def _sync_hold_after_schedule_edit(proposal: dict, updates: dict) -> None:
+    booking_id = proposal.get("booking_id")
+    if not booking_id or _db is None:
+        return
+    fields: dict[str, Any] = {}
+    if "session_date" in updates:
+        fields["date"] = str(updates["session_date"])
+    if "arrival_time" in updates:
+        fields["start_time"] = updates["arrival_time"]
+    if "wrap_time" in updates:
+        fields["end_time"] = updates["wrap_time"]
+    if "calendar_id" in updates:
+        fields["calendar_id"] = updates["calendar_id"]
+    if not fields:
+        return
+    try:
+        _db.table("bookings").update(fields).eq("id", booking_id).execute()
+    except Exception:
+        logger.exception("Could not sync proposal hold %s after schedule edit", booking_id)
 
 
 def _upsert_proposal_hold(proposal: dict, calendar: dict, user: dict) -> dict:
@@ -1727,6 +1779,11 @@ async def public_proposal(token: str, request: Request):
         _event(proposal["id"], "viewed", share_id=share["id"])
     else:
         _db.table("proposal_shares").update({"last_viewed_at": _now()}).eq("id", share["id"]).execute()
+    current = _proposal(proposal["id"])
+    return _public_payload(current, revision)
+
+
+def _public_payload(proposal: dict, revision: dict) -> dict:
     payments = (
         _db.table("proposal_payments").select("id,status,payment_type,amount_cents,currency,paid_at")
         .eq("proposal_id", proposal["id"]).order("created_at", desc=True).execute().data or []
@@ -1735,17 +1792,16 @@ async def public_proposal(token: str, request: Request):
         _db.table("proposal_signatures").select("id,signer_name,signer_email,signed_at,signature_data")
         .eq("proposal_id", proposal["id"]).order("signed_at", desc=True).execute().data or []
     )
-    current = _proposal(proposal["id"])
-    public_status = _public_status(current.get("status", proposal["status"]))
     change_request = _open_change_request(proposal["id"])
+    public_status = _public_status(proposal.get("status", "draft"))
     return {
         "proposal": {
             **revision["snapshot"],
             "id": proposal["id"],
             "status": public_status,
-            "version": current.get("version"),
-            "approved_at": current.get("client_approved_at"),
-            "signed_at": current.get("signed_at"),
+            "version": proposal.get("version"),
+            "approved_at": proposal.get("client_approved_at"),
+            "signed_at": proposal.get("signed_at"),
             "revision_number": revision["revision_number"],
             "change_request": change_request,
         },
@@ -1755,6 +1811,60 @@ async def public_proposal(token: str, request: Request):
         "signature_summary": signatures[0] if signatures else None,
         "change_request": change_request,
     }
+
+
+def _signing_window_updates(status: str, has_signature: bool) -> dict:
+    if status in ("deposit_paid", "paid", "archived"):
+        return {}
+    updates: dict[str, Any] = {}
+    if has_signature or status == "signed":
+        updates["signed_at"] = None
+        if status == "signed":
+            updates["status"] = "client_approved"
+    return updates
+
+
+def _expire_proposal_hold(proposal: dict) -> None:
+    booking_id = proposal.get("booking_id")
+    if not booking_id or _db is None:
+        return
+    try:
+        _db.table("bookings").update({"hold_expires_at": _now()}).eq("id", booking_id).eq(
+            "source", "proposal"
+        ).eq("status", "pending").execute()
+    except Exception:
+        logger.exception("Could not expire proposal hold %s", booking_id)
+
+
+def _expire_signing_window(proposal: dict, revision: dict) -> dict:
+    status = str(proposal.get("status") or "")
+    if status in ("deposit_paid", "paid", "archived"):
+        return proposal
+    _expire_proposal_hold(proposal)
+    signatures = []
+    if _db is not None:
+        try:
+            signatures = (
+                _db.table("proposal_signatures").select("id")
+                .eq("proposal_id", proposal["id"])
+                .eq("revision_id", revision["id"])
+                .execute()
+                .data or []
+            )
+        except Exception:
+            logger.exception("Could not load signatures for expire-window %s", proposal.get("id"))
+    if signatures:
+        _db.table("proposal_signatures").delete().eq("proposal_id", proposal["id"]).eq(
+            "revision_id", revision["id"]
+        ).execute()
+    updates = _signing_window_updates(status, bool(signatures))
+    if not updates:
+        return proposal
+    payload = {**updates, "version": int(proposal.get("version") or 1) + 1, "updated_at": _now()}
+    result = _db.table("proposals").update(payload).eq("id", proposal["id"]).execute()
+    updated = dict(result.data[0]) if result.data else {**proposal, **payload}
+    _event(proposal["id"], "signing_window_expired", metadata={"previous_status": status})
+    return updated
 
 
 @router.post("/public/proposals/{token}/change-request", status_code=201)
@@ -1869,6 +1979,14 @@ async def public_sign(token: str, data: SignatureIn, request: Request, backgroun
         f"{data.signer_name} signed the agreement ({data.signer_email}).",
     )
     return {"id": row["id"], "status": "signed", "signed_at": timestamp, "version": next_version}
+
+
+@router.post("/public/proposals/{token}/expire-window")
+async def public_expire_window(token: str, request: Request):
+    _public_rate_limit(request)
+    _share, proposal, revision = _public_share(token)
+    updated = _expire_signing_window(proposal, revision)
+    return _public_payload(updated, revision)
 
 
 async def _create_stripe_checkout(

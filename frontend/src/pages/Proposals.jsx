@@ -170,7 +170,7 @@ export default function Proposals() {
     }
   };
 
-  const openProposal = (proposal) => navigate(proposalEditPath(proposal));
+  const openProposal = (proposal) => navigate(proposalEditPath(proposal), { state: { proposal } });
 
   return (
     <div className="space-y-7" data-testid="proposals-page">

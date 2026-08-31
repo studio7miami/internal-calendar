@@ -83,6 +83,14 @@ function findStudio7Calendar(calendars = []) {
   return calendars.find((calendar) => /studio\s*7\s*miami/i.test(String(calendar.name || "")));
 }
 
+function isPostAcceptStatus(status) {
+  return ["client_approved", "signed", "deposit_paid", "paid"].includes(status);
+}
+
+function scheduleIsLocked(status) {
+  return ["signed", "deposit_paid", "paid", "archived"].includes(status);
+}
+
 function useMobileLayout(breakpoint = 1024) {
   const [mobile, setMobile] = useState(() => (
     typeof window !== "undefined" ? window.matchMedia(`(max-width: ${breakpoint}px)`).matches : false
@@ -126,9 +134,12 @@ export default function ProposalEditor({
   const [sendShareUrl, setSendShareUrl] = useState("");
   const canvasRef = useRef(null);
   const previewStageRef = useRef(null);
+  const proposalRef = useRef(proposal);
+  proposalRef.current = proposal;
   const patch = (key, value) => onChange({ ...proposal, [key]: value });
   const patchSchedule = (updates) => patch("schedule", { ...(proposal.schedule || {}), ...updates });
   const patchGroup = (group, key, value) => patch(group, { ...(proposal[group] || {}), [key]: value });
+  const scheduleLocked = scheduleIsLocked(proposal.status);
   const can = (permission) => user?.role === "admin" || !!user?.permissions?.[permission];
   const sendAction = proposal.status === "sent" || proposal.status === "viewed" ? "resend" : "send";
   const canSend = can("send_proposals")
@@ -139,12 +150,13 @@ export default function ProposalEditor({
   useEffect(() => {
     const studioCalendar = findStudio7Calendar(calendars);
     if (!studioCalendar?.id) return;
-    if (proposal.schedule?.calendar_id === studioCalendar.id) return;
+    const current = proposalRef.current;
+    if (String(current?.schedule?.calendar_id || "") === String(studioCalendar.id)) return;
     onChange({
-      ...proposal,
-      schedule: { ...(proposal.schedule || {}), calendar_id: studioCalendar.id },
+      ...current,
+      schedule: { ...(current.schedule || {}), calendar_id: studioCalendar.id },
     });
-  }, [calendars, onChange, proposal]);
+  }, [calendars, onChange]);
 
   useEffect(() => {
     canvasRef.current?.scrollTo(0, 0);
@@ -264,6 +276,7 @@ export default function ProposalEditor({
                   patchGroup={patchGroup}
                   patchSchedule={patchSchedule}
                   onSessionStartTime={updateSessionStartTime}
+                  scheduleLocked={scheduleLocked}
                 />
               </div>
             </section>
@@ -355,7 +368,7 @@ function MobilePreviewPane({ proposal }) {
   );
 }
 
-function SectionFields({ section, proposal, patch, patchGroup, patchSchedule, onSessionStartTime }) {
+function SectionFields({ section, proposal, patch, patchGroup, patchSchedule, onSessionStartTime, scheduleLocked = false }) {
   return (
     <div className="pb-section-fields">
       {section === "client" && (
@@ -364,6 +377,7 @@ function SectionFields({ section, proposal, patch, patchGroup, patchSchedule, on
           title={proposal.title || ""}
           sessionDate={proposal.schedule?.session_date || ""}
           startTime={proposal.schedule?.arrival_time || ""}
+          scheduleLocked={scheduleLocked}
           patch={(key, value) => patchGroup("client", key, value)}
           onTitle={(value) => patch("title", value)}
           onSessionDate={(value) => patchSchedule({ session_date: value })}
@@ -486,7 +500,7 @@ function Field({ label, children }) {
   return <label className="pb-field"><span>{label}</span>{children}</label>;
 }
 
-function ClientFields({ value, title, patch, sessionDate, startTime, onTitle, onSessionDate, onStartTime }) {
+function ClientFields({ value, title, patch, sessionDate, startTime, onTitle, onSessionDate, onStartTime, scheduleLocked = false }) {
   return (
     <div>
       <Field label="Title">
@@ -497,8 +511,8 @@ function ClientFields({ value, title, patch, sessionDate, startTime, onTitle, on
         />
       </Field>
       <Field label="Client Name"><input value={value.contact_name || ""} onChange={(e) => patch("contact_name", e.target.value)} /></Field>
-      <ProposalDateField label="Session Date" value={sessionDate || ""} onChange={onSessionDate} />
-      <ProposalTimeField label="Start Time" value={startTime || ""} onChange={onStartTime} />
+      <ProposalDateField label="Session Date" value={sessionDate || ""} onChange={onSessionDate} disabled={scheduleLocked} />
+      <ProposalTimeField label="Start Time" value={startTime || ""} onChange={onStartTime} disabled={scheduleLocked} />
       <Field label="Client Email"><input type="email" autoComplete="email" value={value.email || ""} onChange={(e) => patch("email", e.target.value)} placeholder="For sharing" /></Field>
       <Field label="Client Phone"><input type="tel" autoComplete="tel" value={value.phone || ""} onChange={(e) => patch("phone", e.target.value)} placeholder="For sharing" /></Field>
     </div>

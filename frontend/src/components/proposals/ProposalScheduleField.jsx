@@ -14,9 +14,17 @@ const calendarClassNames = {
 const popoverSurfaceClass =
   "z-[100] w-auto rounded-[7px] border border-gray-200/95 bg-white p-3 text-slate-900 shadow-md dark:border-white/20 dark:bg-zinc-900 dark:text-white";
 
+function parseDateValue(value) {
+  const iso = String(value || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return undefined;
+  const date = new Date(`${iso}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
 function formatDisplayDate(value) {
-  if (!value) return null;
-  return new Date(`${value}T00:00:00`).toLocaleDateString(undefined, {
+  const date = parseDateValue(value);
+  if (!date) return null;
+  return date.toLocaleDateString(undefined, {
     weekday: "short",
     month: "short",
     day: "numeric",
@@ -43,7 +51,8 @@ function toIsoDate(date) {
   return `${y}-${m}-${d}`;
 }
 
-export function ProposalDateField({ label, value = "", onChange }) {
+export function ProposalDateField({ label, value = "", onChange, disabled = false }) {
+  const selected = parseDateValue(value);
   return (
     <label className="pb-field">
       <span>{label}</span>
@@ -51,6 +60,7 @@ export function ProposalDateField({ label, value = "", onChange }) {
         <PopoverTrigger asChild>
           <button
             type="button"
+            disabled={disabled}
             className={cn("pb-date-trigger", !value && "pb-date-trigger--empty")}
             aria-label={value ? `Session date: ${formatDisplayDate(value)}` : "Select session date"}
           >
@@ -58,10 +68,11 @@ export function ProposalDateField({ label, value = "", onChange }) {
             <CalendarIcon aria-hidden="true" />
           </button>
         </PopoverTrigger>
+        {disabled ? null : (
         <PopoverContent className={cn(popoverSurfaceClass, "p-0")} sideOffset={6} align="start">
           <Calendar
             mode="single"
-            selected={value ? new Date(`${value}T00:00:00`) : undefined}
+            selected={selected}
             onSelect={(date) => {
               if (!date) return;
               onChange(toIsoDate(date));
@@ -70,12 +81,13 @@ export function ProposalDateField({ label, value = "", onChange }) {
             classNames={calendarClassNames}
           />
         </PopoverContent>
+        )}
       </Popover>
     </label>
   );
 }
 
-export function ProposalTimeField({ label, value = "", onChange }) {
+export function ProposalTimeField({ label, value = "", onChange, disabled = false }) {
   return (
     <label className="pb-field">
       <span>{label}</span>
@@ -83,6 +95,7 @@ export function ProposalTimeField({ label, value = "", onChange }) {
         <PopoverTrigger asChild>
           <button
             type="button"
+            disabled={disabled}
             className={cn("pb-date-trigger pb-time-trigger", !value && "pb-date-trigger--empty")}
             aria-label={value ? `Start time: ${formatDisplayTime(value)}` : "Select start time"}
           >
@@ -90,6 +103,7 @@ export function ProposalTimeField({ label, value = "", onChange }) {
             <Clock aria-hidden="true" />
           </button>
         </PopoverTrigger>
+        {disabled ? null : (
         <PopoverContent className={popoverSurfaceClass} sideOffset={6} align="start">
           <Input
             type="time"
@@ -103,6 +117,7 @@ export function ProposalTimeField({ label, value = "", onChange }) {
             )}
           />
         </PopoverContent>
+        )}
       </Popover>
     </label>
   );

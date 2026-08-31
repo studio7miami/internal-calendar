@@ -618,6 +618,23 @@ export function installLocalMocking(instance) {
         return use({ ok: true, status: updated.status, version: updated.version });
       }
 
+      if (method === "post" && publicAction === "expire-window") {
+        if (["deposit_paid", "paid"].includes(current.status)) {
+          return use(mockPublicPayload(current));
+        }
+        const updated = {
+          ...current,
+          status: current.status === "signed" ? "client_approved" : current.status,
+          version: Number(current.version || 0) + 1,
+          updated_at: nowIso(),
+        };
+        delete updated.signed_at;
+        delete updated.signature_summary;
+        proposals[index] = updated;
+        saveProposals(proposals);
+        return use(mockPublicPayload(updated));
+      }
+
       if (method === "post" && publicAction === "approve") {
         if (["client_approved", "signed", "deposit_paid", "paid"].includes(current.status)) {
           return use({ ok: true, status: current.status, approved_at: current.client_approved_at, version: current.version });
