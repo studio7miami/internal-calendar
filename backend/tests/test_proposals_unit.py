@@ -32,6 +32,9 @@ def test_share_tokens_are_only_stored_as_sha256():
 def test_named_client_links_are_accepted_as_public_tokens():
     assert proposals.client_share_slug("Luis Corrales") == "luis-corrales"
     assert proposals._normalize_public_token("luis-corrales") == "luis-corrales"
+    assert proposals._named_public_token("Tai") == "tai"
+    assert proposals._named_public_token("luis-corrales-2") == "luis-corrales-2"
+    assert proposals._named_public_token("ab") is None
     with pytest.raises(proposals.HTTPException) as error:
         proposals._normalize_public_token("ab")
     assert error.value.status_code == 404

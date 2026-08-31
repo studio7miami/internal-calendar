@@ -221,6 +221,19 @@ def _normalize_public_token(token: str) -> str:
     return cleaned
 
 
+def _named_public_token(token: str) -> Optional[str]:
+    """Lowercase client slug (tai, luis-corrales). Random share tokens are left alone."""
+    cleaned = (token or "").strip()
+    if not cleaned or _is_uuid(cleaned):
+        return None
+    slug = cleaned.lower()
+    if len(slug) < 3 or len(slug) > 48:
+        return None
+    if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", slug):
+        return None
+    return slug
+
+
 def _is_blank_draft(row: dict) -> bool:
     if str(row.get("status") or "") != "draft":
         return False
@@ -377,6 +390,7 @@ def _proposal_by_ref(ref: str) -> dict:
         raise HTTPException(status_code=404, detail="Proposal not found")
     if _is_uuid(cleaned):
         return _proposal(cleaned)
+    cleaned = cleaned.lower()
     peers = _db.table("proposals").select("id,client_name,created_at").execute().data or []
     slugs = _editor_slugs_for_rows(peers)
     for row in peers:
@@ -1027,13 +1041,85 @@ def _notify_approvers(proposal: dict) -> None:
         logger.exception("Could not notify proposal approvers")
 
 
+_PUBLIC_HIDDEN_STATUSES = {"draft", "pending_approval", "archived"}
+
+
+def _latest_share(proposal_id: str) -> Optional[dict]:
+    active = _latest_active_share(proposal_id)
+    if active:
+        return active
+    result = (
+        _db.table("proposal_shares").select("*").eq("proposal_id", proposal_id)
+        .order("created_at", desc=True).limit(1).execute()
+    )
+    return dict(result.data[0]) if result.data else None
+
+
+def _revision_for_public(proposal: dict, share: Optional[dict]) -> dict:
+    revision_id = (share or {}).get("revision_id") or proposal.get("current_revision_id")
+    if not revision_id:
+        found = (
+            _db.table("proposal_revisions").select("id")
+            .eq("proposal_id", proposal["id"])
+            .order("revision_number", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if not found.data:
+            raise HTTPException(status_code=404, detail="Proposal link not found")
+        revision_id = found.data[0]["id"]
+    return _one("proposal_revisions", revision_id)
+
+
+def _repair_named_share(proposal: dict, token: str, revision: dict) -> Optional[dict]:
+    existing = _share_row_by_token(token)
+    if existing and str(existing.get("proposal_id")) != str(proposal["id"]):
+        return None
+    user_id = proposal.get("created_by")
+    if not user_id:
+        return existing
+    try:
+        _write_share(proposal, {"id": user_id}, revision["id"], token, 30, existing)
+        return _share_row_by_token(token)
+    except Exception:
+        logger.exception("Could not repair named share token %s", token)
+        return existing
+
+
+def _public_share_from_named_slug(token: str) -> tuple[dict, dict, dict]:
+    try:
+        proposal = _proposal_by_ref(token)
+    except HTTPException:
+        raise HTTPException(status_code=404, detail="Proposal link not found") from None
+    if str(proposal.get("status") or "") in _PUBLIC_HIDDEN_STATUSES:
+        raise HTTPException(status_code=404, detail="Proposal link not found")
+    share = _latest_share(proposal["id"])
+    revision = _revision_for_public(proposal, share)
+    repaired = _repair_named_share(proposal, token, revision)
+    if repaired:
+        share = repaired
+    if share is None:
+        share = {
+            "id": None,
+            "proposal_id": proposal["id"],
+            "revision_id": revision["id"],
+            "revoked": False,
+            "expires_at": None,
+        }
+    return share, proposal, revision
+
+
 def _public_share(token: str) -> tuple[dict, dict, dict]:
     cleaned = _normalize_public_token(token)
-    digest = hash_share_token(cleaned)
-    result = _db.table("proposal_shares").select("*").eq("token_hash", digest).limit(1).execute()
-    if not result.data:
-        raise HTTPException(status_code=404, detail="Proposal link not found")
-    share = dict(result.data[0])
+    share_row = _share_row_by_token(cleaned)
+    if share_row is None and cleaned.lower() != cleaned:
+        share_row = _share_row_by_token(cleaned.lower())
+    if share_row is None:
+        named = _named_public_token(cleaned)
+        if not named:
+            raise HTTPException(status_code=404, detail="Proposal link not found")
+        return _public_share_from_named_slug(named)
+    share = dict(share_row)
     if share.get("revoked"):
         latest = _latest_active_share(share["proposal_id"])
         if not latest:
@@ -1768,22 +1854,25 @@ async def proposal_activity(proposal_id: str, user: dict = Depends(_current_user
 async def public_proposal(token: str, request: Request):
     _public_rate_limit(request)
     share, proposal, revision = _public_share(token)
-    if not share.get("first_viewed_at"):
-        _db.table("proposal_shares").update({"first_viewed_at": _now(), "last_viewed_at": _now()}).eq("id", share["id"]).execute()
-        if proposal["status"] == "sent":
-            _db.table("proposals").update({
-                "status": "viewed",
-                "version": int(proposal["version"]) + 1,
-                "updated_at": _now(),
-            }).eq("id", proposal["id"]).eq("status", "sent").eq("version", proposal["version"]).execute()
-        _event(proposal["id"], "viewed", share_id=share["id"])
-    else:
-        _db.table("proposal_shares").update({"last_viewed_at": _now()}).eq("id", share["id"]).execute()
+    if share.get("id"):
+        if not share.get("first_viewed_at"):
+            _db.table("proposal_shares").update({"first_viewed_at": _now(), "last_viewed_at": _now()}).eq("id", share["id"]).execute()
+            if proposal["status"] == "sent":
+                _db.table("proposals").update({
+                    "status": "viewed",
+                    "version": int(proposal["version"]) + 1,
+                    "updated_at": _now(),
+                }).eq("id", proposal["id"]).eq("status", "sent").eq("version", proposal["version"]).execute()
+            _event(proposal["id"], "viewed", share_id=share["id"])
+        else:
+            _db.table("proposal_shares").update({"last_viewed_at": _now()}).eq("id", share["id"]).execute()
     current = _proposal(proposal["id"])
     return _public_payload(current, revision)
 
 
 def _public_payload(proposal: dict, revision: dict) -> dict:
+    snapshot = revision.get("snapshot") if isinstance(revision.get("snapshot"), dict) else {}
+    agreement = revision.get("agreement_snapshot") if isinstance(revision.get("agreement_snapshot"), dict) else {}
     payments = (
         _db.table("proposal_payments").select("id,status,payment_type,amount_cents,currency,paid_at")
         .eq("proposal_id", proposal["id"]).order("created_at", desc=True).execute().data or []
@@ -1796,7 +1885,7 @@ def _public_payload(proposal: dict, revision: dict) -> dict:
     public_status = _public_status(proposal.get("status", "draft"))
     return {
         "proposal": {
-            **revision["snapshot"],
+            **snapshot,
             "id": proposal["id"],
             "status": public_status,
             "version": proposal.get("version"),
@@ -1806,7 +1895,7 @@ def _public_payload(proposal: dict, revision: dict) -> dict:
             "change_request": change_request,
         },
         "revision": {"id": revision["id"], "revision_number": revision["revision_number"], "created_at": revision["created_at"]},
-        "agreement": revision["agreement_snapshot"],
+        "agreement": agreement,
         "payment_summary": payments[0] if payments else None,
         "signature_summary": signatures[0] if signatures else None,
         "change_request": change_request,

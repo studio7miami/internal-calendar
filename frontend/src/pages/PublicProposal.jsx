@@ -3,7 +3,7 @@ import { ArrowLeft, Check, CheckCircle2, CreditCard, MessageSquareText, X } from
 import { useParams } from "react-router-dom";
 import { formatMoney, normalizeProposal, proposalTotals } from "../lib/proposals";
 import { luisLiveDraft } from "../lib/liveLuisProposal";
-import { formatApiError, publicProposalApi } from "../lib/api";
+import { formatApiErrorFromAxios, publicProposalApi } from "../lib/api";
 import ProposalDeck, { ATLAS_FINISHES } from "../components/proposals/ProposalDeck";
 import EmailConfirmPreview from "../components/proposals/EmailConfirmPreview";
 import BookingStepper from "../components/proposals/BookingStepper";
@@ -96,7 +96,7 @@ export default function PublicProposal() {
       }
       return normalized;
     } catch (err) {
-      setError(formatApiError(err.response?.data?.detail) || "This proposal could not be opened.");
+      setError(formatApiErrorFromAxios(err) || "This proposal could not be opened.");
     }
   }, [token, checkoutSuccess]);
 
@@ -237,7 +237,7 @@ export default function PublicProposal() {
       const { data } = await publicProposalApi.post(`/${token}/${action}`, payload);
       return data;
     } catch (err) {
-      setError(formatApiError(err.response?.data?.detail) || "We could not complete that action.");
+      setError(formatApiErrorFromAxios(err) || "We could not complete that action.");
       return null;
     } finally {
       setWorking("");
