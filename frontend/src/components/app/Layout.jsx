@@ -7,7 +7,7 @@ import { api } from "../../lib/api";
 import {
   CalendarDays,
   Inbox,
-  Layers,
+  FileText,
   Users,
   User,
   Bell,
@@ -82,7 +82,7 @@ function NotificationBell() {
           <button
             type="button"
             data-testid="notification-bell-button"
-            className="relative rounded-[16px] border border-neutral-300 p-1.5 dark:border-neutral-800 md:hover:bg-neutral-100 md:dark:hover:bg-neutral-900"
+            className="relative rounded-[16px] border border-black/[0.12] p-1.5 dark:border-white/10 md:hover:bg-black/[0.04] md:dark:hover:bg-white/[0.06]"
           >
           <Bell className="h-3.5 w-3.5" strokeWidth={1.5} />
           {unread > 0 && (
@@ -105,7 +105,7 @@ function NotificationBell() {
           <span className="label-tech">Notifications</span>
           {unread > 0 && (
             <button
-              className="text-xs text-neutral-600 dark:text-neutral-400 md:hover:text-black md:dark:hover:text-white"
+              className="text-xs text-[#6F6F6B] dark:text-[#a8a8a3] md:hover:text-[#111] md:dark:hover:text-[#f4f4f1]"
               onClick={markAll}
               data-testid="mark-all-read-button"
             >
@@ -113,9 +113,9 @@ function NotificationBell() {
             </button>
           )}
         </DropdownMenuLabel>
-        <DropdownMenuSeparator className="bg-neutral-800" />
+        <DropdownMenuSeparator className="bg-black/[0.08] dark:bg-white/12" />
         {notifs.length === 0 && (
-          <div className="px-3 py-8 text-center text-sm text-neutral-500">
+          <div className="px-3 py-8 text-center text-sm text-[#6F6F6B]">
             No notifications
           </div>
         )}
@@ -149,6 +149,9 @@ const navItems = (user) => {
     { to: "/", label: "Calendar", icon: CalendarDays, testid: "nav-calendar", end: true },
     { to: "/requests", label: "Requests", icon: Inbox, testid: "nav-requests" },
   ];
+  if (role === "admin" || user?.permissions?.view_proposals) {
+    items.push({ to: "/proposals", label: "Proposals", icon: FileText, testid: "nav-proposals" });
+  }
   if (role === "admin") {
     items.push({ to: "/members", label: "Members", icon: Users, testid: "nav-members" });
   } else if (role === "manager") {
@@ -178,9 +181,9 @@ export default function Layout() {
   const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark');
 
   return (
-    <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-white text-black dark:bg-[#0b0b0c] dark:text-zinc-200">
+    <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-background text-foreground">
       {/* Desktop sidebar */}
-      <aside className="z-30 hidden w-60 flex-col border-r border-neutral-200 bg-white p-6 dark:border-white/[0.06] dark:bg-[#0b0b0c] md:fixed md:bottom-0 md:left-0 md:top-0 md:flex">
+      <aside className="z-30 hidden w-60 flex-col border-r border-border bg-background p-6 md:fixed md:bottom-0 md:left-0 md:top-0 md:flex">
         <div className="mb-8">
           <a
             href="https://studio7.miami"
@@ -202,8 +205,8 @@ export default function Layout() {
               className={({ isActive }) =>
                 `flex min-h-8 items-center gap-3 border px-3 py-1.5 text-sm transition-colors rounded-[7px] ${
                   isActive
-                    ? "border-gray-200/95 bg-[#FCFCFC] text-slate-900 dark:border-white/10 dark:bg-white/[0.05] dark:text-zinc-200"
-                    : "border-gray-200/50 text-neutral-400 dark:border-white/[0.06] dark:text-zinc-500 md:hover:border-gray-200/80 md:hover:text-slate-600 md:dark:hover:border-white/10 md:dark:hover:text-zinc-300"
+                    ? "border-black/[0.08] bg-[#FCFCFA] text-[#111] dark:border-white/10 dark:bg-white/[0.05] dark:text-[#f4f4f1]"
+                    : "border-black/[0.06] text-[#6F6F6B] dark:border-white/[0.06] dark:text-[#a8a8a3] md:hover:border-black/15 md:hover:text-[#111] md:dark:hover:border-white/10 md:dark:hover:text-[#f4f4f1]"
                 }`
               }
             >
@@ -212,15 +215,15 @@ export default function Layout() {
             </NavLink>
           ))}
         </nav>
-        <div className="space-y-2 border-t border-neutral-200 pt-4 dark:border-white/[0.06]">
+        <div className="space-y-2 border-t border-black/[0.08] pt-4 dark:border-white/[0.08]">
           <div className="text-sm">
-            <div className="truncate text-slate-900 dark:text-zinc-200">{user?.name}</div>
+            <div className="truncate text-[#111] dark:text-[#f4f4f1]">{user?.name}</div>
             <div className="label-tech truncate">{user?.role}</div>
           </div>
           <button
             data-testid="logout-button"
             onClick={logout}
-            className="flex w-full items-center gap-2 rounded-[7px] border border-neutral-300 px-3 py-2 text-xs text-neutral-600 transition-colors dark:border-white/10 dark:text-zinc-400 md:hover:bg-slate-50 md:dark:hover:border-white/15 md:dark:hover:bg-white/[0.04] md:dark:hover:text-zinc-200"
+            className="flex w-full items-center gap-2 rounded-[7px] border border-black/[0.12] px-3 py-2 text-xs text-[#6F6F6B] transition-colors dark:border-white/10 dark:text-[#a8a8a3] md:hover:bg-black/[0.04] md:dark:hover:border-white/15 md:dark:hover:bg-white/[0.04] md:dark:hover:text-[#f4f4f1]"
           >
             <LogOut className="w-3.5 h-3.5" strokeWidth={1.5} /> Sign out
           </button>
@@ -228,7 +231,7 @@ export default function Layout() {
       </aside>
 
       {/* Top bar (mobile + desktop right-side actions) */}
-      <header className="fixed left-0 right-0 top-0 z-20 flex h-14 min-w-0 items-center justify-between gap-3 border-b border-neutral-200 bg-white/80 px-4 backdrop-blur-xl dark:border-white/[0.06] dark:bg-[#0b0b0c]/80 md:left-60 md:px-8">
+      <header className="fixed left-0 right-0 top-0 z-20 flex h-14 min-w-0 items-center justify-between gap-3 border-b border-border bg-background/80 px-4 backdrop-blur-xl md:left-60 md:px-8">
         <div className="flex min-w-0 flex-1 items-center gap-4">
           <div className="min-w-0 md:hidden">
             <a
@@ -253,7 +256,7 @@ export default function Layout() {
         <div className="flex shrink-0 items-center gap-3">
           <button
             onClick={toggleTheme}
-            className="rounded-[7px] border border-neutral-300 p-1.5 transition-colors dark:border-white/10 md:hover:bg-slate-50 md:dark:hover:bg-white/[0.05]"
+            className="rounded-[7px] border border-black/[0.12] p-1.5 transition-colors dark:border-white/10 md:hover:bg-black/[0.04] md:dark:hover:bg-white/[0.05]"
             data-testid="theme-toggle"
           >
             {theme === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
@@ -278,7 +281,7 @@ export default function Layout() {
       </main>
 
       {/* Mobile bottom nav */}
-      <nav className="fixed bottom-0 left-0 right-0 z-30 border-t border-neutral-200 bg-white dark:border-white/[0.06] dark:bg-[#0b0b0c] md:hidden">
+      <nav className="fixed bottom-0 left-0 right-0 z-30 border-t border-border bg-background md:hidden">
         <div className="flex justify-around items-center h-16 px-1">
           {items.map((it) => (
             <NavLink
@@ -289,8 +292,8 @@ export default function Layout() {
               className={({ isActive }) =>
                 `flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-0.5 py-1.5 text-center text-[10px] uppercase leading-tight tracking-wider transition-colors rounded-[7px] ${
                   isActive
-                    ? "border border-gray-200/95 bg-[#FCFCFC] text-slate-900 dark:border-white/10 dark:bg-white/[0.05] dark:text-zinc-200"
-                    : "border border-transparent text-neutral-400 dark:text-zinc-500"
+                    ? "border border-black/[0.08] bg-[#FCFCFA] text-[#111] dark:border-white/10 dark:bg-white/[0.05] dark:text-[#f4f4f1]"
+                    : "border border-transparent text-[#6F6F6B] dark:text-[#a8a8a3]"
                 }`
               }
             >

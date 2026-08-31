@@ -15,17 +15,35 @@ export function AuthProvider({ children }) {
       setLoading(false);
       return;
     }
+
     const token = localStorage.getItem("s7_token");
+    const publicClient = typeof window !== "undefined" && window.location.pathname.startsWith("/p/");
+
     if (!token) {
       setUser(false);
       setLoading(false);
       return;
     }
+
+    if (publicClient) {
+      try {
+        const cached = localStorage.getItem("s7_user");
+        setUser(cached ? JSON.parse(cached) : false);
+      } catch {
+        setUser(false);
+      }
+      setLoading(false);
+      return;
+    }
+
     api
       .get("/auth/me")
-      .then((r) => setUser(r.data))
+      .then((r) => {
+        setUser(r.data);
+        localStorage.setItem("s7_user", JSON.stringify(r.data));
+      })
       .catch((err) => {
-        if (err?._staleAuthFailure) return;
+        if (err?._staleAuthFailure || err?._mockAuthFailure) return;
         localStorage.removeItem("s7_token");
         localStorage.removeItem("s7_user");
         setUser(false);

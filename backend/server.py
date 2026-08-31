@@ -34,6 +34,7 @@ from typing import Any, Dict, List, Optional, Set
 
 import permissions
 import invite_email
+import proposals
 import bcrypt
 import jwt
 import google_calendar_client
@@ -1735,6 +1736,13 @@ def _bookings_time_overlap(a0: str, a1: str, b0: str, b1: str) -> bool:
     return _norm_hm(a0) < _norm_hm(b1) and _norm_hm(a1) > _norm_hm(b0)
 
 
+def _proposal_hold_is_active(booking: dict) -> bool:
+    if str(booking.get("source") or "") != "proposal" or booking.get("status") != "pending":
+        return True
+    expiry = _parse_utc(booking.get("hold_expires_at"))
+    return expiry is None or expiry > datetime.now(timezone.utc)
+
+
 def _calendar_has_booking_conflict(
     calendar_id: str,
     date_str: str,
@@ -1744,13 +1752,15 @@ def _calendar_has_booking_conflict(
 ) -> bool:
     res = (
         supabase.table("bookings")
-        .select("id,start_time,end_time")
+        .select("id,start_time,end_time,status,source,hold_expires_at")
         .eq("calendar_id", calendar_id)
         .eq("date", date_str)
         .in_("status", ["approved", "pending"])
         .execute()
     )
     for row in res.data or []:
+        if not _proposal_hold_is_active(row):
+            continue
         if exclude_booking_id and str(row.get("id")) == str(exclude_booking_id):
             continue
         if _bookings_time_overlap(start, end, str(row.get("start_time")), str(row.get("end_time"))):
@@ -1883,7 +1893,7 @@ async def list_bookings(user: dict = Depends(get_current_user), status: Optional
     else:
         query = query.in_("status", ["approved", "pending"])
     res = query.order("date").execute()
-    raw = res.data or []
+    raw = [b for b in (res.data or []) if _proposal_hold_is_active(b)]
     scope = calendar_id_scope_for_user(user, p)
     if scope is not None:
         raw = [b for b in raw if b.get("calendar_id") in scope]
@@ -1940,6 +1950,7 @@ async def list_requests(user: dict = Depends(get_current_user)):
     raw = res.data or []
     # Client bookings on book.studio7.miami are paid via Stripe — not the member Requests queue.
     raw = [b for b in raw if str(b.get("source") or "") != public_booking.SOURCE]
+    raw = [b for b in raw if str(b.get("source") or "") != "proposal"]
     if not mod:
         uid = str(user.get("id") or "")
         raw = [b for b in raw if str(b.get("member_id") or "") == uid]
@@ -2586,7 +2597,14 @@ async def root():
     return {"service": "Studio 7 Miami Calendar API", "status": "ok"}
 
 
+proposals.configure(
+    db=supabase,
+    auth_dependency=get_current_user,
+    permissions_for=user_permissions_for,
+    gcal_push=gcal_push_event,
+)
 app.include_router(api)
+app.include_router(proposals.router)
 
 raw_cors = os.environ.get("CORS_ORIGINS", "*")
 cors_origins = [o.strip() for o in raw_cors.split(",") if o.strip()]

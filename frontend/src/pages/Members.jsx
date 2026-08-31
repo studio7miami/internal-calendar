@@ -95,6 +95,16 @@ const ROLE_PERMISSION_HELP_SECTIONS = [
       },
     ],
   },
+  {
+    category: "PROPOSALS",
+    items: [
+      { title: "View proposals", intent: "Shows the Proposals tab. Admin always has this. Grant it to a role when someone on the team should work proposals." },
+      { title: "Create and edit proposals", intent: "Can create proposals and edit proposal content, scheduling, pricing, and sharing details." },
+      { title: "Approve proposals", intent: "Can approve an internal proposal before it is sent to a client." },
+      { title: "Send proposals", intent: "Can send and resend approved proposals to clients." },
+      { title: "Manage proposals", intent: "Can duplicate, archive, reassign, and otherwise manage proposals across the team." },
+    ],
+  },
 ];
 
 /** Category headers for the role-permissions matrix; keys must match backend `PERMISSION_KEYS`. */
@@ -103,7 +113,19 @@ const ROLE_PERMISSION_MATRIX_SECTIONS = [
   { category: "BOOKING", keys: ["create_request", "create_manual_booking", "delete_any_booking", "reassign_booking_member"] },
   { category: "REQUESTS QUEUE", keys: ["approve_deny_requests"] },
   { category: "TEAM MANAGEMENT", keys: ["view_members_directory", "assign_member_calendars"] },
+  {
+    category: "PROPOSALS",
+    keys: ["view_proposals", "edit_proposals", "approve_proposals", "send_proposals", "manage_proposals"],
+  },
 ];
+
+const ROLE_PERMISSION_LABELS = {
+  view_proposals: "View proposals",
+  edit_proposals: "Create and edit proposals",
+  approve_proposals: "Approve proposals",
+  send_proposals: "Send proposals",
+  manage_proposals: "Manage proposals",
+};
 
 /** Match `BookingForm` dialog surface (calendar page booking modal). */
 const calDialogSurface =
@@ -671,7 +693,7 @@ export default function Members({ previewRole }) {
                         className="border-b border-slate-200/50 last:border-0 dark:border-white/5"
                         data-testid={`role-perm-row-${d.key}`}
                       >
-                        <td className="py-2.5 pr-2 align-top pl-2">{d.label}</td>
+                        <td className="py-2.5 pr-2 align-top pl-2">{ROLE_PERMISSION_LABELS[d.key] || d.label}</td>
                         <td className="px-1 align-middle text-center">
                           <input
                             type="checkbox"
