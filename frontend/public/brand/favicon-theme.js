@@ -1,6 +1,6 @@
 /* Studio 7 favicon: plain PNG only. Light = favicon.png as-is; dark = favicon-dark.png (inverted art). */
 (function () {
-  var V = "7";
+  var V = "8";
   var ICON_LIGHT = "/brand/favicon.png?v=" + V;
   var ICON_DARK = "/brand/favicon-dark.png?v=" + V;
 
