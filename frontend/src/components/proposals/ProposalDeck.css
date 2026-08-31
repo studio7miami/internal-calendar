@@ -2239,6 +2239,12 @@
   padding: 0;
 }
 
+.s7-bento-flow--text .s7-bento-flow__copy p {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .s7-bento-flow--frame .s7-bento-flow__media {
   height: 148px;
   border-radius: 16px;
