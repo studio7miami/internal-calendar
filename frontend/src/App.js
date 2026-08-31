@@ -13,6 +13,9 @@ import Members from "./pages/Members";
 import Profile from "./pages/Profile";
 import OnboardingPreview from "./pages/OnboardingPreview";
 import MembersPreview from "./pages/MembersPreview";
+import Proposals from "./pages/Proposals";
+import ProposalEdit from "./pages/ProposalEdit";
+import PublicProposal from "./pages/PublicProposal";
 import { Toaster } from "./components/ui/sonner";
 
 function App() {
@@ -37,6 +40,14 @@ function App() {
                 </PageEnterMotion>
               }
             />
+            <Route
+              path="/p/:token"
+              element={
+                <PageEnterMotion className="min-h-dvh" fadeOnly>
+                  <PublicProposal />
+                </PageEnterMotion>
+              }
+            />
             {process.env.NODE_ENV === "development" && (
               <>
                 <Route
@@ -58,6 +69,22 @@ function App() {
               </>
             )}
             <Route
+              path="/proposals/new"
+              element={
+                <ProtectedRoute permission="edit_proposals">
+                  <ProposalEdit createNew />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/proposals/:id/edit"
+              element={
+                <ProtectedRoute permission="edit_proposals">
+                  <ProposalEdit />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               element={
                 <ProtectedRoute>
                   <Layout />
@@ -66,6 +93,14 @@ function App() {
             >
               <Route path="/" element={<CalendarPage />} />
               <Route path="/requests" element={<Requests />} />
+              <Route
+                path="/proposals"
+                element={
+                  <ProtectedRoute permission="view_proposals">
+                    <Proposals />
+                  </ProtectedRoute>
+                }
+              />
               <Route
                 path="/members"
                 element={

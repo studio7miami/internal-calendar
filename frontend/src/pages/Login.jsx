@@ -3,7 +3,7 @@ import { useAuth } from "../context/AuthContext";
 import { api, formatApiError } from "../lib/api";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
-import { Navigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { pageTitleClass, pageSubtextClass, pageInputClass, pageBtnPrimaryClass } from "../lib/pageTheme";
 import { cn } from "@/lib/utils";
 import { Eye, EyeOff } from "lucide-react";
@@ -12,6 +12,7 @@ const SLIDES = ["/brand/slide-2.jpg", "/brand/slide-3.jpg", "/brand/slide-4.jpg"
 
 export default function Login() {
   const { user, loginWithToken, loading } = useAuth();
+  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -54,11 +55,18 @@ export default function Login() {
       const { data } = await api.post("/auth/login", { email, password });
       if (data.token && data.user) {
         loginWithToken(data.token, data.user);
+        navigate("/", { replace: true });
         return;
       }
       setError("Unexpected response from the server");
     } catch (err) {
-      setError(formatApiError(err?.response?.data?.detail) || "Login failed");
+      if (err?.code === "ECONNABORTED") {
+        setError("The server is taking too long to respond. Check that the backend is running on port 8000.");
+      } else if (!err?.response) {
+        setError("Could not reach the server. Start the backend with: uvicorn server:app --reload --port 8000");
+      } else {
+        setError(formatApiError(err?.response?.data?.detail) || "Login failed");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -67,7 +75,7 @@ export default function Login() {
   const fieldClass = cn(pageInputClass, "h-11 min-h-11 text-base md:text-sm");
 
   return (
-    <div className="grid min-h-screen bg-white text-slate-900 md:grid-cols-2">
+    <div className="grid min-h-screen bg-background text-foreground md:grid-cols-2">
       {/* Visual side */}
       <div className="relative hidden overflow-hidden bg-black md:block">
         {SLIDES.map((src, i) => (

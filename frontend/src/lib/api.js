@@ -1,5 +1,6 @@
 import axios from "axios";
 import { createMockApi } from "./mockApi";
+import { installLocalMocking } from "./mockData";
 
 function normalizeApiBase() {
   const raw = String(process.env.REACT_APP_BACKEND_URL || "").trim();
@@ -27,7 +28,13 @@ export const api = MOCK_MODE
       timeout: 30000,
     });
 
+export const publicProposalApi = axios.create({
+  baseURL: `${API_BASE.replace(/\/$/, "")}/public/proposals`,
+  timeout: 30000,
+});
+
 if (!MOCK_MODE) {
+  installLocalMocking(api);
   api.interceptors.request.use((config) => {
     const token = localStorage.getItem("s7_token");
     if (token) config.headers.Authorization = `Bearer ${token}`;
@@ -38,6 +45,7 @@ if (!MOCK_MODE) {
     (r) => r,
     (err) => {
       if (err?.response?.status === 401) {
+        const mockMode = process.env.REACT_APP_USE_MOCK_DATA === "true";
         // If an older in-flight request got 401 after a new login set a new token, do not
         // wipe the session (would look like "can't sign in" even when login returned 200).
         const sent = (err?.config?.headers?.Authorization || "").replace(/^Bearer\s+/i, "");
@@ -46,8 +54,13 @@ if (!MOCK_MODE) {
           err._staleAuthFailure = true;
           return Promise.reject(err);
         }
+        if (mockMode) {
+          err._mockAuthFailure = true;
+          return Promise.reject(err);
+        }
         const path = window.location.pathname;
-        if (!path.startsWith("/login") && !path.startsWith("/invite")) {
+        // Public client links (/p/…) must never bounce to the team login.
+        if (!path.startsWith("/login") && !path.startsWith("/invite") && !path.startsWith("/p/")) {
           localStorage.removeItem("s7_token");
           localStorage.removeItem("s7_user");
           window.location.href = "/login";
@@ -57,6 +70,8 @@ if (!MOCK_MODE) {
     }
   );
 }
+
+installLocalMocking(publicProposalApi);
 
 export function formatApiError(detail) {
   if (detail == null) return "Something went wrong.";

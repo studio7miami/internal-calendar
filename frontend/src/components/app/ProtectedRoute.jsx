@@ -9,11 +9,11 @@ function hasMembersPageAccess(user) {
   return false;
 }
 
-export default function ProtectedRoute({ children, adminOnly = false, membersPage = false }) {
+export default function ProtectedRoute({ children, adminOnly = false, membersPage = false, permission }) {
   const { user, loading } = useAuth();
-  if (loading || user === null) {
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#09090B]">
+      <div className="flex min-h-screen items-center justify-center bg-white text-slate-500 dark:bg-[#0b0b0c] dark:text-zinc-500">
         <div className="label-tech">Loading…</div>
       </div>
     );
@@ -24,5 +24,8 @@ export default function ProtectedRoute({ children, adminOnly = false, membersPag
     return <Navigate to="/" replace />;
   }
   if (adminOnly && user.role !== "admin") return <Navigate to="/" replace />;
+  if (permission && user.role !== "admin" && !user.permissions?.[permission]) {
+    return <Navigate to="/" replace />;
+  }
   return children;
 }

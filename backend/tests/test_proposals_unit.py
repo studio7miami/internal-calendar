@@ -1,0 +1,213 @@
+"""Proposal tests that do not require a live Supabase project."""
+import hashlib
+import hmac
+
+import pytest
+from pydantic import ValidationError
+
+import permissions
+import proposals
+
+
+def test_proposal_permissions_are_configurable_and_admin_is_always_full():
+    manager = permissions.resolve_effective("manager", {"manager": {"send_proposals": False}})
+    member = permissions.resolve_effective("member", {})
+    admin = permissions.resolve_effective("admin", {"admin": {"manage_proposals": False}})
+
+    assert manager["view_proposals"] is True
+    assert manager["send_proposals"] is False
+    assert member["view_proposals"] is False
+    assert admin["manage_proposals"] is True
+
+
+def test_share_tokens_are_only_stored_as_sha256():
+    token = "client-secret-token"
+    digest = proposals.hash_share_token(token)
+
+    assert digest == hashlib.sha256(token.encode()).hexdigest()
+    assert token not in digest
+    assert len(digest) == 64
+
+
+def test_stripe_signature_uses_raw_body_and_rejects_stale_or_modified_payload():
+    payload = b'{"id":"evt_123","type":"checkout.session.completed"}'
+    secret = "whsec_test"
+    timestamp = 1_700_000_000
+    digest = hmac.new(
+        secret.encode(),
+        str(timestamp).encode() + b"." + payload,
+        hashlib.sha256,
+    ).hexdigest()
+    header = f"t={timestamp},v1=bad,v1={digest}"
+
+    assert proposals.verify_stripe_signature(payload, header, secret, now=timestamp)
+    assert not proposals.verify_stripe_signature(payload + b" ", header, secret, now=timestamp)
+    assert not proposals.verify_stripe_signature(payload, header, secret, now=timestamp + 301)
+
+
+def test_proposal_model_validates_schedule_and_money():
+    valid = proposals.ProposalCreate(
+        client_name="A Client",
+        client_email="client@example.com",
+        session_date="2026-10-10",
+        arrival_time="09:00",
+        setup_time="10:00",
+        shoot_time="11:00",
+        wrap_time="12:00",
+        rate_cents=100_00,
+        deposit_percent=50,
+    )
+    assert valid.wrap_time == "12:00"
+
+    with pytest.raises(ValidationError):
+        proposals.ProposalCreate(
+            client_name="A Client",
+            client_email="client@example.com",
+            arrival_time="12:00",
+            wrap_time="11:00",
+        )
+
+    with pytest.raises(ValidationError):
+        proposals.ProposalCreate(
+            client_name="A Client",
+            client_email="client@example.com",
+            deposit_percent=101,
+        )
+
+
+def test_blank_draft_allowed_but_submit_boundary_requires_complete_fields():
+    draft = proposals.ProposalCreate(
+        client_name="",
+        client_email="",
+        calendar_id="",
+        session_date="",
+        arrival_time="",
+        wrap_time="",
+    )
+    assert draft.client_name == ""
+    assert draft.client_email == ""
+    assert draft.title == "Untitled proposal"
+    assert draft.calendar_id is None
+    assert draft.session_date is None
+
+    with pytest.raises(proposals.HTTPException) as error:
+        proposals._validate_sendable(draft.model_dump(mode="json"))
+
+    assert error.value.status_code == 400
+    assert "client_name" in error.value.detail
+    assert "client_email" in error.value.detail
+    assert "calendar_id" in error.value.detail
+    assert "rate" not in error.value.detail
+
+    with pytest.raises(proposals.HTTPException) as rate_error:
+        proposals._validate_sendable({
+            **draft.model_dump(mode="json"),
+            "client_name": "Alex",
+            "client_email": "alex@example.com",
+            "calendar_id": "calendar-1",
+            "session_date": "2026-10-10",
+            "arrival_time": "09:00",
+            "wrap_time": "10:00",
+            "rate_cents": 0,
+        })
+    assert rate_error.value.status_code == 400
+    assert "rate" in rate_error.value.detail.lower()
+
+
+def test_payment_type_amount_and_status_mapping():
+    proposal = {
+        "rate_cents": 20_000,
+        "deposit_percent": 50,
+        "pricing": {"deposit_type": "percent", "deposit_value": 25},
+    }
+    assert proposals.payment_amount_cents(proposal, "deposit") == 5_000
+    assert proposals.payment_amount_cents(proposal, "full") == 20_000
+    assert proposals.proposal_status_for_payment("deposit") == "deposit_paid"
+    assert proposals.proposal_status_for_payment("full") == "paid"
+
+    fixed = {**proposal, "pricing": {"deposit_type": "fixed", "deposit_value": 75}}
+    assert proposals.payment_amount_cents(fixed, "deposit") == 7_500
+
+
+def test_public_url_defaults_to_short_p_route(monkeypatch):
+    monkeypatch.delenv("PROPOSAL_PUBLIC_URL", raising=False)
+    monkeypatch.setenv("FRONTEND_URL", "https://studio.example/")
+    assert proposals._share_url("token123") == "https://studio.example/p/token123"
+
+
+def test_serialization_keeps_new_flat_fields(monkeypatch):
+    monkeypatch.setenv("PROPOSAL_PUBLIC_URL", "https://studio.example/p")
+    row = {
+        "id": "p1",
+        "title": "Campaign launch",
+        "pricing": {"currency": "USD", "line_items": []},
+        "share_settings": {"subject": "Your launch proposal"},
+        "version": 4,
+    }
+    result = proposals._serialize(row, "share-token")
+    assert result["title"] == "Campaign launch"
+    assert result["pricing"]["currency"] == "USD"
+    assert result["share_settings"]["subject"] == "Your launch proposal"
+    assert result["version"] == 4
+    assert result["share_url"] == "https://studio.example/p/share-token"
+    for field in ("title", "pricing", "share_settings"):
+        assert field in proposals.PROPOSAL_FIELDS.split(",")
+        assert field in proposals.SNAPSHOT_FIELDS
+        assert field in proposals.EDITABLE_FIELDS
+
+
+class _Result:
+    def __init__(self, data):
+        self.data = data
+
+
+class _Query:
+    def __init__(self, rows, operation=None, payload=None):
+        self.rows = rows
+        self.operation = operation
+        self.payload = payload
+        self.filters = []
+
+    def select(self, *_args):
+        return self
+
+    def update(self, payload):
+        self.operation = "update"
+        self.payload = payload
+        return self
+
+    def eq(self, key, value):
+        self.filters.append((key, value))
+        return self
+
+    def limit(self, _value):
+        return self
+
+    def execute(self):
+        matches = [
+            row for row in self.rows
+            if all(row.get(key) == value for key, value in self.filters)
+        ]
+        if self.operation == "update":
+            for row in matches:
+                row.update(self.payload)
+        return _Result([dict(row) for row in matches])
+
+
+class _FakeDB:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def table(self, name):
+        assert name == "proposals"
+        return _Query(self.rows)
+
+
+def test_optimistic_update_rejects_stale_version(monkeypatch):
+    monkeypatch.setattr(proposals, "_db", _FakeDB([{"id": "p1", "version": 3}]))
+
+    with pytest.raises(proposals.HTTPException) as error:
+        proposals._optimistic_update("p1", 2, {"status": "approved"})
+
+    assert error.value.status_code == 409
+    assert error.value.detail["current_version"] == 3
