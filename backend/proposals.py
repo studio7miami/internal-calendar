@@ -20,7 +20,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field, TypeAdapter, ValidationError, field_validator, model_validator
 
 import invite_email
@@ -576,6 +576,18 @@ def proposal_status_for_payment(payment_type: str) -> str:
     if payment_type in ("full", "remaining"):
         return "paid"
     raise ValueError("payment_type must be deposit, full, or remaining")
+
+
+def checkout_product_name(payment_type: str, title: Optional[str] = "") -> str:
+    kind = {
+        "deposit": "Deposit",
+        "remaining": "Balance",
+        "full": "Full Payment",
+    }.get(payment_type, "Payment")
+    cleaned = str(title or "").strip()
+    if not cleaned or cleaned.lower() in ("untitled proposal", "untitled"):
+        cleaned = "Content Proposal"
+    return f"{kind} – {cleaned}"
 
 
 def _public_status(status: str) -> str:
@@ -1475,7 +1487,7 @@ async def public_proposal(token: str, request: Request):
 
 
 @router.post("/public/proposals/{token}/change-request", status_code=201)
-async def public_change_request(token: str, data: ChangeRequestIn, request: Request):
+async def public_change_request(token: str, data: ChangeRequestIn, request: Request, background_tasks: BackgroundTasks):
     _public_rate_limit(request)
     share, proposal, revision = _public_share(token)
     if proposal["status"] not in ("sent", "viewed", "client_approved"):
@@ -1498,7 +1510,8 @@ async def public_change_request(token: str, data: ChangeRequestIn, request: Requ
     }).eq("id", proposal["id"]).eq("version", proposal["version"]).execute()
     _event(proposal["id"], "changes_requested", share_id=share["id"], metadata={"change_request_id": row["id"]})
     _notify(proposal.get("created_by"), proposal["id"], "proposal_changes_requested", "Client requested changes", data.message[:300])
-    await _mock_process_email(
+    background_tasks.add_task(
+        _mock_process_email,
         proposal,
         "Client requested changes",
         data.message.strip(),
@@ -1507,7 +1520,7 @@ async def public_change_request(token: str, data: ChangeRequestIn, request: Requ
 
 
 @router.post("/public/proposals/{token}/approve")
-async def public_approve(token: str, data: PublicApproveIn, request: Request):
+async def public_approve(token: str, data: PublicApproveIn, request: Request, background_tasks: BackgroundTasks):
     _public_rate_limit(request)
     share, proposal, _revision = _public_share(token)
     if proposal["status"] in ("client_approved", "signed", "deposit_paid", "paid"):
@@ -1530,7 +1543,8 @@ async def public_approve(token: str, data: PublicApproveIn, request: Request):
     client_name = data.client_name or proposal["client_name"]
     _event(proposal["id"], "client_approved", share_id=share["id"], metadata={"client_name": client_name})
     _notify(proposal.get("created_by"), proposal["id"], "proposal_client_approved", "Client approved proposal", f"{client_name} approved the proposal.")
-    await _mock_process_email(
+    background_tasks.add_task(
+        _mock_process_email,
         {**proposal, "status": "client_approved", "client_name": client_name},
         "Client accepted the proposal",
         f"{client_name} accepted. Next is the agreement and deposit.",
@@ -1539,7 +1553,7 @@ async def public_approve(token: str, data: PublicApproveIn, request: Request):
 
 
 @router.post("/public/proposals/{token}/sign", status_code=201)
-async def public_sign(token: str, data: SignatureIn, request: Request):
+async def public_sign(token: str, data: SignatureIn, request: Request, background_tasks: BackgroundTasks):
     _public_rate_limit(request)
     share, proposal, revision = _public_share(token)
     if proposal["status"] not in ("sent", "viewed", "client_approved", "signed", "deposit_paid", "paid"):
@@ -1577,7 +1591,8 @@ async def public_sign(token: str, data: SignatureIn, request: Request):
     }).eq("id", proposal["id"]).eq("version", proposal["version"]).execute()
     _event(proposal["id"], "signed", share_id=share["id"], metadata={"signature_id": row["id"]})
     _notify(proposal.get("created_by"), proposal["id"], "proposal_signed", "Proposal signed", f"{data.signer_name} signed the proposal.")
-    await _mock_process_email(
+    background_tasks.add_task(
+        _mock_process_email,
         {**proposal, "status": "signed"},
         "Agreement signed",
         f"{data.signer_name} signed the agreement ({data.signer_email}).",
@@ -1625,9 +1640,9 @@ async def _create_stripe_checkout(
         "line_items[0][quantity]": "1",
         "line_items[0][price_data][currency]": payment["currency"],
         "line_items[0][price_data][unit_amount]": str(amount),
-        "line_items[0][price_data][product_data][name]": (
-            f"{'Deposit' if payment_type == 'deposit' else 'Remaining balance' if payment_type == 'remaining' else 'Full payment'} — "
-            f"{proposal.get('title') or proposal['client_name']}"
+        "line_items[0][price_data][product_data][name]": checkout_product_name(
+            payment_type,
+            proposal.get("title") or (revision.get("snapshot") or {}).get("title"),
         ),
         "metadata[proposal_id]": proposal["id"],
         "metadata[payment_id]": payment["id"],

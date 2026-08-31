@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, CheckCircle2, CreditCard, Loader2, MessageSquareText, X } from "lucide-react";
+import { ArrowLeft, Check, CheckCircle2, CreditCard, MessageSquareText, X } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { formatMoney, normalizeProposal, proposalTotals } from "../lib/proposals";
 import { formatApiError, publicProposalApi } from "../lib/api";
@@ -7,6 +7,7 @@ import ProposalDeck, { ATLAS_FINISHES } from "../components/proposals/ProposalDe
 import EmailConfirmPreview from "../components/proposals/EmailConfirmPreview";
 import BookingStepper from "../components/proposals/BookingStepper";
 import SignaturePad from "../components/proposals/SignaturePad";
+import ProposalLoader from "../components/proposals/ProposalLoader";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
@@ -129,17 +130,17 @@ export default function PublicProposal() {
   };
 
   const approve = async () => {
+    setReviewProposal(false);
+    setFlowStep("agreement");
+    setProposal((current) => (current ? { ...current, status: "client_approved" } : current));
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
     const data = await post("approve", { client_name: clientName || proposal.client?.contact_name });
     if (data) {
-      try {
-        const url = new URL(window.location.href);
-        url.searchParams.set("step", "agreement");
-        window.history.replaceState({}, "", url.toString());
-      } catch {}
-      await load();
-      window.scrollTo(0, 0);
-      document.documentElement.scrollTop = 0;
+      load();
+      return;
     }
+    await load();
   };
 
   const sign = async () => {
@@ -192,10 +193,7 @@ export default function PublicProposal() {
     }
     return (
       <PublicShell>
-        <div className="s7-public-loading">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Thank you for being here.
-        </div>
+        <ProposalLoader />
       </PublicShell>
     );
   }

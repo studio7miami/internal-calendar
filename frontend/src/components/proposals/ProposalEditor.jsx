@@ -498,7 +498,7 @@ function ClientFields({ value, title, patch, sessionDate, startTime, onTitle, on
         <input
           value={isDefaultProposalTitle(title) ? "" : (title || "")}
           onChange={(e) => onTitle(e.target.value)}
-          placeholder="Corrales & Co."
+          placeholder=""
         />
       </Field>
       <Field label="Client Name"><input value={value.contact_name || ""} onChange={(e) => patch("contact_name", e.target.value)} /></Field>

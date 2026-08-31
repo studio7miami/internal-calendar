@@ -183,6 +183,13 @@ def test_sent_proposals_can_rename_title_only():
     assert error.value.status_code == 409
 
 
+def test_stripe_checkout_name_uses_payment_kind_and_proposal_title():
+    assert proposals.checkout_product_name("deposit", "") == "Deposit – Content Proposal"
+    assert proposals.checkout_product_name("deposit", "Untitled proposal") == "Deposit – Content Proposal"
+    assert proposals.checkout_product_name("full", "Corrales & Co.") == "Full Payment – Corrales & Co."
+    assert proposals.checkout_product_name("remaining", "Test") == "Balance – Test"
+
+
 def test_blank_drafts_are_the_empty_untitled_ones():
     blank = {"status": "draft", "title": "Untitled proposal", "client_name": "", "rate_cents": 0, "creative_brief": {}}
     named = {**blank, "client_name": "Luis Corrales"}

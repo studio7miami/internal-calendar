@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, RefreshCw } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { api, formatApiError } from "../lib/api";
 import { EMPTY_PROPOSAL, isBlankProposal, normalizeProposal, proposalActionPayload, serializeProposal, statusLabel } from "../lib/proposals";
 import ProposalEditor from "../components/proposals/ProposalEditor";
+import ProposalLoader from "../components/proposals/ProposalLoader";
 import { Button } from "../components/ui/button";
 import { pageBtnOutlineClass } from "../lib/pageTheme";
 
@@ -145,14 +146,7 @@ export default function ProposalEdit({ createNew = false }) {
     );
   }
   if (!proposal) {
-    return (
-      <div className="proposal-edit-page grid place-items-center">
-        <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-zinc-400">
-          <RefreshCw className="h-4 w-4 animate-spin" />
-          Loading proposal…
-        </div>
-      </div>
-    );
+    return <ProposalLoader />;
   }
 
   return (
