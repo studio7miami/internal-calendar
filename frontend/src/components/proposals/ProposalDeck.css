@@ -2695,8 +2695,11 @@
 .s7-bento-cover__meta strong {
   display: block;
   margin-top: 6px;
+  overflow: hidden;
   font-size: 14px;
   font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .s7-bento-next p {
@@ -3350,12 +3353,7 @@
   }
 
   .s7-bento-mobile-looks {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: center;
-    gap: 8px 16px;
-    margin: 0 0 10px;
+    display: none;
   }
 
   .s7-deck--bento {
@@ -3601,6 +3599,81 @@
     display: block;
     overflow: visible;
     -webkit-line-clamp: unset;
+  }
+
+  .s7-bento-cover__meta strong,
+  .s7-bento-cover__date {
+    white-space: nowrap;
+  }
+
+  .s7-deck--bento {
+    --s7-slide-title: 18px;
+    --s7-cover-title: 24px;
+    --s7-cover-sub: 12px;
+    --s7-card-title: 13px;
+    --s7-card-copy: 12px;
+    --s7-meta: 12px;
+    --s7-label: 8px;
+    --s7-label-pad: 4px 8px;
+  }
+
+  .s7-deck--bento .s7-bento-cover__hero h1 {
+    font-size: var(--s7-cover-title);
+  }
+
+  .s7-deck--bento .s7-bento-cover__hero p {
+    margin-top: 4px;
+    font-size: var(--s7-cover-sub);
+  }
+
+  .s7-deck--bento .s7-bento-slide h2 {
+    font-size: var(--s7-slide-title);
+    line-height: 1.08;
+  }
+
+  .s7-deck--bento .s7-bento-cover__meta strong,
+  .s7-deck--bento .s7-bento-cover__date {
+    font-size: var(--s7-meta);
+  }
+
+  .s7-deck--bento .s7-pill,
+  .s7-deck--bento .s7-pills span {
+    padding: var(--s7-label-pad);
+    font-size: var(--s7-label);
+    letter-spacing: 0.1em;
+  }
+
+  .s7-deck--bento .s7-bento-cover__meta small,
+  .s7-deck--bento .s7-bento-stat small {
+    font-size: var(--s7-label);
+    letter-spacing: 0.1em;
+  }
+
+  .s7-deck--bento .s7-bento-content .s7-bento-card h3,
+  .s7-deck--bento .s7-bento-card h3,
+  .s7-deck--bento .s7-bento-tile h3,
+  .s7-deck--bento .s7-bento-flow .s7-bento-tile h3,
+  .s7-deck--bento .s7-bento-flow--text .s7-bento-flow__copy h3,
+  .s7-deck--bento .s7-bento-next-line__item strong {
+    font-size: var(--s7-card-title);
+    line-height: 1.2;
+  }
+
+  .s7-deck--bento .s7-bento-tile p,
+  .s7-deck--bento .s7-bento-card p,
+  .s7-deck--bento .s7-bento-content .s7-bento-card p,
+  .s7-deck--bento .s7-bento-next p,
+  .s7-deck--bento .s7-bento-flow--text .s7-bento-flow__copy p,
+  .s7-deck--bento .s7-bento-next-line__item p {
+    font-size: var(--s7-card-copy);
+  }
+
+  .s7-deck--bento .s7-bento-card__n {
+    font-size: var(--s7-card-title);
+  }
+
+  .s7-deck--invest-board .s7-bento-stat strong {
+    font-size: var(--s7-card-title);
   }
 }
 

@@ -374,6 +374,7 @@ async def deliver_html_email(
     html_body: str,
     text_body: str,
     bcc: Optional[list[str]] = None,
+    attachments: Optional[list[dict]] = None,
 ) -> Tuple[bool, Optional[str], Optional[str]]:
     """Send arbitrary HTML + plain text via Resend or SMTP (same config as invites)."""
     from_addr = _from_addr()
@@ -382,9 +383,11 @@ async def deliver_html_email(
     subj = (subject or "Notification").strip()[:200]
     copies = [addr.strip() for addr in (bcc or []) if addr and addr.strip()]
     copies = [addr for addr in copies if addr.lower() != str(to_email or "").strip().lower()]
+    files = [item for item in (attachments or []) if item and item.get("content") and item.get("filename")]
     resend = _resend_key()
     if resend:
         try:
+            import base64
             import httpx
 
             payload: dict = {
@@ -396,6 +399,14 @@ async def deliver_html_email(
             }
             if copies:
                 payload["bcc"] = copies
+            if files:
+                payload["attachments"] = [
+                    {
+                        "filename": item["filename"],
+                        "content": base64.b64encode(item["content"]).decode("ascii"),
+                    }
+                    for item in files
+                ]
             async with httpx.AsyncClient(timeout=20.0) as client:
                 r = await client.post(
                     "https://api.resend.com/emails",
@@ -441,6 +452,13 @@ async def deliver_html_email(
                 msg["Bcc"] = ", ".join(copies)
             msg.set_content(text_body)
             msg.add_alternative(html_body, subtype="html")
+            for item in files:
+                msg.add_attachment(
+                    item["content"],
+                    maintype="application",
+                    subtype="pdf",
+                    filename=item["filename"],
+                )
             if smtp["port"] == 465:
                 context = ssl.create_default_context()
                 with smtplib.SMTP_SSL(smtp["host"], smtp["port"], context=context) as server:

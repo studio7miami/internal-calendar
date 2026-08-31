@@ -493,7 +493,7 @@ function BentoDeck({ theme, finish, clientFrame = false, client, title, sessionD
   }, [syncActiveSlide]);
 
   return (
-    <article className={`s7-deck s7-deck--bento s7-deck--${theme}${finish ? ` s7-deck--finish-${finish}` : ""}${clientFrame ? " s7-deck--client-frame" : ""} s7-deck--surface-glass s7-deck--flow-lane s7-deck--invest-board`}>
+    <article className={`s7-deck s7-deck--bento s7-deck--${theme}${finish ? ` s7-deck--finish-${finish}` : ""}${clientFrame ? " s7-deck--client-frame" : ""} s7-deck--surface-glass s7-deck--flow-lane s7-deck--invest-board s7-deck--type-calm`}>
       <div className="s7-bento-stage">
       <div className="s7-bento-track" ref={trackRef} onScroll={syncActiveSlide}>
       <section className="s7-bento-slide s7-bento-cover" aria-label="Cover">
@@ -510,7 +510,7 @@ function BentoDeck({ theme, finish, clientFrame = false, client, title, sessionD
         </div>
         <div className="s7-bento-cover__meta">
           <div><small>Client</small><strong>{client}</strong></div>
-          <div><small>Date</small><strong>{sessionDate}</strong></div>
+          <div><small>Date</small><strong className="s7-bento-cover__date">{sessionDate}</strong></div>
           <div><small>Studio</small><strong>Studio 7 Miami</strong></div>
         </div>
       </section>

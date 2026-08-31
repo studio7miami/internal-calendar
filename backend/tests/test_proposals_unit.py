@@ -415,3 +415,27 @@ def test_optimistic_update_rejects_stale_version(monkeypatch):
 
     assert error.value.status_code == 409
     assert error.value.detail["current_version"] == 3
+
+
+def test_agreement_pdf_is_a_letter_document():
+    import agreement_pdf
+
+    pdf = agreement_pdf.render_agreement_pdf(
+        proposal={
+            "client_name": "Tai",
+            "title": "TAĪSTU",
+            "session_date": "2026-09-01",
+            "arrival_time": "09:00",
+            "shoot_time": "10:00",
+            "wrap_time": "14:00",
+            "rate_cents": 300,
+            "deposit_percent": 50,
+            "deliverables": "12 stills",
+            "turnaround": "10 days",
+        },
+        agreement={"title": "TAĪSTU", "client": {"name": "Tai"}},
+        signature={"signer_name": "Tai", "signer_email": "tai@taistu.com", "signed_at": "2026-08-31T15:00:00+00:00"},
+    )
+    assert pdf.startswith(b"%PDF")
+    assert b"SERVICE AGREEMENT" in pdf or b"Studio 7" in pdf or len(pdf) > 800
+    assert agreement_pdf.agreement_filename({"client_name": "Tai"}) == "tai-agreement.pdf"

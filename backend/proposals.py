@@ -21,10 +21,12 @@ from typing import Any, Awaitable, Callable, Optional
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi.responses import Response
 from pydantic import BaseModel, EmailStr, Field, TypeAdapter, ValidationError, field_validator, model_validator
 
 import invite_email
 import permissions
+import agreement_pdf
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["proposals"])
@@ -1025,6 +1027,76 @@ async def _mock_process_email(proposal: dict, headline: str, detail: str) -> Non
         logger.exception("Could not send proposal mock email to %s", inbox)
 
 
+def _booked_email(proposal: dict) -> tuple[str, str, str]:
+    font = "Manrope, Helvetica, Arial, sans-serif"
+    logo = "https://framerusercontent.com/assets/3HwVggLmyKfOrpHHCI76j8tFoTY.png"
+    first = html.escape(_client_first_name(proposal))
+    title = html.escape(str(proposal.get("title") or "your session"))
+    date_text = html.escape(str(proposal.get("session_date") or ""))
+    subject = "You're booked — your agreement is attached"
+    body = f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{html.escape(subject)}</title></head>
+<body style="margin:0;padding:0;background:#F7F7F5;font-family:{font};color:#111;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F7F7F5;"><tr><td align="center">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;">
+<tr><td bgcolor="#000000" style="background:#000;padding:0;text-align:center;"><img src="{logo}" width="600" alt="Studio 7 Miami" style="display:block;width:100%;max-width:600px;height:auto;border:0;"></td></tr>
+<tr><td style="padding:36px 28px 12px;">
+<p style="margin:0 0 8px;font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#C9A227;">Confirmed</p>
+<h1 style="margin:0 0 12px;font-size:28px;font-weight:600;letter-spacing:-.02em;">You're booked.</h1>
+<p style="margin:0;font-size:15px;line-height:1.6;color:#6F6F6B;">{first}, your {title} is on the calendar{f' for {date_text}' if date_text else ''}. The signed agreement is attached as a PDF.</p>
+</td></tr>
+<tr><td style="padding:28px 28px 40px;text-align:center;">
+<p style="margin:0;font-size:12px;line-height:1.6;color:#6F6F6B;">Studio 7 Miami<br>638 NW 62nd St, Miami, FL 33150</p>
+</td></tr></table></td></tr></table></body></html>"""
+    text = "\n".join(filter(None, [
+        "You're booked.",
+        "",
+        f"{_client_first_name(proposal)}, your {proposal.get('title') or 'session'} is on the calendar.",
+        "The signed agreement is attached as a PDF.",
+        "",
+        "Studio 7 Miami",
+        "638 NW 62nd St, Miami, FL 33150",
+    ]))
+    return subject, body, text
+
+
+async def _send_agreement_pdf_email(proposal: dict, revision: dict, signature: Optional[dict] = None) -> None:
+    to_email = str(proposal.get("client_email") or "").strip()
+    pdf = agreement_pdf.render_agreement_pdf(
+        proposal=proposal,
+        agreement=revision.get("agreement_snapshot") if isinstance(revision.get("agreement_snapshot"), dict) else {},
+        signature=signature,
+    )
+    filename = agreement_pdf.agreement_filename(proposal)
+    subject, html_body, text_body = _booked_email(proposal)
+    files = [{"filename": filename, "content": pdf}]
+    if to_email:
+        try:
+            delivered, error, _provider = await invite_email.deliver_html_email(
+                to_email=to_email,
+                subject=subject,
+                html_body=html_body,
+                text_body=text_body,
+                attachments=files,
+            )
+            if not delivered:
+                logger.warning("Booked email to %s failed: %s", to_email, error)
+        except Exception:
+            logger.exception("Could not send booked email to %s", to_email)
+    if PROPOSAL_MOCK_INBOX:
+        try:
+            await invite_email.deliver_html_email(
+                to_email=PROPOSAL_MOCK_INBOX,
+                subject=f"[Copy] {subject}"[:200],
+                html_body=html_body,
+                text_body=text_body,
+                attachments=files,
+            )
+        except Exception:
+            logger.exception("Could not send agreement PDF copy to %s", PROPOSAL_MOCK_INBOX)
+
+
 def _notify_approvers(proposal: dict) -> None:
     try:
         users = (
@@ -1870,6 +1942,27 @@ async def public_proposal(token: str, request: Request):
     return _public_payload(current, revision)
 
 
+@router.get("/public/proposals/{token}/agreement.pdf")
+async def public_agreement_pdf(token: str, request: Request):
+    _public_rate_limit(request)
+    _share, proposal, revision = _public_share(token)
+    signatures = (
+        _db.table("proposal_signatures").select("signer_name,signer_email,signed_at,signature_data")
+        .eq("proposal_id", proposal["id"]).order("signed_at", desc=True).limit(1).execute().data or []
+    )
+    pdf = agreement_pdf.render_agreement_pdf(
+        proposal=proposal,
+        agreement=revision.get("agreement_snapshot") if isinstance(revision.get("agreement_snapshot"), dict) else {},
+        signature=signatures[0] if signatures else None,
+    )
+    filename = agreement_pdf.agreement_filename(proposal)
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+
 def _public_payload(proposal: dict, revision: dict) -> dict:
     snapshot = revision.get("snapshot") if isinstance(revision.get("snapshot"), dict) else {}
     agreement = revision.get("agreement_snapshot") if isinstance(revision.get("agreement_snapshot"), dict) else {}
@@ -2269,6 +2362,18 @@ async def _process_stripe_event(event: dict) -> None:
         f"Proposal {label} paid",
         f"{proposal.get('client_name') or 'Client'} paid the {label}.",
     )
+    if payment_type != "remaining":
+        revision = {}
+        if proposal.get("current_revision_id"):
+            try:
+                revision = _one("proposal_revisions", proposal["current_revision_id"])
+            except HTTPException:
+                revision = {}
+        signatures = (
+            _db.table("proposal_signatures").select("signer_name,signer_email,signed_at,signature_data")
+            .eq("proposal_id", proposal["id"]).order("signed_at", desc=True).limit(1).execute().data or []
+        )
+        await _send_agreement_pdf_email(proposal, revision, signatures[0] if signatures else None)
 
 
 @router.post("/webhooks/stripe")

@@ -6,6 +6,7 @@ import { luisLiveDraft } from "../lib/liveLuisProposal";
 import { formatApiErrorFromAxios, publicProposalApi } from "../lib/api";
 import ProposalDeck, { ATLAS_FINISHES } from "../components/proposals/ProposalDeck";
 import EmailConfirmPreview from "../components/proposals/EmailConfirmPreview";
+import AgreementLetter from "../components/proposals/AgreementLetter";
 import BookingStepper from "../components/proposals/BookingStepper";
 import SignaturePad from "../components/proposals/SignaturePad";
 import ProposalLoader, { ProposalLoaderGallery } from "../components/proposals/ProposalLoader";
@@ -400,6 +401,18 @@ export default function PublicProposal() {
 
   if (ready && new URLSearchParams(window.location.search).get("preview") === "email") {
     return <PublicShell><EmailConfirmPreview proposal={proposal} /></PublicShell>;
+  }
+
+  if (ready && (new URLSearchParams(window.location.search).get("view") === "letter" || new URLSearchParams(window.location.search).get("preview") === "letter")) {
+    return (
+      <PublicShell>
+        <AgreementLetter
+          proposal={proposal}
+          agreement={proposal.agreement}
+          signature={proposal.signature_summary}
+        />
+      </PublicShell>
+    );
   }
 
   return (
