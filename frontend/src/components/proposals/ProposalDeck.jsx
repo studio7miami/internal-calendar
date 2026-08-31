@@ -3,9 +3,6 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { formatDeliverablesCount, formatMoney, proposalTotals } from "../../lib/proposals";
 import logo from "./ProposalDeckLogo.png";
 import palm from "./ProposalDeckPalm.png";
-import flowArrival from "./flow-photos/arrival.jpg";
-import flowSetup from "./flow-photos/setup.jpg";
-import flowShoot from "./flow-photos/shoot.jpg";
 import "./ProposalDeck.css";
 
 export const DECK_PRESENTATION_MODES = {
@@ -394,27 +391,19 @@ function BentoMark() {
 const SESSION_FLOW = [
   {
     label: "Arrival",
-    detail: "You arrive, we walk the space, and the day begins.",
-    photo: flowArrival,
-    fit: "cover",
+    detail: "We arrive, we walk the space, and the day begins.",
   },
   {
     label: "Setup",
     detail: "Lighting, wardrobe, and staging are set before we shoot.",
-    photo: flowSetup,
-    fit: "setup",
   },
   {
     label: "Shoot",
     detail: "We capture the month’s content, intentionally directed.",
-    photo: flowShoot,
-    fit: "face",
   },
   {
     label: "Wrap",
     detail: "We review selects, close the session, and look ahead to the next.",
-    photo: logo,
-    fit: "logo",
   },
 ];
 
@@ -564,7 +553,7 @@ function BentoDeck({ theme, finish, clientFrame = false, client, title, sessionD
         </div>
       </section>
 
-      <section className="s7-bento-slide s7-bento-flow s7-bento-flow--frame" aria-label="Experience">
+      <section className="s7-bento-slide s7-bento-flow s7-bento-flow--frame s7-bento-flow--text" aria-label="Experience">
         <div className="s7-bento-slide__head">
           <span className="s7-pill">Experience</span>
           <BentoMark />
@@ -573,9 +562,6 @@ function BentoDeck({ theme, finish, clientFrame = false, client, title, sessionD
         <div className="s7-bento-grid s7-bento-grid--steps">
           {SESSION_FLOW.map((step, index) => (
             <div key={step.label} className="s7-bento-tile s7-bento-flow-card">
-              <div className={`s7-bento-flow__media${step.fit === "logo" ? " s7-bento-flow__media--logo" : ""}${step.fit === "face" ? " s7-bento-flow__media--face" : ""}${step.fit === "setup" ? " s7-bento-flow__media--setup" : ""}`}>
-                <img src={step.photo} alt="" />
-              </div>
               <div className="s7-bento-flow__copy">
                 <span className="s7-bento-card__n">{String(index + 1).padStart(2, "0")}</span>
                 <h3>{step.label}</h3>

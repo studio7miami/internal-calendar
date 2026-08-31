@@ -2230,6 +2230,15 @@
   padding: 10px 10px 14px;
 }
 
+.s7-bento-flow--text .s7-bento-flow-card,
+.s7-bento-flow--text.s7-bento-flow--frame .s7-bento-flow-card {
+  padding: 20px;
+}
+
+.s7-bento-flow--text .s7-bento-flow__copy {
+  padding: 0;
+}
+
 .s7-bento-flow--frame .s7-bento-flow__media {
   height: 148px;
   border-radius: 16px;
@@ -2864,6 +2873,10 @@
     padding: 6px 6px 8px;
   }
 
+  .s7-bento-flow--text.s7-bento-flow--frame .s7-bento-flow-card {
+    padding: 16px;
+  }
+
   .s7-bento-flow--frame .s7-bento-flow__media {
     flex: 1;
     height: auto;
@@ -2997,6 +3010,11 @@
   .s7-deck--flow-pair .s7-bento-flow-card {
     flex-direction: row;
     align-items: stretch;
+  }
+
+  .s7-bento-flow--text .s7-bento-flow-card,
+  .s7-deck--flow-pair .s7-bento-flow--text .s7-bento-flow-card {
+    flex-direction: column;
   }
 
   .s7-deck--flow-pair .s7-bento-flow--frame .s7-bento-flow-card {
