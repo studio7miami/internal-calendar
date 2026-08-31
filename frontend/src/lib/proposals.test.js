@@ -4,6 +4,9 @@ import {
   normalizeProposal,
   normalizeProposalList,
   proposalActionPayload,
+  proposalFirstName,
+  proposalShareSms,
+  proposalSignPaySms,
   proposalTotals,
   sectionIsComplete,
   serializeProposal,
@@ -146,5 +149,15 @@ describe("proposal helpers", () => {
   test("treats untitled empty drafts as blank", () => {
     expect(isBlankProposal(normalizeProposal({ title: "", status: "draft" }))).toBe(true);
     expect(isBlankProposal(normalizeProposal({ title: "Untitled proposal", client_name: "Luis" }))).toBe(false);
+  });
+
+  test("builds first-name SMS copy", () => {
+    expect(proposalFirstName("Luis Corrales")).toBe("Luis");
+    expect(proposalShareSms("Luis Corrales", "https://team.studio7.miami/p/luis-corrales")).toBe(
+      "Luis — here’s what we put together for you.\n\nhttps://team.studio7.miami/p/luis-corrales",
+    );
+    expect(proposalSignPaySms("Luis Corrales", "https://team.studio7.miami/p/luis-corrales?step=agreement")).toBe(
+      "You’re in, Luis. Sign and pay and we'll lock it in.\n\nhttps://team.studio7.miami/p/luis-corrales?step=agreement",
+    );
   });
 });

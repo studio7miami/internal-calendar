@@ -3,6 +3,7 @@ import { Check, Copy, MessageSquare, X } from "lucide-react";
 import { Button } from "../ui/button";
 import { cn } from "../../lib/utils";
 import { pageBtnOutlineClass, pageBtnPrimaryClass, pageCardClass } from "../../lib/pageTheme";
+import { proposalSignPaySms } from "../../lib/proposals";
 
 export function withAgreementStep(url) {
   if (!url) return "";
@@ -16,8 +17,7 @@ export function withAgreementStep(url) {
 }
 
 export function signPayTextMessage(clientName, link) {
-  const firstName = String(clientName || "there").split(" ")[0];
-  return `Perfect ${firstName} — next is sign the agreement and pay the deposit to lock your date:\n\n${link}`;
+  return proposalSignPaySms(clientName, link);
 }
 
 export function smsUrl(phone, body) {

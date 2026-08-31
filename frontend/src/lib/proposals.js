@@ -274,6 +274,18 @@ export function serializeProposal(proposal, { includeVersion = true } = {}) {
   return payload;
 }
 
+export function proposalFirstName(name) {
+  return String(name || "there").trim().split(/\s+/)[0] || "there";
+}
+
+export function proposalShareSms(name, link) {
+  return `${proposalFirstName(name)} — here’s what we put together for you.\n\n${link}`;
+}
+
+export function proposalSignPaySms(name, link) {
+  return `You’re in, ${proposalFirstName(name)}. Sign and pay and we'll lock it in.\n\n${link}`;
+}
+
 export function proposalActionPayload(action, proposal, extra = {}) {
   const payload = { version: Number(proposal.version) };
   if (action === "send" || action === "resend") {

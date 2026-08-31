@@ -12,6 +12,8 @@ import {
   CONTENT_CARD_COUNT,
   deriveSessionSchedule,
   PROPOSAL_SECTIONS,
+  proposalShareSms,
+  proposalSignPaySms,
 } from "../../lib/proposals";
 import ProposalDeck from "./ProposalDeck";
 import { ProposalDateField, ProposalTimeField } from "./ProposalScheduleField";
@@ -71,14 +73,14 @@ function isPostAcceptStatus(status) {
 }
 
 function clientTextMessage(proposal) {
-  const firstName = String(proposal.client?.contact_name || "there").split(" ")[0];
+  const name = proposal.client?.contact_name;
   const link = isPostAcceptStatus(proposal.status)
     ? withAgreementStep(proposal.share_url)
     : proposal.share_url;
   if (isPostAcceptStatus(proposal.status)) {
-    return `Perfect ${firstName} — next is sign the agreement and pay the deposit to lock your date:\n\n${link}`;
+    return proposalSignPaySms(name, link);
   }
-  return `Hi ${firstName} — here is your Studio 7 Miami proposal:\n\n${link}`;
+  return proposalShareSms(name, link);
 }
 
 function findStudio7Calendar(calendars = []) {

@@ -692,16 +692,37 @@ async def _deliver_proposal_mail(
     to_email = str(proposal.get("client_email") or "").strip()
     if not to_email:
         return False, "Missing client email"
-    copy = PROPOSAL_MOCK_INBOX
-    bcc = [copy] if copy and copy.lower() != to_email.lower() else []
     delivered, error, _provider = await invite_email.deliver_html_email(
         to_email=to_email,
         subject=subject,
         html_body=html_body,
         text_body=text_body,
-        bcc=bcc or None,
     )
     return delivered, error
+
+
+async def _copy_to_mock_inbox(
+    proposal: dict, subject: str, html_body: str, text_body: str
+) -> tuple[bool, Optional[str]]:
+    """Send Tai a real To: copy. BCC is easy for Resend to drop, and Text skips client mail."""
+    inbox = PROPOSAL_MOCK_INBOX
+    if not inbox:
+        return False, "No mock inbox"
+    intended = str(proposal.get("client_email") or "").strip()
+    copy_subject = f"[Copy · {intended or 'no client email'}] {subject}"
+    try:
+        delivered, error, _provider = await invite_email.deliver_html_email(
+            to_email=inbox,
+            subject=copy_subject[:200],
+            html_body=html_body,
+            text_body=text_body,
+        )
+        if not delivered:
+            logger.warning("Proposal copy email to %s failed: %s", inbox, error)
+        return delivered, error
+    except Exception as exc:
+        logger.exception("Could not send proposal copy email to %s", inbox)
+        return False, str(exc)
 
 
 async def _mock_process_email(proposal: dict, headline: str, detail: str) -> None:
@@ -1084,9 +1105,14 @@ async def _send(proposal: dict, version: int, expires_days: int, user: dict, *, 
     link = _share_url(token, step=_client_share_step(proposal.get("status")))
     delivered = False
     error = None
+    copy_sent = False
+    copy_error = None
+    subject, html_body, text_body = _proposal_email(proposal, link)
+    copy_sent, copy_error = await _copy_to_mock_inbox(proposal, subject, html_body, text_body)
     if channel != "text":
-        subject, html_body, text_body = _proposal_email(proposal, link)
         delivered, error = await _deliver_proposal_mail(proposal, subject, html_body, text_body)
+    elif not copy_sent:
+        error = copy_error
     updated = _optimistic_update(
         proposal["id"], version,
         {
@@ -1102,14 +1128,26 @@ async def _send(proposal: dict, version: int, expires_days: int, user: dict, *, 
     )
     _event(
         proposal["id"], "sent", user_id=user["id"], share_id=share["id"],
-        metadata={"email_delivered": delivered, "email_error": error, "channel": channel},
+        metadata={
+            "email_delivered": delivered,
+            "email_error": error,
+            "copy_email_delivered": copy_sent,
+            "copy_email_error": copy_error,
+            "channel": channel,
+        },
     )
     if proposal.get("assigned_to") and str(proposal["assigned_to"]) != str(user["id"]):
         _notify(
             proposal["assigned_to"], proposal["id"], "proposal_sent",
             "Proposal sent", f"{proposal['client_name']} proposal was sent.",
         )
-    return {**_serialize(updated, token), "email_sent": delivered, "email_error": error}
+    return {
+        **_serialize(updated, token),
+        "email_sent": delivered,
+        "email_error": error,
+        "copy_email_sent": copy_sent,
+        "copy_email_error": copy_error,
+    }
 
 
 @router.post("/proposals/{proposal_id}/send")
@@ -1254,7 +1292,13 @@ async def mark_accepted(
         user_id=user["id"],
         metadata={"reason": "mark_accepted"},
     )
-    return _serialize(updated, token)
+    payload = _serialize(updated, token)
+    await _mock_process_email(
+        {**updated, "status": "client_approved"},
+        "Marked accepted",
+        f"Sign + pay link: {payload.get('share_url') or '—'}",
+    )
+    return payload
 
 
 @router.get("/proposals/{proposal_id}/activity")
