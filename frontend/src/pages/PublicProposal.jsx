@@ -15,6 +15,18 @@ import { Textarea } from "../components/ui/textarea";
 
 const PROPOSAL_TIMER_MS = 10 * 60 * 1000;
 
+function signPayTimerKey(token) {
+  return `s7-signpay-timer:${token}`;
+}
+
+function isSignPayStep(proposal, viewStep) {
+  if (!proposal || ["deposit_paid", "paid"].includes(proposal.status)) return false;
+  const signed = proposal.status === "signed" || !!proposal.signature_summary;
+  const approved = signed || ["client_approved", "approved"].includes(proposal.status);
+  const viewing = viewStep || (signed ? "payment" : approved ? "agreement" : "proposal");
+  return viewing === "agreement" || viewing === "payment";
+}
+
 function readFlowStep() {
   try {
     const step = new URLSearchParams(window.location.search).get("step");
@@ -61,7 +73,7 @@ export default function PublicProposal() {
   const checkoutSuccess = !restarting && searchParams.get("checkout") === "success";
   const [confirmHold, setConfirmHold] = useState(checkoutSuccess);
   const [viewStep, setViewStep] = useState(readFlowStep);
-  const [remainingMs, setRemainingMs] = useState(PROPOSAL_TIMER_MS);
+  const [remainingMs, setRemainingMs] = useState(null);
   const [loaderPhase, setLoaderPhase] = useState("hold");
   const signatureRef = useRef(null);
   const expiredRef = useRef(false);
@@ -131,12 +143,20 @@ export default function PublicProposal() {
   useEffect(() => {
     if (!proposal || !token || loaderPhase !== "done") return undefined;
     if (new URLSearchParams(window.location.search).get("preview")) return undefined;
-    const key = `s7-proposal-timer:${token}`;
+    if (["deposit_paid", "paid"].includes(proposal.status)) {
+      setRemainingMs(null);
+      return undefined;
+    }
+    const key = signPayTimerKey(token);
     let start = 0;
     try {
       start = Number(window.sessionStorage.getItem(key)) || 0;
     } catch {}
     if (!start) {
+      if (!isSignPayStep(proposal, viewStep)) {
+        setRemainingMs(null);
+        return undefined;
+      }
       start = Date.now();
       try {
         window.sessionStorage.setItem(key, String(start));
@@ -146,10 +166,10 @@ export default function PublicProposal() {
     tick();
     const id = window.setInterval(tick, 250);
     return () => window.clearInterval(id);
-  }, [proposal, token, loaderPhase]);
+  }, [proposal, token, loaderPhase, viewStep]);
 
   useEffect(() => {
-    if (!proposal || !token || loaderPhase !== "done" || remainingMs > 0 || expiredRef.current) return undefined;
+    if (!proposal || !token || loaderPhase !== "done" || remainingMs == null || remainingMs > 0 || expiredRef.current) return undefined;
     if (new URLSearchParams(window.location.search).get("preview")) return undefined;
     if (["deposit_paid", "paid"].includes(proposal.status)) return undefined;
     expiredRef.current = true;
@@ -390,7 +410,11 @@ export default function PublicProposal() {
         step={currentStep}
         furthest={furthestStep}
         onSelect={canBrowse ? onSelectStep : undefined}
-        remainingMs={ready && loaderPhase === "done" ? remainingMs : null}
+        remainingMs={
+          ready && loaderPhase === "done" && remainingMs > 0 && !lockedIn && (viewing === "agreement" || showPayment)
+            ? remainingMs
+            : null
+        }
       />
 
       {error && <div className="s7-public-error s7-public-error--fixed">{error}</div>}
@@ -503,10 +527,10 @@ function FlowHeader({ step, furthest, onSelect, remainingMs }) {
           className="h-11 w-auto shrink-0 object-contain sm:h-12 lg:h-14"
         />
         <BookingStepper step={step} furthest={furthest} steps={FLOW_STEPS} onSelect={onSelect} />
-        {remainingMs != null ? (
+        {remainingMs > 0 ? (
           <span
             className={`s7-flow-timer${remainingMs <= 60 * 1000 ? " is-low" : ""}`}
-            aria-label="Time remaining"
+            aria-label="Time remaining to sign and pay"
           >
             {formatTimer(remainingMs)}
           </span>
