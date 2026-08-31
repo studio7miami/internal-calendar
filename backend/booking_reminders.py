@@ -179,6 +179,7 @@ async def booking_reminder_background_loop(supabase: Client) -> None:
     if interval <= 0:
         logger.info("Booking reminder loop disabled (BOOKING_REMINDER_POLL_SEC=0)")
         return
+    await asyncio.sleep(min(45, interval))
     while True:
         try:
             st = await run_booking_reminder_tick(supabase)

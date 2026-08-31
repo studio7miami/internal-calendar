@@ -247,6 +247,55 @@ def test_serialization_includes_resume_step_for_signed(monkeypatch):
     assert result["share_url"] == "https://studio.example/p/tai"
 
 
+class _ShareQuery:
+    def __init__(self, rows, counter):
+        self.rows = rows
+        self.counter = counter
+        self.filters = []
+
+    def select(self, *_args):
+        return self
+
+    def eq(self, key, value):
+        self.filters.append((key, value))
+        return self
+
+    def execute(self):
+        self.counter["n"] += 1
+        matches = [
+            row for row in self.rows
+            if all(row.get(key) == value for key, value in self.filters)
+        ]
+        return _Result([dict(row) for row in matches])
+
+
+class _ShareDB:
+    def __init__(self, rows):
+        self.rows = rows
+        self.executes = {"n": 0}
+
+    def table(self, name):
+        assert name == "proposal_shares"
+        return _ShareQuery(self.rows, self.executes)
+
+
+def test_active_share_token_uses_one_query_and_prefers_live_named_slug(monkeypatch):
+    live = proposals.hash_share_token("luis-corrales")
+    other = proposals.hash_share_token("someone-else")
+    db = _ShareDB([
+        {"proposal_id": "p1", "token_hash": live, "revoked": False},
+        {"proposal_id": "p2", "token_hash": other, "revoked": False},
+    ])
+    monkeypatch.setattr(proposals, "_db", db)
+
+    assert proposals._active_share_token({"id": "p1", "client_name": "Luis Corrales"}) == "luis-corrales"
+    assert db.executes["n"] == 1
+
+    db.rows[0]["revoked"] = True
+    assert proposals._active_share_token({"id": "p1", "client_name": "Luis Corrales"}) == "luis-corrales"
+    assert db.executes["n"] == 2
+
+
 def test_serialization_keeps_new_flat_fields(monkeypatch):
     monkeypatch.setenv("PROPOSAL_PUBLIC_URL", "https://studio.example/p")
     row = {

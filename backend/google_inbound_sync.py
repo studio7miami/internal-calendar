@@ -138,12 +138,144 @@ def inbound_sync_future_days() -> int:
     return max(1, min(n, 730))
 
 
+def _apply_inbound_events(
+    supabase: Client,
+    *,
+    cid: str,
+    events: List[Dict[str, Any]],
+    tz_name: str,
+    now: datetime,
+    past_d: int,
+    future_d: int,
+    stats: Dict[str, Any],
+) -> None:
+    """Sync Google events into bookings. Runs in a worker thread so HTTP stays responsive."""
+    seen_ids: Set[str] = set()
+
+    for ev in events:
+        eid = str(ev.get("id") or "")
+        status = str(ev.get("status") or "").lower()
+        if not eid or status == "cancelled":
+            stats["skipped"] += 1
+            continue
+
+        desc = (ev.get("description") or "") or ""
+        internal_bid = _parse_internal_booking_id(desc)
+        if internal_bid:
+            try:
+                ex = supabase.table("bookings").select("id").eq("id", internal_bid).limit(1).execute()
+                if ex.data:
+                    stats["skipped"] += 1
+                    seen_ids.add(eid)
+                    continue
+            except Exception:
+                pass
+
+        times = _event_times_local(ev, tz_name)
+        if not times:
+            stats["skipped"] += 1
+            continue
+        date_s, st, et = times
+        if st >= et:
+            stats["skipped"] += 1
+            continue
+
+        try:
+            dup = (
+                supabase.table("bookings")
+                .select("id,source")
+                .eq("calendar_id", cid)
+                .eq("google_event_id", eid)
+                .limit(1)
+                .execute()
+            )
+        except Exception:
+            stats["errors"] += 1
+            continue
+
+        summary = (ev.get("summary") or "").strip() or "Booked"
+        notes = ""
+
+        row_base: Dict[str, Any] = {
+            "calendar_id": cid,
+            "date": date_s,
+            "start_time": st,
+            "end_time": et,
+            "notes": notes,
+            "status": "approved",
+            "source": "google_external",
+            "google_event_id": eid,
+            "external_title": summary[:500] if summary else None,
+            "member_id": None,
+        }
+
+        if dup.data:
+            src = str(dup.data[0].get("source") or "")
+            bid = str(dup.data[0]["id"])
+            if src != "google_external":
+                stats["skipped"] += 1
+                seen_ids.add(eid)
+                continue
+            upd = {k: v for k, v in row_base.items() if k not in ("member_id",)}
+            try:
+                supabase.table("bookings").update(upd).eq("id", bid).execute()
+                stats["upserted"] += 1
+            except Exception:
+                logger.exception("inbound sync: update booking %s", bid)
+                stats["errors"] += 1
+        else:
+            bid = str(uuid.uuid4())
+            ins = {**row_base, "id": bid, "created_at": datetime.now(timezone.utc).isoformat()}
+            try:
+                supabase.table("bookings").insert(ins).execute()
+                stats["upserted"] += 1
+            except Exception:
+                logger.exception("inbound sync: insert booking for event %s", eid)
+                stats["errors"] += 1
+
+        seen_ids.add(eid)
+
+    try:
+        min_d = (now - timedelta(days=past_d)).date().isoformat()
+        max_d = (now + timedelta(days=future_d)).date().isoformat()
+        existing = (
+            supabase.table("bookings")
+            .select("id,google_event_id")
+            .eq("calendar_id", cid)
+            .eq("source", "google_external")
+            .gte("date", min_d)
+            .lte("date", max_d)
+            .execute()
+        )
+        for b in existing.data or []:
+            ge = str(b.get("google_event_id") or "")
+            if ge and ge not in seen_ids:
+                try:
+                    supabase.table("bookings").delete().eq("id", str(b["id"])).execute()
+                    stats["removed"] += 1
+                except Exception:
+                    logger.exception("inbound sync: prune %s", b.get("id"))
+                    stats["errors"] += 1
+    except Exception:
+        logger.exception("inbound sync: prune phase for calendar %s", cid)
+        stats["errors"] += 1
+
+
+def _list_active_google_calendars(supabase: Client):
+    return (
+        supabase.table("calendars")
+        .select("id,google_calendar_id,name,is_active")
+        .eq("is_active", True)
+        .execute()
+    )
+
+
 async def run_google_inbound_sync(supabase: Client) -> Dict[str, Any]:
     """
     Upsert approved `google_external` bookings from Google; prune mirrors removed in Google.
     """
     stats = {"calendars": 0, "fetched": 0, "upserted": 0, "removed": 0, "skipped": 0, "errors": 0}
-    owner = resolve_sync_token_owner(supabase)
+    owner = await asyncio.to_thread(resolve_sync_token_owner, supabase)
     if not owner:
         return {**stats, "detail": "no_google_tokens"}
 
@@ -155,12 +287,7 @@ async def run_google_inbound_sync(supabase: Client) -> Dict[str, Any]:
     time_max = (now + timedelta(days=future_d)).isoformat().replace("+00:00", "Z")
 
     try:
-        cals = (
-            supabase.table("calendars")
-            .select("id,google_calendar_id,name,is_active")
-            .eq("is_active", True)
-            .execute()
-        )
+        cals = await asyncio.to_thread(_list_active_google_calendars, supabase)
     except Exception:
         logger.exception("inbound sync: list calendars failed")
         stats["errors"] += 1
@@ -180,116 +307,17 @@ async def run_google_inbound_sync(supabase: Client) -> Dict[str, Any]:
             continue
 
         stats["fetched"] += len(events)
-        seen_ids: Set[str] = set()
-
-        for ev in events:
-            eid = str(ev.get("id") or "")
-            status = str(ev.get("status") or "").lower()
-            if not eid or status == "cancelled":
-                stats["skipped"] += 1
-                continue
-
-            desc = (ev.get("description") or "") or ""
-            internal_bid = _parse_internal_booking_id(desc)
-            if internal_bid:
-                try:
-                    ex = supabase.table("bookings").select("id").eq("id", internal_bid).limit(1).execute()
-                    if ex.data:
-                        stats["skipped"] += 1
-                        seen_ids.add(eid)
-                        continue
-                except Exception:
-                    pass
-
-            times = _event_times_local(ev, tz_name)
-            if not times:
-                stats["skipped"] += 1
-                continue
-            date_s, st, et = times
-            if st >= et:
-                stats["skipped"] += 1
-                continue
-
-            try:
-                dup = (
-                    supabase.table("bookings")
-                    .select("id,source")
-                    .eq("calendar_id", cid)
-                    .eq("google_event_id", eid)
-                    .limit(1)
-                    .execute()
-                )
-            except Exception:
-                stats["errors"] += 1
-                continue
-
-            summary = (ev.get("summary") or "").strip() or "Booked"
-            # Title is stored in external_title only; do not duplicate a "Google Calendar · …" line in notes.
-            notes = ""
-
-            row_base: Dict[str, Any] = {
-                "calendar_id": cid,
-                "date": date_s,
-                "start_time": st,
-                "end_time": et,
-                "notes": notes,
-                "status": "approved",
-                "source": "google_external",
-                "google_event_id": eid,
-                "external_title": summary[:500] if summary else None,
-                "member_id": None,
-            }
-
-            if dup.data:
-                src = str(dup.data[0].get("source") or "")
-                bid = str(dup.data[0]["id"])
-                if src != "google_external":
-                    stats["skipped"] += 1
-                    seen_ids.add(eid)
-                    continue
-                upd = {k: v for k, v in row_base.items() if k not in ("member_id",)}
-                try:
-                    supabase.table("bookings").update(upd).eq("id", bid).execute()
-                    stats["upserted"] += 1
-                except Exception:
-                    logger.exception("inbound sync: update booking %s", bid)
-                    stats["errors"] += 1
-            else:
-                bid = str(uuid.uuid4())
-                ins = {**row_base, "id": bid, "created_at": datetime.now(timezone.utc).isoformat()}
-                try:
-                    supabase.table("bookings").insert(ins).execute()
-                    stats["upserted"] += 1
-                except Exception:
-                    logger.exception("inbound sync: insert booking for event %s", eid)
-                    stats["errors"] += 1
-
-            seen_ids.add(eid)
-
-        try:
-            min_d = (now - timedelta(days=past_d)).date().isoformat()
-            max_d = (now + timedelta(days=future_d)).date().isoformat()
-            existing = (
-                supabase.table("bookings")
-                .select("id,google_event_id")
-                .eq("calendar_id", cid)
-                .eq("source", "google_external")
-                .gte("date", min_d)
-                .lte("date", max_d)
-                .execute()
-            )
-            for b in existing.data or []:
-                ge = str(b.get("google_event_id") or "")
-                if ge and ge not in seen_ids:
-                    try:
-                        supabase.table("bookings").delete().eq("id", str(b["id"])).execute()
-                        stats["removed"] += 1
-                    except Exception:
-                        logger.exception("inbound sync: prune %s", b.get("id"))
-                        stats["errors"] += 1
-        except Exception:
-            logger.exception("inbound sync: prune phase for calendar %s", cid)
-            stats["errors"] += 1
+        await asyncio.to_thread(
+            _apply_inbound_events,
+            supabase,
+            cid=cid,
+            events=events,
+            tz_name=tz_name,
+            now=now,
+            past_d=past_d,
+            future_d=future_d,
+            stats=stats,
+        )
 
     return stats
 
@@ -299,6 +327,8 @@ async def google_inbound_background_loop(supabase: Client) -> None:
     if interval <= 0:
         logger.info("Google inbound sync background loop disabled (GOOGLE_INBOUND_SYNC_INTERVAL_SEC=0)")
         return
+    # Give HTTP a chance to come up after deploy before a year of calendar rows is processed.
+    await asyncio.sleep(min(30, interval))
     while True:
         try:
             await run_google_inbound_sync(supabase)

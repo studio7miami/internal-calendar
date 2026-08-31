@@ -285,10 +285,23 @@ def _named_share_tokens(client_name: str) -> list[str]:
 
 def _active_share_token(proposal: dict) -> Optional[str]:
     """Plaintext named slug for this proposal. Revoked named URLs still resolve publicly."""
+    if _db is None:
+        return None
+    found = (
+        _db.table("proposal_shares")
+        .select("token_hash,revoked")
+        .eq("proposal_id", proposal["id"])
+        .execute()
+    )
+    by_hash = {
+        str(row.get("token_hash") or ""): row
+        for row in (found.data or [])
+        if row.get("token_hash")
+    }
     fallback: Optional[str] = None
     for token in _named_share_tokens(proposal.get("client_name") or ""):
-        row = _share_row_by_token(token)
-        if not row or str(row.get("proposal_id")) != str(proposal["id"]):
+        row = by_hash.get(hash_share_token(token))
+        if not row:
             continue
         if not row.get("revoked"):
             return token
