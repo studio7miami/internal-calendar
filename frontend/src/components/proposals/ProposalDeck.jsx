@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { formatDeliverablesCount, formatMoney, proposalTotals } from "../../lib/proposals";
 import logo from "./ProposalDeckLogo.png";
@@ -46,10 +46,8 @@ export default function ProposalDeck({
   const sessionDate = formatDate(schedule.session_date);
   const contentItems = (proposal.content_items || []).slice(0, 3);
 
-  const slides = useMemo(() => {
-    const steps = SESSION_FLOW;
-
-    return [
+  const steps = SESSION_FLOW;
+  const slides = [
     {
       id: "01",
       tag: `01 ${client}`,
@@ -154,8 +152,7 @@ export default function ProposalDeck({
         </>
       ),
     },
-    ];
-  }, [client, contentItems, deposit, pricing, schedule, title, total, vision]);
+  ];
 
   useEffect(() => {
     setActiveSlide((current) => Math.min(current, slides.length - 1));
@@ -429,6 +426,12 @@ const NEXT_STEPS = [
 
 const BENTO_SLIDES = ["Cover", "Vision", "Content", "Experience", "Details"];
 
+function stackScroller(track) {
+  const overflow = getComputedStyle(track).overflowY;
+  if (overflow === "auto" || overflow === "scroll") return track;
+  return track.closest(".s7-trial-frame, .s7-public") || window;
+}
+
 function BentoDeck({ theme, finish, clientFrame = false, client, title, sessionDate, vision, contentItems, schedule, pricing, total, deposit }) {
   const trackRef = useRef(null);
   const [activeSlide, setActiveSlide] = useState(0);
@@ -439,13 +442,7 @@ function BentoDeck({ theme, finish, clientFrame = false, client, title, sessionD
     ["Energy", vision.desired_energy],
   ];
 
-  const stackScroller = (track) => {
-    const overflow = getComputedStyle(track).overflowY;
-    if (overflow === "auto" || overflow === "scroll") return track;
-    return track.closest(".s7-trial-frame, .s7-public") || window;
-  };
-
-  const syncActiveSlide = () => {
+  const syncActiveSlide = useCallback(() => {
     const track = trackRef.current;
     if (!track) return;
     const slides = [...track.children];
@@ -478,7 +475,7 @@ function BentoDeck({ theme, finish, clientFrame = false, client, title, sessionD
       });
     }
     setActiveSlide(best);
-  };
+  }, []);
 
   const goToSlide = (index) => {
     const track = trackRef.current;
@@ -504,7 +501,7 @@ function BentoDeck({ theme, finish, clientFrame = false, client, title, sessionD
     target.addEventListener("scroll", syncActiveSlide, { passive: true });
     syncActiveSlide();
     return () => target.removeEventListener("scroll", syncActiveSlide);
-  }, []);
+  }, [syncActiveSlide]);
 
   return (
     <article className={`s7-deck s7-deck--bento s7-deck--${theme}${finish ? ` s7-deck--finish-${finish}` : ""}${clientFrame ? " s7-deck--client-frame" : ""} s7-deck--surface-glass s7-deck--flow-lane s7-deck--invest-board`}>

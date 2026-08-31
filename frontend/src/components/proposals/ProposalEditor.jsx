@@ -157,8 +157,11 @@ export default function ProposalEditor({
     const studioCalendar = findStudio7Calendar(calendars);
     if (!studioCalendar?.id) return;
     if (proposal.schedule?.calendar_id === studioCalendar.id) return;
-    patchSchedule({ calendar_id: studioCalendar.id });
-  }, [calendars, proposal.schedule?.calendar_id]);
+    onChange({
+      ...proposal,
+      schedule: { ...(proposal.schedule || {}), calendar_id: studioCalendar.id },
+    });
+  }, [calendars, onChange, proposal]);
 
   useEffect(() => {
     canvasRef.current?.scrollTo(0, 0);

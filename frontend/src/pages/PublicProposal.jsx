@@ -99,7 +99,7 @@ export default function PublicProposal() {
       if (["deposit_paid", "paid"].includes(latest?.status) || attempts >= 12) window.clearInterval(poll);
     }, 2000);
     return () => window.clearInterval(poll);
-  }, [load]);
+  }, [checkoutSuccess, load]);
 
   const post = async (action, payload) => {
     setWorking(action);
