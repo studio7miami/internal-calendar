@@ -6,7 +6,7 @@ import requests
 
 # Origin only, e.g. http://127.0.0.1:8000 — same as frontend REACT_APP_BACKEND_URL (frontend adds /api in api.js).
 # If the env var already ends with /api, do not double it (otherwise every request is /api/api/... → 404).
-_default_backend = "https://team-bookings-hub.preview.emergentagent.com"
+_default_backend = "http://127.0.0.1:8000"
 _raw_base = os.environ.get("REACT_APP_BACKEND_URL", _default_backend).rstrip("/")
 if _raw_base.endswith("/api"):
     API = _raw_base

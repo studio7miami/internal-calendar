@@ -1430,6 +1430,12 @@ async def stripe_webhook(req: Request):
 
     etype = str(event.get("type") or "")
     obj = (event.get("data") or {}).get("object") or {}
+    metadata = obj.get("metadata") if isinstance(obj, dict) else {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+    if metadata.get("proposal_id") or metadata.get("payment_id"):
+        await proposals._process_stripe_event(event)
+        return {"ok": True}
 
     if etype == "checkout.session.completed":
         session_id = str(obj.get("id") or "")
