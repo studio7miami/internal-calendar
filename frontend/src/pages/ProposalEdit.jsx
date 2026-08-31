@@ -41,7 +41,7 @@ export default function ProposalEdit({ createNew = false }) {
           const next = normalizeProposal(data);
           setProposal(next);
           hydrated.current = true;
-          if (next.slug && next.slug !== routeId) {
+          if (next.slug && next.slug !== routeId && proposalEditPath(next) !== window.location.pathname) {
             navigate(proposalEditPath(next), { replace: true });
           }
         }
@@ -85,8 +85,6 @@ export default function ProposalEdit({ createNew = false }) {
               replace: true,
               state: { proposal: { ...saved, id: idRef.current } },
             });
-          } else if (saved.slug && saved.slug !== routeId) {
-            navigate(proposalEditPath(saved), { replace: true });
           }
         }
       } catch (err) {
@@ -104,7 +102,7 @@ export default function ProposalEdit({ createNew = false }) {
       }
     }, 750);
     return () => window.clearTimeout(timer);
-  }, [navigate, proposal, routeId]);
+  }, [navigate, proposal]);
 
   const change = useCallback((next) => {
     editRevision.current += 1;

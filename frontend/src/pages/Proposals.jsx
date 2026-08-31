@@ -38,10 +38,19 @@ const FILTER_TABS = [
   { value: "archived", label: "Archive", Icon: Archive },
 ];
 
-function CardShell({ className, children }) {
+function CardShell({ className, children, onClick }) {
   return (
     <motion.article
       className={cn("cursor-pointer", className)}
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onClick(event);
+        }
+      } : undefined}
       whileHover={{ y: -2 }}
       transition={{ type: "spring", stiffness: 520, damping: 34, mass: 0.55 }}
     >
@@ -435,24 +444,26 @@ function ProposalBand({ proposal, canEdit, canManage, working, onOpen, onAct, on
   );
 
   return (
-    <CardShell className="flex flex-col gap-4 rounded-[28px] bg-[#F3F2EE] p-4 dark:bg-white/[0.04]">
+    <CardShell className="flex flex-col gap-4 rounded-[28px] bg-[#F3F2EE] p-4 dark:bg-white/[0.04]" onClick={() => onOpen(proposal)}>
       <div className="flex items-start justify-between gap-3">
-        <button type="button" className="min-w-0 text-left" onClick={() => onOpen(proposal)}>
+        <div className="min-w-0 text-left">
           <p className="truncate font-['Manrope',system-ui,sans-serif] text-[15px] font-semibold leading-tight">
             {glance.client}
           </p>
           <p className="mt-0.5 truncate text-[13px] text-[#6F6F6B]">{glance.title}</p>
-        </button>
+        </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <StatusMark status={proposal.status} />
-          {menu}
+          <div onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+            {menu}
+          </div>
         </div>
       </div>
-      <button type="button" className="grid grid-cols-3 gap-3 text-left" onClick={() => onOpen(proposal)}>
+      <div className="grid grid-cols-3 gap-3 text-left">
         <BoardFact label="Session" value={glance.sessionLabel} />
         <BoardFact label="Value" value={glance.value} />
         <BoardFact label="Next" value={glance.nextStep} />
-      </button>
+      </div>
     </CardShell>
   );
 }

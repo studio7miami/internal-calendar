@@ -376,11 +376,11 @@ def _proposal_by_ref(ref: str) -> dict:
         raise HTTPException(status_code=404, detail="Proposal not found")
     if _is_uuid(cleaned):
         return _proposal(cleaned)
-    rows = [dict(row) for row in (_db.table("proposals").select(PROPOSAL_FIELDS).execute().data or [])]
-    slugs = _editor_slugs_for_rows(rows)
-    for row in rows:
+    peers = _db.table("proposals").select("id,client_name,created_at").execute().data or []
+    slugs = _editor_slugs_for_rows(peers)
+    for row in peers:
         if slugs.get(str(row.get("id"))) == cleaned:
-            return row
+            return _proposal(str(row["id"]))
     raise HTTPException(status_code=404, detail="Proposal not found")
 
 
