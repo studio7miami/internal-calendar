@@ -136,6 +136,11 @@ describe("proposal helpers", () => {
     expect(proposalActionPayload("archive", proposal)).toEqual({ version: 4 });
     expect(proposalActionPayload("send", proposal)).toEqual({ version: 4, expires_days: 45 });
     expect(proposalActionPayload("resend", proposal)).toEqual({ version: 4, expires_days: 45 });
+    expect(proposalActionPayload("send", proposal, { channel: "text" })).toEqual({
+      version: 4,
+      expires_days: 45,
+      channel: "text",
+    });
   });
 
   test("treats untitled empty drafts as blank", () => {

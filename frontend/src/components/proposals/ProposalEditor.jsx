@@ -15,7 +15,7 @@ import {
 } from "../../lib/proposals";
 import ProposalDeck from "./ProposalDeck";
 import { ProposalDateField, ProposalTimeField } from "./ProposalScheduleField";
-import { withAgreementStep } from "./SignPayLinkModal";
+import { withAgreementStep, smsUrl } from "./SignPayLinkModal";
 import { useAuth } from "../../context/AuthContext";
 import "./ProposalBuilder.css";
 
@@ -64,22 +64,6 @@ function useTeamTheme() {
   }, []);
 
   return theme;
-}
-
-function openMessages(phone, body) {
-  const apple = /iPad|iPhone|iPod|Mac OS X|Macintosh/.test(navigator.userAgent);
-  const separator = apple ? "&body=" : "?body=";
-  const href = `sms:${phone}${separator}${encodeURIComponent(body)}`;
-  const chromeOnMac = /Macintosh/.test(navigator.userAgent) && /Chrome\//.test(navigator.userAgent) && !/Edg\//.test(navigator.userAgent);
-  if (chromeOnMac && navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(body).catch(() => {});
-  }
-  const anchor = document.createElement("a");
-  anchor.href = href;
-  anchor.rel = "noopener";
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
 }
 
 function isPostAcceptStatus(status) {
@@ -141,6 +125,7 @@ export default function ProposalEditor({
   const [preview, setPreview] = useState(false);
   const [notice, setNotice] = useState("");
   const [sendOpen, setSendOpen] = useState(false);
+  const [smsLaunch, setSmsLaunch] = useState("");
   const canvasRef = useRef(null);
   const previewStageRef = useRef(null);
   const patch = (key, value) => onChange({ ...proposal, [key]: value });
@@ -183,20 +168,31 @@ export default function ProposalEditor({
     onAction("duplicate");
   };
 
-  const share = (channel) => {
+  const share = async (channel) => {
     if ((!canSend && channel === "email") || actionState) return;
     if (channel === "text") {
-      if (!proposal.share_url) {
-        showNotice("Send first to create the client link");
-        return;
-      }
       const phone = String(proposal.client?.phone || "").replace(/[^\d+]/g, "");
       if (!phone) {
         showNotice("Add a client phone number first");
         return;
       }
-      openMessages(phone, clientTextMessage(proposal));
+      let latest = proposal;
+      if (!latest.share_url) {
+        if (!canSend) {
+          showNotice("Save the proposal before sending it");
+          return;
+        }
+        latest = await onAction(sendAction, { channel: "text" });
+        if (!latest?.share_url) return;
+      }
+      const body = clientTextMessage(latest);
+      const href = smsUrl(phone, body);
+      try {
+        navigator.clipboard?.writeText(body);
+      } catch {}
       setSendOpen(false);
+      if (href) setSmsLaunch(href);
+      else showNotice("Message copied. Paste it into Messages.");
       return;
     }
     if (!canSend) return;
@@ -325,7 +321,19 @@ export default function ProposalEditor({
           postAccept={isPostAcceptStatus(proposal.status)}
           onClose={() => setSendOpen(false)}
           onSelect={share}
+          copyBody={clientTextMessage(proposal)}
+          textHref={
+            proposal.share_url && proposal.client?.phone
+              ? smsUrl(
+                String(proposal.client.phone).replace(/[^\d+]/g, ""),
+                clientTextMessage(proposal),
+              )
+              : ""
+          }
         />
+      )}
+      {smsLaunch && (
+        <OpenMessagesDialog href={smsLaunch} onClose={() => setSmsLaunch("")} />
       )}
     </div>
   );
@@ -425,9 +433,49 @@ function ActionButton({ icon: Icon, label, primary = false, ...props }) {
   return <button type="button" className={`pb-action${primary ? " primary" : ""}`} {...props}><Icon /><span>{label}</span></button>;
 }
 
-function SendDialog({ client, canSend, actionState, onClose, onSelect, postAccept = false }) {
+function OpenMessagesDialog({ href, onClose }) {
+  return (
+    <div className="pb-send-dialog-backdrop" role="presentation" onClick={onClose}>
+      <div
+        className="pb-send-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pb-open-messages-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="pb-send-dialog__head">
+          <div>
+            <p className="pb-send-dialog__kicker">Text client</p>
+            <h2 id="pb-open-messages-title">Open Messages</h2>
+          </div>
+          <button type="button" className="pb-send-dialog__close" onClick={onClose} aria-label="Close">
+            <X aria-hidden="true" />
+          </button>
+        </header>
+        <p className="pb-send-dialog__copy">
+          Message copied. Tap below if Messages didn’t open on its own.
+        </p>
+        <div className="pb-send-dialog__options">
+          <a className="pb-send-dialog__option" href={href}>
+            <MessageSquare aria-hidden="true" />
+            <span>Open Messages</span>
+            <small>Uses the Messages app on this Mac or iPhone</small>
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SendDialog({ client, canSend, actionState, onClose, onSelect, postAccept = false, textHref = "", copyBody = "" }) {
   const clientEmail = client?.email || "";
   const clientPhone = client?.phone || "";
+  const copyThenOpen = () => {
+    if (!copyBody) return;
+    try {
+      navigator.clipboard?.writeText(copyBody);
+    } catch {}
+  };
 
   return (
     <div className="pb-send-dialog-backdrop" role="presentation" onClick={onClose}>
@@ -461,16 +509,24 @@ function SendDialog({ client, canSend, actionState, onClose, onSelect, postAccep
             <span>Email</span>
             <small>{clientEmail || "Add client email on Client"}</small>
           </button>
-          <button
-            type="button"
-            className="pb-send-dialog__option"
-            disabled={!!actionState || !clientPhone}
-            onClick={() => onSelect("text")}
-          >
-            <MessageSquare aria-hidden="true" />
-            <span>Text</span>
-            <small>{clientPhone || "Add client phone on Client"}</small>
-          </button>
+          {textHref ? (
+            <a className="pb-send-dialog__option" href={textHref} onClick={copyThenOpen}>
+              <MessageSquare aria-hidden="true" />
+              <span>Text</span>
+              <small>{clientPhone}</small>
+            </a>
+          ) : (
+            <button
+              type="button"
+              className="pb-send-dialog__option"
+              disabled={!!actionState || !clientPhone || !canSend}
+              onClick={() => onSelect("text")}
+            >
+              <MessageSquare aria-hidden="true" />
+              <span>Text</span>
+              <small>{clientPhone || "Add client phone on Client"}</small>
+            </button>
+          )}
         </div>
       </div>
     </div>

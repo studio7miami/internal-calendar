@@ -418,7 +418,7 @@ function ProposalBand({ proposal, canEdit, canManage, working, onOpen, onAct }) 
 }
 
 function canMarkAccepted(status) {
-  return status === "sent" || status === "viewed";
+  return ["draft", "approved", "sent", "viewed"].includes(status);
 }
 
 function ProposalActions({ proposal, canEdit, canManage, working, onOpen, onAct, compact = false, menuOnly = false }) {

@@ -1303,6 +1303,7 @@ html.dark .proposal-builder .pb-time-input::-webkit-calendar-picker-indicator {
   color: var(--pb-text-2);
   cursor: pointer;
   text-align: left;
+  text-decoration: none;
 }
 
 .pb-send-dialog__option svg {
@@ -1323,14 +1324,16 @@ html.dark .proposal-builder .pb-time-input::-webkit-calendar-picker-indicator {
   color: var(--pb-text-3);
 }
 
-.pb-send-dialog__option:hover:not(:disabled) {
+.pb-send-dialog__option:hover:not(:disabled):not([aria-disabled="true"]) {
   border-color: var(--pb-border-md);
   background: var(--pb-accent-dim);
 }
 
-.pb-send-dialog__option:disabled {
+.pb-send-dialog__option:disabled,
+.pb-send-dialog__option[aria-disabled="true"] {
   opacity: .45;
   cursor: not-allowed;
+  pointer-events: none;
 }
 
 .pb-card-block {

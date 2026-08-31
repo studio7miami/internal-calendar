@@ -314,6 +314,15 @@ class VersionAction(BaseModel):
 
 class SendAction(VersionAction):
     expires_days: int = Field(default=30, ge=1, le=90)
+    channel: str = "email"
+
+    @field_validator("channel")
+    @classmethod
+    def validate_channel(cls, value: str) -> str:
+        channel = str(value or "email").strip().lower()
+        if channel not in ("email", "text"):
+            raise ValueError("channel must be email or text")
+        return channel
 
 
 class CheckoutIn(BaseModel):
@@ -561,7 +570,26 @@ def _create_revision(proposal: dict, user_id: str) -> dict:
     return dict(inserted.data[0] if inserted.data else row)
 
 
+def _studio7_calendar_id() -> Optional[str]:
+    if _db is None:
+        return None
+    try:
+        rows = _db.table("calendars").select("id,name,is_active").execute().data or []
+    except Exception:
+        return None
+    for row in rows:
+        if row.get("is_active") is False:
+            continue
+        if re.search(r"studio\s*7\s*miami", str(row.get("name") or ""), re.I):
+            return row.get("id")
+    return None
+
+
 def _validate_sendable(proposal: dict) -> dict:
+    if not str(proposal.get("calendar_id") or "").strip():
+        studio_id = _studio7_calendar_id()
+        if studio_id:
+            proposal["calendar_id"] = studio_id
     required = ("client_name", "client_email", "calendar_id", "session_date", "arrival_time", "wrap_time")
     missing = [
         key for key in required
@@ -962,7 +990,7 @@ def _proposal_email(proposal: dict, link: str) -> tuple[str, str, str]:
     return subject, body, text
 
 
-async def _send(proposal: dict, version: int, expires_days: int, user: dict) -> dict:
+async def _send(proposal: dict, version: int, expires_days: int, user: dict, *, channel: str = "email") -> dict:
     if proposal["status"] not in (
         "draft", "changes_requested", "approved", "sent", "viewed", "client_approved", "signed"
     ):
@@ -976,7 +1004,7 @@ async def _send(proposal: dict, version: int, expires_days: int, user: dict) -> 
     if _has_conflict(proposal):
         raise HTTPException(status_code=409, detail="The proposal schedule conflicts with another booking")
     revision_id = proposal.get("current_revision_id")
-    send_updates: dict[str, Any] = {}
+    send_updates: dict[str, Any] = {"calendar_id": proposal.get("calendar_id")}
     if not revision_id:
         revision = _create_revision(proposal, user["id"])
         revision_id = revision["id"]
@@ -999,10 +1027,13 @@ async def _send(proposal: dict, version: int, expires_days: int, user: dict) -> 
     }
     _db.table("proposal_shares").insert(share).execute()
     link = _share_url(token, step=_client_share_step(proposal.get("status")))
-    subject, html_body, text_body = _proposal_email(proposal, link)
-    delivered, error = await invite_email.deliver_html_email(
-        to_email=proposal["client_email"], subject=subject, html_body=html_body, text_body=text_body
-    )
+    delivered = False
+    error = None
+    if channel != "text":
+        subject, html_body, text_body = _proposal_email(proposal, link)
+        delivered, error = await invite_email.deliver_html_email(
+            to_email=proposal["client_email"], subject=subject, html_body=html_body, text_body=text_body
+        )
     updated = _optimistic_update(
         proposal["id"], version,
         {
@@ -1018,7 +1049,7 @@ async def _send(proposal: dict, version: int, expires_days: int, user: dict) -> 
     )
     _event(
         proposal["id"], "sent", user_id=user["id"], share_id=share["id"],
-        metadata={"email_delivered": delivered, "email_error": error},
+        metadata={"email_delivered": delivered, "email_error": error, "channel": channel},
     )
     if proposal.get("assigned_to") and str(proposal["assigned_to"]) != str(user["id"]):
         _notify(
@@ -1042,6 +1073,7 @@ async def send_proposal(
         _action_version(proposal, data, request),
         data.expires_days if data else 30,
         user,
+        channel=(data.channel if data else "email"),
     )
 
 
@@ -1059,6 +1091,7 @@ async def resend_proposal(
         _action_version(proposal, data, request),
         data.expires_days if data else 30,
         user,
+        channel=(data.channel if data else "email"),
     )
 
 
@@ -1119,11 +1152,17 @@ async def mark_accepted(
     _require(user, "edit_proposals")
     proposal = _proposal(proposal_id)
     if proposal["status"] in ("client_approved", "signed", "deposit_paid", "paid"):
-        return _serialize(proposal)
-    if proposal["status"] not in ("sent", "viewed"):
+        token = None
+        if proposal.get("current_revision_id"):
+            try:
+                token = _mint_share_token(proposal, user)
+            except HTTPException:
+                token = None
+        return _serialize(proposal, token)
+    if proposal["status"] not in ("draft", "approved", "sent", "viewed"):
         raise HTTPException(
             status_code=409,
-            detail="Only sent proposals can be marked accepted",
+            detail="This proposal cannot be marked accepted in its current state",
         )
     version = _action_version(proposal, data, request)
     if int(proposal["version"]) != version:
@@ -1131,32 +1170,38 @@ async def mark_accepted(
             status_code=409,
             detail={"message": "Proposal was changed by another user", "current_version": proposal["version"]},
         )
+    calendar = _validate_sendable(proposal)
+    if _has_conflict(proposal):
+        raise HTTPException(status_code=409, detail="The proposal schedule conflicts with another booking")
     timestamp = _now()
-    updated = _optimistic_update(
-        proposal_id,
-        version,
-        {"status": "client_approved", "client_approved_at": timestamp},
-    )
+    updates: dict[str, Any] = {
+        "status": "client_approved",
+        "client_approved_at": timestamp,
+        "calendar_id": proposal.get("calendar_id"),
+    }
+    revision_id = proposal.get("current_revision_id")
+    if not revision_id:
+        revision = _create_revision(proposal, user["id"])
+        revision_id = revision["id"]
+        updates["current_revision_id"] = revision_id
+        proposal = {**proposal, "current_revision_id": revision_id}
+    booking = _upsert_proposal_hold(proposal, calendar, user)
+    updates["booking_id"] = booking["id"]
+    updated = _optimistic_update(proposal_id, version, updates)
     _event(
         proposal_id,
         "marked_accepted",
         user_id=user["id"],
         metadata={"channel": "text", "previous_status": proposal["status"]},
     )
-    token = None
-    if updated.get("current_revision_id"):
-        try:
-            token = _mint_share_token(updated, user)
-            _event(
-                proposal_id,
-                "share_refreshed",
-                user_id=user["id"],
-                metadata={"reason": "mark_accepted"},
-            )
-        except HTTPException:
-            token = None
-    payload = _serialize(updated, token)
-    return payload
+    token = _mint_share_token({**updated, "current_revision_id": revision_id}, user)
+    _event(
+        proposal_id,
+        "share_refreshed",
+        user_id=user["id"],
+        metadata={"reason": "mark_accepted"},
+    )
+    return _serialize(updated, token)
 
 
 @router.get("/proposals/{proposal_id}/activity")

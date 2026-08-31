@@ -20,20 +20,22 @@ export function signPayTextMessage(clientName, link) {
   return `Perfect ${firstName} — next is sign the agreement and pay the deposit to lock your date:\n\n${link}`;
 }
 
-function openMessages(phone, body) {
-  const apple = /iPad|iPhone|iPod|Mac OS X|Macintosh/.test(navigator.userAgent);
+export function smsUrl(phone, body) {
+  const number = String(phone || "").replace(/[^\d+]/g, "");
+  if (!number) return "";
+  const apple = /iPhone|iPad|iPod|Macintosh|Mac OS X/i.test(navigator.userAgent || "");
   const separator = apple ? "&body=" : "?body=";
-  const href = `sms:${phone}${separator}${encodeURIComponent(body)}`;
-  const chromeOnMac = /Macintosh/.test(navigator.userAgent) && /Chrome\//.test(navigator.userAgent) && !/Edg\//.test(navigator.userAgent);
-  if (chromeOnMac && navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(body).catch(() => {});
-  }
-  const anchor = document.createElement("a");
-  anchor.href = href;
-  anchor.rel = "noopener";
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
+  return `sms:${number}${separator}${encodeURIComponent(body)}`;
+}
+
+export function openMessages(phone, body) {
+  const href = smsUrl(phone, body);
+  if (!href) return false;
+  try {
+    navigator.clipboard?.writeText(body);
+  } catch {}
+  window.location.href = href;
+  return true;
 }
 
 /**
@@ -64,7 +66,11 @@ export default function SignPayLinkModal({
     }
   };
 
-  const textClient = () => {
+  const textHref = phone && shareLink ? smsUrl(phone, signPayTextMessage(clientName, shareLink)) : "";
+
+  const textClient = (event) => {
+    if (textHref) return;
+    event?.preventDefault?.();
     if (!phone || !shareLink) return;
     openMessages(phone, signPayTextMessage(clientName, shareLink));
   };
@@ -105,16 +111,16 @@ export default function SignPayLinkModal({
               <span>{copied ? "Copied" : "Copy link"}</span>
               <small>Paste into iMessage, WhatsApp, or email</small>
             </button>
-            <button
-              type="button"
+            <a
               className="pb-send-dialog__option"
-              disabled={!shareLink || !phone}
+              href={textHref || undefined}
+              aria-disabled={!textHref ? "true" : undefined}
               onClick={textClient}
             >
               <MessageSquare aria-hidden="true" />
               <span>Text client</span>
               <small>{phone || "Add client phone on Client"}</small>
-            </button>
+            </a>
           </div>
         </div>
       </div>
@@ -164,16 +170,15 @@ export default function SignPayLinkModal({
             {copied ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
             {copied ? "Copied" : "Copy link"}
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            disabled={!shareLink || !phone}
+          <a
+            href={textHref || undefined}
+            aria-disabled={!textHref ? "true" : undefined}
             onClick={textClient}
-            className={cn(pageBtnOutlineClass, "flex-1")}
+            className={cn(pageBtnOutlineClass, "flex-1 inline-flex items-center justify-center")}
           >
             <MessageSquare className="mr-2 h-4 w-4" />
             Text client
-          </Button>
+          </a>
         </div>
       </div>
     </div>

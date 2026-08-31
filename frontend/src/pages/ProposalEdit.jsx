@@ -104,7 +104,7 @@ export default function ProposalEdit({ createNew = false }) {
     setProposal(next);
   }, []);
 
-  const action = async (name) => {
+  const action = async (name, extra = {}) => {
     if (saveState === "saving") {
       setError("Please wait for the current changes to save.");
       return null;
@@ -112,7 +112,7 @@ export default function ProposalEdit({ createNew = false }) {
     setActionState(name);
     setError("");
     try {
-      const { data } = await api.post(`/proposals/${proposal.id}/${name}`, proposalActionPayload(name, proposal));
+      const { data } = await api.post(`/proposals/${proposal.id}/${name}`, proposalActionPayload(name, proposal, extra));
       if (name === "duplicate") {
         const duplicate = normalizeProposal(data);
         navigate(`/proposals/${duplicate.id}/edit`, { state: { proposal: duplicate } });

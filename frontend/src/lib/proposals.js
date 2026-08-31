@@ -274,10 +274,11 @@ export function serializeProposal(proposal, { includeVersion = true } = {}) {
   return payload;
 }
 
-export function proposalActionPayload(action, proposal) {
+export function proposalActionPayload(action, proposal, extra = {}) {
   const payload = { version: Number(proposal.version) };
   if (action === "send" || action === "resend") {
     payload.expires_days = Math.max(1, Math.min(90, Number(proposal.share?.expires_days) || 30));
+    if (extra.channel) payload.channel = extra.channel;
   }
   return payload;
 }
