@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { api, formatApiError } from "../lib/api";
-import { EMPTY_PROPOSAL, isBlankProposal, normalizeProposal, proposalActionPayload, serializeProposal, statusLabel } from "../lib/proposals";
+import { EMPTY_PROPOSAL, isBlankProposal, normalizeProposal, proposalActionPayload, proposalEditPath, serializeProposal, statusLabel } from "../lib/proposals";
 import ProposalEditor from "../components/proposals/ProposalEditor";
 import ProposalLoader from "../components/proposals/ProposalLoader";
 import { Button } from "../components/ui/button";
@@ -33,13 +33,17 @@ export default function ProposalEdit({ createNew = false }) {
         api.get("/calendars").then(({ data }) => {
           if (!cancelled) setCalendars((Array.isArray(data) ? data : data?.items || []).filter((calendar) => calendar.is_active !== false));
         }).catch(() => {});
-        if (createNew || (seededProposal && seededProposal.id === routeId)) {
+        if (createNew || (seededProposal && (seededProposal.id === routeId || seededProposal.slug === routeId))) {
           return;
         }
-        const { data } = await api.get(`/proposals/${routeId}`);
+        const { data } = await api.get(`/proposals/${encodeURIComponent(routeId)}`);
         if (!cancelled) {
-          setProposal(normalizeProposal(data));
+          const next = normalizeProposal(data);
+          setProposal(next);
           hydrated.current = true;
+          if (next.slug && next.slug !== routeId) {
+            navigate(proposalEditPath(next), { replace: true });
+          }
         }
       } catch (err) {
         if (!cancelled) setError(formatApiError(err.response?.data?.detail) || "Could not open this proposal.");
@@ -47,7 +51,7 @@ export default function ProposalEdit({ createNew = false }) {
     };
     load();
     return () => { cancelled = true; };
-  }, [createNew, routeId, seededProposal]);
+  }, [createNew, routeId, seededProposal, navigate]);
 
   useEffect(() => {
     if (!proposal || !hydrated.current) return;
@@ -77,10 +81,12 @@ export default function ProposalEdit({ createNew = false }) {
           setSaveState("saved");
           setError("");
           if (!snapshot.id && idRef.current) {
-            navigate(`/proposals/${idRef.current}/edit`, {
+            navigate(proposalEditPath({ ...saved, id: idRef.current }), {
               replace: true,
               state: { proposal: { ...saved, id: idRef.current } },
             });
+          } else if (saved.slug && saved.slug !== routeId) {
+            navigate(proposalEditPath(saved), { replace: true });
           }
         }
       } catch (err) {
@@ -98,7 +104,7 @@ export default function ProposalEdit({ createNew = false }) {
       }
     }, 750);
     return () => window.clearTimeout(timer);
-  }, [navigate, proposal]);
+  }, [navigate, proposal, routeId]);
 
   const change = useCallback((next) => {
     editRevision.current += 1;
@@ -116,7 +122,7 @@ export default function ProposalEdit({ createNew = false }) {
       const { data } = await api.post(`/proposals/${proposal.id}/${name}`, proposalActionPayload(name, proposal, extra));
       if (name === "duplicate") {
         const duplicate = normalizeProposal(data);
-        navigate(`/proposals/${duplicate.id}/edit`, { state: { proposal: duplicate } });
+        navigate(proposalEditPath(duplicate), { state: { proposal: duplicate } });
         return duplicate;
       }
       const next = normalizeProposal(data);

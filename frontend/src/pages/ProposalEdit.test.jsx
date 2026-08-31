@@ -9,6 +9,7 @@ const mockNavigate = jest.fn();
 jest.mock("react-router-dom", () => ({
   useNavigate: () => mockNavigate,
   useParams: () => ({}),
+  useLocation: () => ({ state: null, pathname: "/proposals/new" }),
 }), { virtual: true });
 
 jest.mock("../lib/api", () => ({

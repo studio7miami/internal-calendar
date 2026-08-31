@@ -48,6 +48,23 @@ export function isDefaultProposalTitle(title) {
   return !value || value === "untitled proposal" || value === "untitled";
 }
 
+export function clientShareSlug(name) {
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+}
+
+export function proposalEditPath(proposal) {
+  const slug = proposal?.slug
+    || clientShareSlug(proposal?.client?.contact_name || proposal?.client_name)
+    || proposal?.id;
+  if (!slug || slug === "new") return "/proposals/new";
+  return `/proposals/${encodeURIComponent(slug)}/edit`;
+}
+
 export function isBlankProposal(proposal) {
   const title = String(proposal?.title || "").trim().toLowerCase();
   const client = String(proposal?.client?.contact_name || proposal?.client_name || "").trim();
@@ -245,6 +262,7 @@ export function normalizeProposal(value = {}) {
     signature_summary: value?.signature_summary ?? source.signature_summary,
     revision: value?.revision ?? source.revision,
     change_request: value?.change_request ?? source.change_request ?? null,
+    slug: source.slug || clientShareSlug(source.client_name ?? source.client?.contact_name ?? source.client?.name ?? "") || source.id || "",
   };
 }
 

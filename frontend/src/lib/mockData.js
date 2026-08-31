@@ -1,4 +1,4 @@
-import { clientResumeStep, withResumeStep } from "./proposals";
+import { clientResumeStep, clientShareSlug, withResumeStep } from "./proposals";
 
 const STORAGE_KEY = "s7_local_mock_proposals_v10";
 const MOCK_PREFIX = "mock-proposal-";
@@ -733,10 +733,16 @@ export function installLocalMocking(instance) {
       ]);
     }
 
-    if (proposalMatch && proposalMatch[1].startsWith(MOCK_PREFIX)) {
+    if (proposalMatch) {
       const proposals = loadProposals();
-      const index = proposals.findIndex((proposal) => proposal.id === proposalMatch[1]);
-      if (index < 0) return use({ detail: "Mock proposal not found" }, 404);
+      const ref = decodeURIComponent(proposalMatch[1]);
+      const index = proposals.findIndex((proposal) => (
+        proposal.id === ref || clientShareSlug(proposal.client_name) === ref
+      ));
+      if (index < 0) {
+        if (!ref.startsWith(MOCK_PREFIX)) return config;
+        return use({ detail: "Mock proposal not found" }, 404);
+      }
       if (method === "get") return use(proposals[index]);
       if (method === "patch") {
         const patch = requestData(config.data);

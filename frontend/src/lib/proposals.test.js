@@ -2,6 +2,8 @@ import {
   formatDeliverablesCount,
   isBlankProposal,
   isDefaultProposalTitle,
+  clientShareSlug,
+  proposalEditPath,
   normalizeProposal,
   normalizeProposalList,
   proposalActionPayload,
@@ -172,5 +174,12 @@ describe("proposal helpers", () => {
     expect(isDefaultProposalTitle("")).toBe(true);
     expect(isDefaultProposalTitle("Untitled proposal")).toBe(true);
     expect(isDefaultProposalTitle("Corrales & Co.")).toBe(false);
+  });
+
+  test("builds editor paths from the client name", () => {
+    expect(clientShareSlug("Tai")).toBe("tai");
+    expect(clientShareSlug("Luis Corrales")).toBe("luis-corrales");
+    expect(proposalEditPath({ slug: "tai", id: "00b94e07-279c-4a9c-8aa5-3cd26d8ca269" })).toBe("/proposals/tai/edit");
+    expect(proposalEditPath({ client: { contact_name: "Tai" }, id: "00b94e07-279c-4a9c-8aa5-3cd26d8ca269" })).toBe("/proposals/tai/edit");
   });
 });

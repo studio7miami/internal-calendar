@@ -174,7 +174,7 @@ def test_changes_requested_email_is_branded_staff_notice(monkeypatch):
     assert "Can we shift to afternoon?" in html_body
     assert "Open proposal" in html_body
     assert "framerusercontent.com" in html_body
-    assert "/proposals/p1/edit" in html_body
+    assert "/proposals/tai/edit" in html_body
     assert "Can we shift to afternoon?" in text
 
 
@@ -207,6 +207,25 @@ def test_named_share_reuses_this_proposal_even_when_revoked_row_exists():
     }
     assert proposals.choose_named_share_token("Tai", proposal_id, occupancy) == "tai"
     assert proposals.choose_named_share_token("Tai", other, occupancy) == "tai-4"
+
+
+def test_editor_urls_use_the_client_name_and_suffix_duplicates(monkeypatch):
+    monkeypatch.delenv("FRONTEND_URL", raising=False)
+    slugs = proposals._editor_slugs_for_rows([
+        {"id": "a", "client_name": "Tai", "created_at": "2026-01-01"},
+        {"id": "b", "client_name": "Tai", "created_at": "2026-06-01"},
+        {"id": "c", "client_name": "Luis Corrales", "created_at": "2026-03-01"},
+        {"id": "d", "client_name": "", "created_at": "2026-04-01"},
+        {"id": "e", "client_name": "New", "created_at": "2026-05-01"},
+    ])
+    assert slugs["a"] == "tai"
+    assert slugs["b"] == "tai-2"
+    assert slugs["c"] == "luis-corrales"
+    assert slugs["d"] == "d"
+    assert slugs["e"] == "new-client"
+    assert proposals._staff_proposal_url({"id": "a", "client_name": "Tai"}) == (
+        "https://team.studio7.miami/proposals/tai/edit"
+    )
 
 
 def test_sent_proposals_can_rename_title_only():

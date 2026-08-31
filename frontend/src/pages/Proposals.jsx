@@ -7,6 +7,7 @@ import {
   normalizeProposal,
   normalizeProposalList,
   proposalActionPayload,
+  proposalEditPath,
   proposalFilterLabel,
   proposalMatchesFilter,
   serializeProposal,
@@ -142,7 +143,7 @@ export default function Proposals() {
     try {
       const { data } = await api.post(`/proposals/${proposal.id}/${action}`, proposalActionPayload(action, proposal));
       if (action === "duplicate") {
-        navigate(`/proposals/${data.id || data.proposal?.id}/edit`);
+        navigate(proposalEditPath(normalizeProposal(data)));
       } else if (action === "mark-accepted") {
         await load();
         setSignPayModal({
@@ -160,7 +161,7 @@ export default function Proposals() {
     }
   };
 
-  const openProposal = (proposal) => navigate(`/proposals/${proposal.id}/edit`);
+  const openProposal = (proposal) => navigate(proposalEditPath(proposal));
 
   return (
     <div className="space-y-7" data-testid="proposals-page">

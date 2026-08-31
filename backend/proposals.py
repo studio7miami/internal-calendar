@@ -310,11 +310,86 @@ def _active_share_token(proposal: dict) -> Optional[str]:
     return fallback
 
 
-def _staff_proposal_url(proposal_id: str) -> str:
+UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+RESERVED_EDITOR_SLUGS = {"new"}
+
+
+def _is_uuid(value: str) -> bool:
+    return bool(UUID_RE.match((value or "").strip()))
+
+
+def _base_editor_slug(client_name: str) -> str:
+    slug = client_share_slug(client_name)
+    if slug in RESERVED_EDITOR_SLUGS:
+        return f"{slug}-client"
+    return slug
+
+
+def _editor_slugs_for_rows(rows: list[dict]) -> dict[str, str]:
+    """Oldest proposal named Tai gets /proposals/tai/edit; the next Tai gets tai-2."""
+    ordered = sorted(
+        rows,
+        key=lambda row: (str(row.get("created_at") or ""), str(row.get("id") or "")),
+    )
+    used: set[str] = set()
+    slugs: dict[str, str] = {}
+    for row in ordered:
+        pid = str(row.get("id") or "")
+        if not pid:
+            continue
+        base = _base_editor_slug(row.get("client_name") or "")
+        if not base:
+            slugs[pid] = pid
+            continue
+        token = base
+        suffix = 2
+        while token in used:
+            token = f"{base}-{suffix}"
+            suffix += 1
+            if suffix > 80:
+                token = f"{base}-{pid[:8]}"
+                break
+        used.add(token)
+        slugs[pid] = token
+    return slugs
+
+
+def _editor_slug(proposal: dict) -> str:
+    pid = str(proposal.get("id") or "")
+    if _db is None:
+        return _editor_slugs_for_rows([proposal]).get(pid) or pid
+    try:
+        peers = _db.table("proposals").select("id,client_name,created_at").execute().data or []
+    except Exception:
+        peers = [proposal]
+    if pid and not any(str(row.get("id")) == pid for row in peers):
+        peers = [proposal, *peers]
+    return _editor_slugs_for_rows(peers).get(pid) or pid
+
+
+def _proposal_by_ref(ref: str) -> dict:
+    cleaned = (ref or "").strip()
+    if not cleaned:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    if _is_uuid(cleaned):
+        return _proposal(cleaned)
+    rows = [dict(row) for row in (_db.table("proposals").select(PROPOSAL_FIELDS).execute().data or [])]
+    slugs = _editor_slugs_for_rows(rows)
+    for row in rows:
+        if slugs.get(str(row.get("id"))) == cleaned:
+            return row
+    raise HTTPException(status_code=404, detail="Proposal not found")
+
+
+def _staff_proposal_url(proposal: dict) -> str:
     frontend = (os.environ.get("FRONTEND_URL") or "https://team.studio7.miami").rstrip("/")
     if "localhost" in frontend.lower() or "127.0.0.1" in frontend:
         frontend = "https://team.studio7.miami"
-    return f"{frontend}/proposals/{proposal_id}/edit"
+    slug = _editor_slug(proposal) if isinstance(proposal, dict) else str(proposal or "")
+    return f"{frontend}/proposals/{slug}/edit"
 
 
 def _open_change_request(proposal_id: str) -> Optional[dict]:
@@ -563,11 +638,12 @@ def _event(
     }).execute()
 
 
-def _serialize(row: dict, token: Optional[str] = None) -> dict:
+def _serialize(row: dict, token: Optional[str] = None, slug: Optional[str] = None) -> dict:
     result = dict(row)
     result["share_url"] = (
         _share_url(token, step=_client_share_step(row.get("status"))) if token else None
     )
+    result["slug"] = slug if slug is not None else _editor_slug(row)
     return result
 
 
@@ -1001,7 +1077,8 @@ async def list_proposals(
         query = query.eq("status", status)
     rows = query.order("updated_at", desc=True).execute().data or []
     rows = _purge_blank_drafts(rows)
-    return [_serialize(dict(row)) for row in rows]
+    slugs = _editor_slugs_for_rows(rows)
+    return [_serialize(dict(row), slug=slugs.get(str(row.get("id")))) for row in rows]
 
 
 @router.post("/proposals", status_code=201)
@@ -1025,7 +1102,7 @@ async def create_proposal(data: ProposalCreate, user: dict = Depends(_current_us
 @router.get("/proposals/{proposal_id}")
 async def read_proposal(proposal_id: str, user: dict = Depends(_current_user)):
     _require(user, "view_proposals")
-    proposal = _proposal(proposal_id)
+    proposal = _proposal_by_ref(proposal_id)
     return _serialize(proposal)
 
 
@@ -1313,7 +1390,7 @@ def _changes_requested_email(proposal: dict, message: str, client_name: str) -> 
     title = str(proposal.get("title") or "Content proposal").strip() or "Content proposal"
     date_text = str(proposal.get("session_date") or "")
     notes = (message or "").strip()
-    href = html.escape(_staff_proposal_url(str(proposal.get("id") or "")), quote=True)
+    href = html.escape(_staff_proposal_url(proposal), quote=True)
     subject = f"Changes requested — {client}"[:200]
     intro = html.escape(f"{client} asked for updates on {title}.")
     notes_html = html.escape(notes).replace("\n", "<br>")
@@ -1391,7 +1468,7 @@ def _changes_requested_email(proposal: dict, message: str, client_name: str) -> 
         "",
         notes,
         "",
-        _staff_proposal_url(str(proposal.get("id") or "")),
+        _staff_proposal_url(proposal),
         "",
         "Studio 7 Miami",
         "638 NW 62nd St, Miami, FL 33150",
