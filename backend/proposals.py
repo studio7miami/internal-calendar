@@ -30,7 +30,12 @@ import agreement_pdf
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["proposals"])
-PROPOSAL_MOCK_INBOX = (os.environ.get("PROPOSAL_EMAIL_COPY") or "tai@taistu.com").strip()
+PROPOSAL_MOCK_INBOX = (os.environ.get("PROPOSAL_EMAIL_COPY") or "info@studio7.miami").strip()
+STUDIO_NAME = "Studio 7 Miami"
+STUDIO_STREET = "638 NW 62nd St"
+STUDIO_CITY_STATE = "Miami, FL"
+STUDIO_ZIP = "33150"
+STUDIO_ADDRESS_LINES = (STUDIO_STREET, STUDIO_CITY_STATE, STUDIO_ZIP)
 
 _db: Any = None
 _auth_dependency: Optional[Callable[..., Awaitable[dict]]] = None
@@ -54,6 +59,25 @@ EDITABLE_FIELDS = set(SNAPSHOT_FIELDS) | {"assigned_to"}
 TITLE_EDITABLE_STATUSES = {"approved", "sent", "viewed", "client_approved"}
 SCHEDULE_FIELDS = {"calendar_id", "session_date", "arrival_time", "setup_time", "shoot_time", "wrap_time"}
 ACTIVE_BOOKING_STATUSES = {"approved", "pending"}
+
+
+def _studio_address_spans() -> str:
+    return "".join(
+        f'<span style="display:block">{html.escape(line)}</span>'
+        for line in STUDIO_ADDRESS_LINES
+    )
+
+
+def _studio_footer_html(*, tight: bool = False) -> str:
+    margin = "0" if tight else "0 0 6px"
+    lines = "<br>".join([STUDIO_NAME, *STUDIO_ADDRESS_LINES])
+    return (
+        f'<p style="margin:{margin};font-size:12px;line-height:1.6;color:#6F6F6B;">{lines}</p>'
+    )
+
+
+def _studio_address_text() -> list[str]:
+    return [STUDIO_NAME, *STUDIO_ADDRESS_LINES]
 
 
 def configure(
@@ -290,6 +314,18 @@ def _client_share_step(status: Optional[str]) -> Optional[str]:
     if status == "changes_requested":
         return "proposal"
     return None
+
+
+def _is_sign_pay_status(status: Optional[str]) -> bool:
+    return str(status or "") in ("client_approved", "signed")
+
+
+def _payment_kind_label(payment_type: str) -> str:
+    if payment_type == "deposit":
+        return "deposit"
+    if payment_type == "remaining":
+        return "remaining balance"
+    return "full balance"
 
 
 def _named_share_tokens(client_name: str) -> list[str]:
@@ -952,6 +988,29 @@ def _notify(user_id: Optional[str], proposal_id: str, kind: str, title: str, mes
         logger.exception("Could not create proposal notification")
 
 
+def _proposal_viewer_ids() -> list[str]:
+    if _db is None or _permissions_for is None:
+        return []
+    try:
+        found = _db.table("users").select("id,role").eq("is_disabled", False).execute()
+    except Exception:
+        logger.exception("Could not load proposal viewers")
+        return []
+    ids: list[str] = []
+    for target in found.data or []:
+        user_id = str(target.get("id") or "")
+        if not user_id:
+            continue
+        if permissions.has(_permissions_for(target), "view_proposals"):
+            ids.append(user_id)
+    return ids
+
+
+def _notify_proposal_viewers(proposal_id: str, kind: str, title: str, message: str) -> None:
+    for user_id in _proposal_viewer_ids():
+        _notify(user_id, proposal_id, kind, title, message)
+
+
 async def _deliver_proposal_mail(
     proposal: dict, subject: str, html_body: str, text_body: str
 ) -> tuple[bool, Optional[str]]:
@@ -967,69 +1026,99 @@ async def _deliver_proposal_mail(
     return delivered, error
 
 
-async def _copy_to_mock_inbox(
-    proposal: dict, subject: str, html_body: str, text_body: str
-) -> tuple[bool, Optional[str]]:
-    """Send Tai a real To: copy. BCC is easy for Resend to drop, and Text skips client mail."""
-    inbox = PROPOSAL_MOCK_INBOX
-    intended = str(proposal.get("client_email") or "").strip()
-    if not inbox:
-        return False, "No mock inbox"
-    if intended and inbox.lower() == intended.lower():
-        return False, "Copy inbox is the client"
-    copy_subject = f"[Copy · {intended or 'no client email'}] {subject}"
-    try:
-        delivered, error, _provider = await invite_email.deliver_html_email(
-            to_email=inbox,
-            subject=copy_subject[:200],
-            html_body=html_body,
-            text_body=text_body,
+def _staff_paid_email(proposal: dict, payment_type: str, amount_cents: int) -> tuple[str, str, str]:
+    font = "Manrope, Helvetica, Arial, sans-serif"
+    logo = "https://framerusercontent.com/assets/3HwVggLmyKfOrpHHCI76j8tFoTY.png"
+    client = str(proposal.get("client_name") or "A client").strip() or "A client"
+    title = str(proposal.get("title") or "Content proposal").strip() or "Content proposal"
+    date_pretty = agreement_pdf._date_long(proposal.get("session_date"))
+    if date_pretty == "Date to be confirmed":
+        date_pretty = ""
+    currency = str((proposal.get("pricing") or {}).get("currency") or "USD")
+    amount = agreement_pdf._money(int(amount_cents or 0), currency)
+    label = _payment_kind_label(payment_type)
+    href = html.escape(_staff_proposal_url(proposal), quote=True)
+    subject = f"{client} paid — {title}"[:200]
+    intro_text = f"{client} paid the {label}."
+
+    def spec_row(row_label: str, value: str, last: bool = False) -> str:
+        border = "none" if last else "1px solid rgba(17,17,17,0.08)"
+        return (
+            f'<tr><td style="padding:13px 0;border-bottom:{border};font-family:{font};'
+            'font-size:10px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;'
+            f'color:#6F6F6B;vertical-align:top;">{html.escape(row_label)}</td>'
+            f'<td style="padding:13px 0 13px 16px;border-bottom:{border};font-family:{font};'
+            f'font-size:14px;color:#111;text-align:right;line-height:1.45;">{value}</td></tr>'
         )
-        if not delivered:
-            logger.warning("Proposal copy email to %s failed: %s", inbox, error)
-        return delivered, error
-    except Exception as exc:
-        logger.exception("Could not send proposal copy email to %s", inbox)
-        return False, str(exc)
+
+    specs = [
+        ("Client", html.escape(client)),
+        ("Session", html.escape(title)),
+        ("Date", html.escape(date_pretty)),
+        ("Paid", html.escape(f"{amount} {label}")),
+        ("Email", html.escape(str(proposal.get("client_email") or "").strip())),
+    ]
+    specs = [(row_label, value) for row_label, value in specs if value]
+    spec_html = "".join(
+        spec_row(row_label, value, index == len(specs) - 1)
+        for index, (row_label, value) in enumerate(specs)
+    )
+    body = f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light">
+<title>{html.escape(subject)}</title></head>
+<body style="margin:0;padding:0;background:#F7F7F5;font-family:{font};color:#111;-webkit-text-size-adjust:100%;">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#F7F7F5;"><tr><td align="center">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:100%;max-width:600px;background:#F7F7F5;">
+<tr><td bgcolor="#000000" style="background:#000;padding:0;text-align:center;line-height:0;"><img src="{logo}" width="600" alt="Studio 7 Miami" style="display:block;width:100%;max-width:600px;height:auto;border:0;background:#000;"></td></tr>
+<tr><td style="padding:36px 28px 12px;"><p style="margin:0 0 8px;font-size:10px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#6F6F6B;">Paid</p>
+<h1 style="margin:0 0 10px;font-size:28px;font-weight:600;letter-spacing:-.02em;line-height:1.15;color:#111;">The date is locked in</h1>
+<p style="margin:0;font-size:15px;line-height:1.6;color:#6F6F6B;">{html.escape(intro_text)}</p></td></tr>
+<tr><td style="padding:20px 28px 8px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#FCFCFA;border:1px solid rgba(17,17,17,.08);border-radius:24px;">
+<tr><td style="padding:22px 24px 8px;"><p style="margin:0;font-size:10px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#6F6F6B;">Booking</p></td></tr>
+<tr><td style="padding:0 24px 8px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">{spec_html}</table></td></tr></table></td></tr>
+<tr><td style="padding:20px 28px 8px;" align="center"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#111111" style="background:#111;border-radius:999px;">
+<a href="{href}" style="display:inline-block;padding:14px 28px;font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;text-decoration:none;color:#F7F7F5;">Open proposal</a>
+</td></tr></table></td></tr>
+<tr><td style="padding:28px 28px 40px;text-align:center;">{_studio_footer_html()}
+<p style="margin:0;font-size:12px;line-height:1.6;"><a href="https://studio7.miami" style="color:#111;text-decoration:none;">studio7.miami</a><span style="color:#C8C8C4;"> · </span><a href="https://book.studio7.miami" style="color:#111;text-decoration:none;">book.studio7.miami</a></p>
+</td></tr></table></td></tr></table></body></html>"""
+    text = "\n".join(filter(None, [
+        intro_text,
+        "",
+        f"Client: {client}",
+        f"Session: {title}",
+        f"Date: {date_pretty}" if date_pretty else None,
+        f"Paid: {amount} {label}",
+        f"Email: {str(proposal.get('client_email') or '').strip()}" if proposal.get("client_email") else None,
+        "",
+        _staff_proposal_url(proposal),
+        "",
+        *_studio_address_text(),
+        "https://studio7.miami",
+    ]))
+    return subject, body, text
 
 
-async def _mock_process_email(proposal: dict, headline: str, detail: str) -> None:
-    inbox = PROPOSAL_MOCK_INBOX
+async def _deliver_staff_paid_email(proposal: dict, payment_type: str, amount_cents: int) -> None:
+    inbox = (PROPOSAL_MOCK_INBOX or "").strip()
     client_email = str(proposal.get("client_email") or "").strip().lower()
     if not inbox:
         return
     if client_email and inbox.lower() == client_email:
         return
-    client = str(proposal.get("client_name") or "Client").strip() or "Client"
-    intended = str(proposal.get("client_email") or "").strip()
-    subject = f"[Proposal] {headline} — {client}"
-    text = "\n".join([
-        headline,
-        "",
-        detail,
-        "",
-        f"Client: {client}",
-        f"Intended for: {intended or '—'}",
-        f"Status: {proposal.get('status') or '—'}",
-    ])
-    html_body = (
-        "<!doctype html><html><body style='font-family:Manrope,Helvetica,Arial,sans-serif;"
-        "color:#111;line-height:1.55'>"
-        f"<p>{html.escape(headline)}</p>"
-        f"<p>{html.escape(detail)}</p>"
-        f"<p>Client: {html.escape(client)}<br>Intended for: {html.escape(intended or '—')}<br>"
-        f"Status: {html.escape(str(proposal.get('status') or '—'))}</p>"
-        "</body></html>"
-    )
+    subject, html_body, text_body = _staff_paid_email(proposal, payment_type, amount_cents)
     try:
-        await invite_email.deliver_html_email(
+        delivered, error, _provider = await invite_email.deliver_html_email(
             to_email=inbox,
-            subject=subject[:200],
+            subject=subject,
             html_body=html_body,
-            text_body=text,
+            text_body=text_body,
         )
+        if not delivered:
+            logger.warning("Staff paid email to %s failed: %s", inbox, error)
     except Exception:
-        logger.exception("Could not send proposal mock email to %s", inbox)
+        logger.exception("Could not send staff paid email to %s", inbox)
 
 
 def _booked_email(proposal: dict, payment_type: str = "deposit") -> tuple[str, str, str]:
@@ -1072,7 +1161,7 @@ def _booked_email(proposal: dict, payment_type: str = "deposit") -> tuple[str, s
 </table>
 </td></tr>
 <tr><td style="padding:28px 28px 40px;text-align:center;">
-<p style="margin:0;font-size:12px;line-height:1.6;color:#6F6F6B;">Studio 7 Miami<br>638 NW 62nd St, Miami, FL 33150</p>
+{_studio_footer_html(tight=True)}
 </td></tr></table></td></tr></table></body></html>"""
     text = "\n".join(filter(None, [
         "You're booked.",
@@ -1082,8 +1171,7 @@ def _booked_email(proposal: dict, payment_type: str = "deposit") -> tuple[str, s
         f"Date: {date_pretty or 'To be confirmed'}",
         f"{payment_label}: {agreement_pdf._money(amount, currency)}",
         "",
-        "Studio 7 Miami",
-        "638 NW 62nd St, Miami, FL 33150",
+        *_studio_address_text(),
     ]))
     return subject, body, text
 
@@ -1116,18 +1204,6 @@ async def _send_agreement_pdf_email(
                 logger.warning("Booked email to %s failed: %s", to_email, error)
         except Exception:
             logger.exception("Could not send booked email to %s", to_email)
-    copy_inbox = (PROPOSAL_MOCK_INBOX or "").strip()
-    if copy_inbox and copy_inbox.lower() != to_email.lower():
-        try:
-            await invite_email.deliver_html_email(
-                to_email=copy_inbox,
-                subject=f"[Copy] {subject}"[:200],
-                html_body=html_body,
-                text_body=text_body,
-                attachments=files,
-            )
-        except Exception:
-            logger.exception("Could not send agreement PDF copy to %s", copy_inbox)
 
 
 def _notify_approvers(proposal: dict) -> None:
@@ -1531,7 +1607,20 @@ def _proposal_email(proposal: dict, link: str) -> tuple[str, str, str]:
     if not isinstance(settings, dict):
         settings = {}
     first = _client_first_name(proposal)
-    subject = str(settings.get("subject") or "Your Studio 7 proposal").strip()[:200]
+    sign_pay = _is_sign_pay_status(proposal.get("status"))
+    session_title = str(proposal.get("title") or "Studio 7").strip() or "Studio 7"
+    if sign_pay:
+        subject = str(settings.get("sign_pay_subject") or f"Finish your booking — {session_title}").strip()[:200]
+        kicker = "Your booking"
+        headline = f"You’re in, {first}." if first.lower() != "there" else "You’re in."
+        intro_text = "Sign and pay and we'll lock it in."
+        cta = "Finish your booking"
+    else:
+        subject = str(settings.get("subject") or "Your Studio 7 proposal").strip()[:200]
+        kicker = "Content proposal"
+        headline = "Your session is ready to review"
+        intro_text = f"{first} — here’s what we put together for you."
+        cta = "View your proposal"
     title = html.escape(str(proposal.get("title") or "Content proposal"))
     date_text = str(proposal.get("session_date") or "")
     deliverables_text = str(proposal.get("deliverables") or "")
@@ -1539,8 +1628,7 @@ def _proposal_email(proposal: dict, link: str) -> tuple[str, str, str]:
     symbol = "$" if currency == "USD" else f"{currency} "
     rate = f"{symbol}{_effective_rate_cents(proposal) / 100:,.2f}"
     href = html.escape(link, quote=True)
-    location = "Studio 7 Miami — 638 NW 62nd St, Miami, FL 33150"
-    intro = html.escape(f"{first} — here’s what we put together for you.")
+    intro = html.escape(intro_text)
 
     def spec_row(label: str, value: str, last: bool = False) -> str:
         border = "none" if last else "1px solid rgba(17,17,17,0.08)"
@@ -1558,8 +1646,7 @@ def _proposal_email(proposal: dict, link: str) -> tuple[str, str, str]:
         ("Deliverables", html.escape(deliverables_text)),
         (
             "Location",
-            '<span style="display:block">Studio 7 Miami</span>'
-            '<span style="display:block">638 NW 62nd St, Miami, FL 33150</span>',
+            _studio_address_spans(),
         ),
         ("Total", html.escape(rate)),
     ]
@@ -1597,30 +1684,36 @@ def _proposal_email(proposal: dict, link: str) -> tuple[str, str, str]:
 </style>
 </head>
 <body style="margin:0;padding:0;background:#F7F7F5;font-family:{font};color:#111;-webkit-text-size-adjust:100%;">
-<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">{html.escape(f"{first} — here’s what we put together for you.")}</div>
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">{html.escape(headline) if sign_pay else intro}</div>
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#F7F7F5;"><tr><td align="center">
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:100%;max-width:600px;background:#F7F7F5;">
 <tr><td bgcolor="#000000" style="background:#000;padding:0;text-align:center;line-height:0;"><img src="{logo}" width="600" alt="Studio 7 Miami" style="display:block;width:100%;max-width:600px;height:auto;border:0;background:#000;"></td></tr>
-<tr><td class="s7-email-pad" style="padding:36px 28px 12px;"><p style="margin:0 0 8px;font-size:10px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#6F6F6B;">Content proposal</p>
-<h1 class="s7-email-title" style="margin:0 0 10px;font-size:28px;font-weight:600;letter-spacing:-.02em;line-height:1.15;color:#111;white-space:nowrap;">Your session is ready to review</h1>
+<tr><td class="s7-email-pad" style="padding:36px 28px 12px;"><p style="margin:0 0 8px;font-size:10px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#6F6F6B;">{html.escape(kicker)}</p>
+<h1 class="s7-email-title" style="margin:0 0 10px;font-size:28px;font-weight:600;letter-spacing:-.02em;line-height:1.15;color:#111;white-space:nowrap;">{html.escape(headline)}</h1>
 <p style="margin:0;font-size:15px;line-height:1.6;color:#6F6F6B;">{intro}</p></td></tr>
 <tr><td style="padding:20px 28px 8px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#FCFCFA;border:1px solid rgba(17,17,17,.08);border-radius:24px;">
 <tr><td style="padding:22px 24px 8px;"><p style="margin:0;font-size:10px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#6F6F6B;">Your session at a glance</p></td></tr>
 <tr><td style="padding:0 24px 8px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">{spec_html}</table></td></tr></table></td></tr>
 <tr><td style="padding:20px 28px 8px;" align="center"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#111111" style="background:#111;border-radius:999px;">
-<a href="{href}" style="display:inline-block;padding:14px 28px;font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;text-decoration:none;color:#F7F7F5;">View your proposal</a>
+<a href="{href}" style="display:inline-block;padding:14px 28px;font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;text-decoration:none;color:#F7F7F5;">{html.escape(cta)}</a>
 </td></tr></table></td></tr>
-<tr><td style="padding:28px 28px 40px;text-align:center;"><p style="margin:0 0 6px;font-size:12px;line-height:1.6;color:#6F6F6B;">Studio 7 Miami<br>638 NW 62nd St, Miami, FL 33150</p>
+<tr><td style="padding:28px 28px 40px;text-align:center;">{_studio_footer_html()}
 <p style="margin:0;font-size:12px;line-height:1.6;"><a href="https://studio7.miami" style="color:#111;text-decoration:none;">studio7.miami</a><span style="color:#C8C8C4;"> · </span><a href="https://book.studio7.miami" style="color:#111;text-decoration:none;">book.studio7.miami</a></p>
 </td></tr></table></td></tr></table></body></html>"""
     text = "\n".join(filter(None, [
-        f"{first} — here’s what we put together for you.",
+        f"{headline}\n\n{intro_text}" if sign_pay else intro_text,
         "",
         f"Session: {proposal.get('title') or 'Content proposal'}",
         f"Date: {date_text}" if date_text else None,
         f"Deliverables: {deliverables_text}" if deliverables_text else None,
-        f"Location: {location.replace(' — ', ', ')}", f"Total: {rate}", "",
-        link, "", "Studio 7 Miami", "638 NW 62nd St, Miami, FL 33150",
+        f"Location: {STUDIO_STREET}",
+        STUDIO_CITY_STATE,
+        STUDIO_ZIP,
+        f"Total: {rate}",
+        "",
+        link,
+        "",
+        *_studio_address_text(),
         "https://studio7.miami",
     ]))
     return subject, body, text
@@ -1699,7 +1792,7 @@ def _changes_requested_email(proposal: dict, message: str, client_name: str) -> 
 <tr><td style="padding:20px 28px 8px;" align="center"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#111111" style="background:#111;border-radius:999px;">
 <a href="{href}" style="display:inline-block;padding:14px 28px;font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;text-decoration:none;color:#F7F7F5;">Open proposal</a>
 </td></tr></table></td></tr>
-<tr><td style="padding:28px 28px 40px;text-align:center;"><p style="margin:0 0 6px;font-size:12px;line-height:1.6;color:#6F6F6B;">Studio 7 Miami<br>638 NW 62nd St, Miami, FL 33150</p>
+<tr><td style="padding:28px 28px 40px;text-align:center;">{_studio_footer_html()}
 <p style="margin:0;font-size:12px;line-height:1.6;"><a href="https://studio7.miami" style="color:#111;text-decoration:none;">studio7.miami</a><span style="color:#C8C8C4;"> · </span><a href="https://book.studio7.miami" style="color:#111;text-decoration:none;">book.studio7.miami</a></p>
 </td></tr></table></td></tr></table></body></html>"""
     text = "\n".join(filter(None, [
@@ -1713,8 +1806,7 @@ def _changes_requested_email(proposal: dict, message: str, client_name: str) -> 
         "",
         _staff_proposal_url(proposal),
         "",
-        "Studio 7 Miami",
-        "638 NW 62nd St, Miami, FL 33150",
+        *_studio_address_text(),
         "https://studio7.miami",
     ]))
     return subject, body, text
@@ -1736,8 +1828,6 @@ async def _notify_changes_requested(proposal: dict, message: str, client_name: s
             logger.warning("Changes-requested email to %s failed: %s", to_email, error)
     except Exception:
         logger.exception("Could not send changes-requested email to %s", to_email)
-    if PROPOSAL_MOCK_INBOX and PROPOSAL_MOCK_INBOX.lower() != to_email.lower():
-        await _copy_to_mock_inbox(proposal, subject, html_body, text_body)
 
 
 async def _send(proposal: dict, version: int, expires_days: int, user: dict, *, channel: str = "email") -> dict:
@@ -1764,14 +1854,9 @@ async def _send(proposal: dict, version: int, expires_days: int, user: dict, *, 
     link = _share_url(token, step=_client_share_step(proposal.get("status")))
     delivered = False
     error = None
-    copy_sent = False
-    copy_error = None
     subject, html_body, text_body = _proposal_email(proposal, link)
-    copy_sent, copy_error = await _copy_to_mock_inbox(proposal, subject, html_body, text_body)
     if channel != "text":
         delivered, error = await _deliver_proposal_mail(proposal, subject, html_body, text_body)
-    elif not copy_sent:
-        error = copy_error
     updated = _optimistic_update(
         proposal["id"], version,
         {
@@ -1791,8 +1876,6 @@ async def _send(proposal: dict, version: int, expires_days: int, user: dict, *, 
         metadata={
             "email_delivered": delivered,
             "email_error": error,
-            "copy_email_delivered": copy_sent,
-            "copy_email_error": copy_error,
             "channel": channel,
         },
     )
@@ -1805,8 +1888,6 @@ async def _send(proposal: dict, version: int, expires_days: int, user: dict, *, 
         **_serialize(updated, token),
         "email_sent": delivered,
         "email_error": error,
-        "copy_email_sent": copy_sent,
-        "copy_email_error": copy_error,
     }
 
 
@@ -1937,6 +2018,12 @@ async def mark_accepted(
         metadata={"reason": "mark_accepted"},
     )
     payload = _serialize(updated, token)
+    _notify_proposal_viewers(
+        proposal_id,
+        "proposal_client_approved",
+        "Proposal accepted",
+        f"{proposal['client_name']} accepted. Waiting on sign + pay.",
+    )
     return payload
 
 
@@ -2100,7 +2187,7 @@ async def public_change_request(token: str, data: ChangeRequestIn, request: Requ
         "updated_at": _now(),
     }).eq("id", proposal["id"]).eq("version", proposal["version"]).execute()
     _event(proposal["id"], "changes_requested", share_id=share["id"], metadata={"change_request_id": row["id"]})
-    _notify(proposal.get("created_by"), proposal["id"], "proposal_changes_requested", "Client requested changes", data.message[:300])
+    _notify_proposal_viewers(proposal["id"], "proposal_changes_requested", "Client requested changes", data.message[:300])
     background_tasks.add_task(
         _notify_changes_requested,
         {**proposal, "status": "changes_requested"},
@@ -2133,7 +2220,7 @@ async def public_approve(token: str, data: PublicApproveIn, request: Request):
     }).eq("id", proposal["id"]).eq("version", proposal["version"]).execute()
     client_name = data.client_name or proposal["client_name"]
     _event(proposal["id"], "client_approved", share_id=share["id"], metadata={"client_name": client_name})
-    _notify(proposal.get("created_by"), proposal["id"], "proposal_client_approved", "Client approved proposal", f"{client_name} approved the proposal.")
+    _notify_proposal_viewers(proposal["id"], "proposal_client_approved", "Proposal accepted", f"{client_name} accepted. Waiting on sign + pay.")
     return {"ok": True, "status": "client_approved", "approved_at": timestamp, "version": next_version}
 
 
@@ -2175,7 +2262,7 @@ async def public_sign(token: str, data: SignatureIn, request: Request):
         "updated_at": timestamp,
     }).eq("id", proposal["id"]).eq("version", proposal["version"]).execute()
     _event(proposal["id"], "signed", share_id=share["id"], metadata={"signature_id": row["id"]})
-    _notify(proposal.get("created_by"), proposal["id"], "proposal_signed", "Proposal signed", f"{data.signer_name} signed the proposal.")
+    _notify_proposal_viewers(proposal["id"], "proposal_signed", "Agreement signed", f"{data.signer_name} signed. Waiting on payment.")
     return {"id": row["id"], "status": "signed", "signed_at": timestamp, "version": next_version}
 
 
@@ -2368,16 +2455,20 @@ async def _process_stripe_event(event: dict) -> None:
         proposal_id, "payment_received",
         metadata={"payment_id": payment_id, "payment_type": payment_type, "stripe_event_id": event.get("id")},
     )
-    label = "deposit" if payment_type == "deposit" else "full balance"
-    _notify(
-        proposal.get("created_by"), proposal_id, "proposal_paid",
-        f"Proposal {label} paid", f"{proposal['client_name']} paid the proposal {label}.",
+    label = _payment_kind_label(payment_type)
+    amount_cents = int(current_payment.data[0].get("amount_cents") or 0)
+    paid_title = (
+        "Deposit paid" if payment_type == "deposit"
+        else "Balance paid" if payment_type == "remaining"
+        else "Proposal paid"
     )
-    await _mock_process_email(
-        {**proposal, "status": target_status},
-        f"Proposal {label} paid",
-        f"{proposal.get('client_name') or 'Client'} paid the {label}.",
+    _notify_proposal_viewers(
+        proposal_id,
+        "proposal_paid",
+        paid_title,
+        f"{proposal['client_name']} paid the {label}.",
     )
+    await _deliver_staff_paid_email({**proposal, "status": target_status}, payment_type, amount_cents)
     if payment_type != "remaining":
         revision = {}
         if proposal.get("current_revision_id"):

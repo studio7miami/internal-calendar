@@ -70,6 +70,12 @@ function NotificationBell() {
     } catch {}
     refresh();
 
+    if (n?.proposal_id) {
+      setOpen(false);
+      navigate(`/proposals/${encodeURIComponent(String(n.proposal_id))}/edit`);
+      return;
+    }
+
     if (canOpenRequests && n?.type === "request_submitted" && n?.booking_id) {
       setOpen(false);
       navigate(`/requests?open=${encodeURIComponent(String(n.booking_id))}`);

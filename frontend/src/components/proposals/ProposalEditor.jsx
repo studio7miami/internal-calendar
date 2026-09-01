@@ -452,7 +452,7 @@ function SendDialog({ client, canSend, actionState, onClose, onSelect, postAccep
         <header className="pb-send-dialog__head">
           <div>
             <p className="pb-send-dialog__kicker">{postAccept ? "Lock the date" : "Share proposal"}</p>
-            <h2 id="pb-send-dialog-title">{postAccept ? "Send sign + deposit link" : "Send to client"}</h2>
+            <h2 id="pb-send-dialog-title">{postAccept ? "Send sign + pay link" : "Send to client"}</h2>
           </div>
           <button type="button" className="pb-send-dialog__close" onClick={onClose} aria-label="Close">
             <X aria-hidden="true" />

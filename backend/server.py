@@ -1035,16 +1035,17 @@ async def preview_proposal_email(
         "html",
         description='Return shape: "json" or "html"',
     ),
-    send: bool = Query(False, description="If true, also send this preview to tai@taistu.com"),
+    send: bool = Query(False, description="If true, also send this preview to the studio copy inbox"),
     _: dict = Depends(require_admin),
 ):
-    """Preview the client proposal email (Luis sample). Optional send to the mock inbox."""
+    """Preview the client proposal email (Luis sample). Optional send to the studio copy inbox."""
     f = (fmt or "html").strip().lower()
     if f not in ("json", "html"):
         raise HTTPException(status_code=400, detail='fmt must be "json" or "html"')
+    copy_inbox = proposals.PROPOSAL_MOCK_INBOX
     sample = {
         "client_name": "Luis Corrales",
-        "client_email": "tai@taistu.com",
+        "client_email": "luis@corrales.co",
         "title": "Corrales & Co.",
         "session_date": "2026-08-24",
         "deliverables": "15",
@@ -1058,12 +1059,12 @@ async def preview_proposal_email(
     sent = None
     if send:
         delivered, error, _provider = await invite_email.deliver_html_email(
-            to_email="tai@taistu.com",
+            to_email=copy_inbox,
             subject=subject,
             html_body=html_body,
             text_body=text_body,
         )
-        sent = {"delivered": delivered, "error": error, "to": "tai@taistu.com"}
+        sent = {"delivered": delivered, "error": error, "to": copy_inbox}
     if f == "html":
         return HTMLResponse(content=html_body)
     return {"subject": subject, "html": html_body, "text": text_body, "send": sent}

@@ -442,3 +442,76 @@ def test_agreement_pdf_is_a_letter_document():
     assert agreement_pdf.agreement_filename({"client_name": "Luis Corrales"}) == "Luis Corrales – Studio 7 Miami Proposal.pdf"
     assert agreement_pdf._client_party({}, {}) == ("The Client", "the Client")
     assert agreement_pdf._client_party({"client_name": "Tai"}, {}) == ("Tai", "Tai")
+
+
+def test_proposal_copy_inbox_defaults_to_studio_info():
+    assert proposals.PROPOSAL_MOCK_INBOX == "info@studio7.miami"
+
+
+def test_proposal_email_location_is_street_city_then_zip():
+    subject, html_body, text_body = proposals._proposal_email(
+        {
+            "client_name": "Luis Corrales",
+            "title": "Corrales & Co.",
+            "session_date": "2026-08-24",
+            "deliverables": "15",
+            "pricing": {"currency": "USD"},
+            "rate_cents": 385000,
+            "share_settings": {"subject": "Your Studio 7 proposal — Corrales & Co."},
+        },
+        "https://team.studio7.miami/p/luis-corrales",
+    )
+    assert subject == "Your Studio 7 proposal — Corrales & Co."
+    assert '<span style="display:block">638 NW 62nd St</span>' in html_body
+    assert '<span style="display:block">Miami, FL</span>' in html_body
+    assert '<span style="display:block">33150</span>' in html_body
+    assert "638 NW 62nd St, Miami, FL 33150" not in html_body
+    assert "Location: 638 NW 62nd St" in text_body
+    assert "Miami, FL" in text_body
+    assert "33150" in text_body
+    assert "Studio 7 Miami<br>638 NW 62nd St<br>Miami, FL<br>33150" in html_body
+    assert "Sign and pay" not in html_body
+
+
+def test_sign_pay_email_asks_the_client_to_sign_and_pay():
+    subject, html_body, text_body = proposals._proposal_email(
+        {
+            "client_name": "Luis Corrales",
+            "title": "Corrales & Co.",
+            "status": "client_approved",
+            "session_date": "2026-08-24",
+            "deliverables": "15",
+            "pricing": {"currency": "USD"},
+            "rate_cents": 385000,
+            "share_settings": {"subject": "Your Studio 7 proposal — Corrales & Co."},
+        },
+        "https://team.studio7.miami/p/luis-corrales?step=agreement",
+    )
+    assert subject == "Finish your booking — Corrales & Co."
+    assert "You’re in, Luis." in html_body
+    assert "Sign and pay and we'll lock it in." in text_body
+    assert "You’re in, Luis. Sign and pay" not in html_body
+    assert "One more step" not in html_body
+    assert ">Your booking<" in html_body
+    assert ">Finish your booking<" in html_body
+    assert "View your proposal" not in html_body
+    assert "here’s what we put together" not in html_body
+
+
+def test_staff_paid_email_is_branded_for_the_studio():
+    subject, html_body, text_body = proposals._staff_paid_email(
+        {
+            "client_name": "Luis Corrales",
+            "client_email": "luis@corrales.co",
+            "title": "Corrales & Co.",
+            "session_date": "2026-08-24",
+            "pricing": {"currency": "USD"},
+        },
+        "deposit",
+        192500,
+    )
+    assert subject == "Luis Corrales paid — Corrales & Co."
+    assert "Luis Corrales paid the deposit." in text_body
+    assert "The date is locked in" in html_body
+    assert "Open proposal" in html_body
+    assert "638 NW 62nd St" in html_body

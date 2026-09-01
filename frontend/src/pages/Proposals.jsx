@@ -15,6 +15,7 @@ import {
   isBlankProposal,
 } from "../lib/proposals";
 import { luisLiveDraft, isLuisProposal } from "../lib/liveLuisProposal";
+import { isLocalMockHost } from "../lib/mockData";
 import { getProposalStage } from "../lib/proposalStatusTheme";
 import { proposalGlance } from "../lib/proposalGlance";
 import SignPayLinkModal from "../components/proposals/SignPayLinkModal";
@@ -93,7 +94,8 @@ export default function Proposals() {
       const { data } = await api.get("/proposals");
       let list = normalizeProposalList(data).filter((proposal) => !isBlankProposal(proposal));
       const canEdit = user?.role === "admin" || !!user?.permissions?.edit_proposals;
-      if (canEdit && !list.some(isLuisProposal) && !seededLuis.current) {
+      const skipLiveLuisSeed = process.env.REACT_APP_USE_MOCK_DATA === "true" && isLocalMockHost();
+      if (!skipLiveLuisSeed && canEdit && !list.some(isLuisProposal) && !seededLuis.current) {
         seededLuis.current = true;
         try {
           const { data: created } = await api.post(

@@ -1,9 +1,9 @@
 import { clientResumeStep, clientShareSlug, withResumeStep } from "./proposals";
 
-const STORAGE_KEY = "s7_local_mock_proposals_v10";
+const STORAGE_KEY = "s7_local_mock_proposals_v11";
 const MOCK_PREFIX = "mock-proposal-";
 
-function isLocalMockHost() {
+export function isLocalMockHost() {
   if (typeof window === "undefined") return true;
   const host = window.location.hostname;
   return host === "localhost" || host === "127.0.0.1";
@@ -103,90 +103,89 @@ const baseProposal = ({
   updated_at: nowIso(),
 });
 
-const luisCorralesProposal = () => {
-  const id = `${MOCK_PREFIX}luis-corrales`;
+const casaOrtizProposal = () => {
+  const id = `${MOCK_PREFIX}casa-ortiz`;
   const base = baseProposal({
     id,
-    title: "Corrales & Co.",
+    title: "Casa Ortiz",
     status: "sent",
-    client: "Luis Corrales",
-    day: 0,
-    rate: 3850,
+    client: "Camila Ortiz",
+    day: 16,
+    rate: 4200,
   });
   return {
     ...base,
-    client_email: "luis@corrales.co",
-    client_phone: "+1 305 555 2424",
-    session_date: "2026-08-24",
+    client_email: "camila@casaortiz.co",
+    client_phone: "+1 305 555 0188",
     arrival_time: "10:00",
     setup_time: "10:30",
     shoot_time: "11:00",
-    wrap_time: "14:00",
+    wrap_time: "15:00",
     creative_brief: {
       brand_description:
-        "Corrales & Co. is a wealth management and tax advisory firm providing strategic financial guidance to founders, entrepreneurs, business owners, and individuals focused on building, protecting, and growing long-term wealth.\n\nThe content strategy will position Luis Corrales as the trusted face behind the company — combining financial expertise, entrepreneurship, leadership, lifestyle, and real-world business insight.",
+        "Casa Ortiz is a boutique hospitality group in Miami — a small hotel, a courtyard restaurant, and a design studio under one name.\n\nThe content should feel warm, architectural, and lived-in: Camila as host, the spaces as the product.",
       content_goals:
-        "Build a recognizable and trusted personal brand around Luis Corrales that consistently generates attention for Corrales & Co. Establish Luis as an authority in wealth management, tax strategy, entrepreneurship, and financial decision-making, and humanize the founder behind the company.\n\nEducate business owners through simple, valuable financial content, increase brand awareness and credibility, and create consistent content for Instagram, LinkedIn, TikTok, and other short-form platforms.\n\nTurn social attention into consultation and client opportunities. Maintain a minimum of 4 strong posts per week. Include 1 monthly strategy + performance call.",
+        "Build a recognizable visual identity for Casa Ortiz across Instagram, the website, and booking partners. Show the rooms, the table, and the founder without looking like a catalog.\n\nKeep a steady rhythm of stills and short films so the brand always has something ready to post.",
       target_audience:
-        "Entrepreneurs, founders, executives, professionals, real estate investors, high-income earners, and growing business owners.\n\nThey want smarter strategies for managing taxes, building wealth, protecting assets, and making long-term financial decisions.",
+        "Travelers, locals, and designers looking for a considered Miami stay — people who book for the rooms and the feeling, not the amenities list.",
       desired_energy:
-        "Confident, intelligent, aspirational, and trustworthy — modern financial authority without feeling overly corporate.\n\nPolished enough for wealth management.\nPersonal enough for social media.",
+        "Sunlit, generous, and quietly confident. Premium without stiffness.",
     },
     content_items: [
       {
         id: `${id}-content-1`,
-        type: "Authority Reels",
-        quantity: "10 videos",
-        energy: "Confident, insightful and direct — Luis speaking as the expert in the room.",
+        type: "Hospitality Reels",
+        quantity: "8 videos",
+        energy: "Warm, unhurried, and specific — Camila moving through the property as host.",
         visual_style:
-          "Clean cinematic lighting, professional environments, multiple compositions, subtitles, branded graphics and strategic B-roll. Topics include wealth-building strategies, tax mistakes entrepreneurs make, business-owner financial planning, investing principles, cash-flow management, founder finances, asset protection, financial myths, common client questions, and high-income financial decisions.",
-        description: "Expert-facing reels that establish Luis as the authority in the room.",
-        deliverables: "10 edited vertical reels with subtitles and branded graphics",
+          "Natural window light, slow interiors, courtyard motion, food and table details, guest arrivals.",
+        description: "Short films that sell the stay without a hard pitch.",
+        deliverables: "8 edited vertical reels with captions",
         image_url: "",
       },
       {
         id: `${id}-content-2`,
-        type: "Founder / Lifestyle Reels",
-        quantity: "5 videos",
-        energy: "Aspirational, authentic and personal — showing the person behind the expertise.",
+        type: "Founder Portraits",
+        quantity: "20+ edited photos",
+        energy: "Approachable and precise",
         visual_style:
-          "Cinematic handheld and stabilized footage in motion: office, meetings, properties, walking shots, phone calls, business interactions and lifestyle environments.",
-        description: "Personal founder footage that humanizes Luis behind Corrales & Co.",
-        deliverables: "5 edited founder and lifestyle reels",
+          "Portraits in the lobby, courtyard, and kitchen — Camila as the face of the house.",
+        description: "A stills library for the site, press, and social.",
+        deliverables: "20+ edited photos",
         image_url: "",
       },
       {
         id: `${id}-content-3`,
-        type: "Brand Photography",
-        quantity: "40+ edited photos",
-        energy: "Premium, credible and timeless",
+        type: "Space Photography",
+        quantity: "30+ edited photos",
+        energy: "Architectural and inviting",
         visual_style:
-          "Executive portraits, environmental portraits, office lifestyle, meetings, candid business moments, detail shots and social-media ready imagery for social, website, LinkedIn, press, marketing, and company materials.",
-        description: "An ongoing visual library for social, web, and company materials.",
-        deliverables: "40+ edited photos per month",
+          "Rooms, restaurant, details, dusk exteriors. Clean lines, warm materials.",
+        description: "Property imagery for booking, web, and partners.",
+        deliverables: "30+ edited photos",
         image_url: "",
       },
     ],
     pricing: {
       ...base.pricing,
-      session_rate: 3850,
-      deliverables: "15",
-      turnaround: "10–15 business days",
+      session_rate: 4200,
+      deliverables: "8",
+      turnaround: "10–12 business days",
       line_items: [
         {
           id: `${id}-line-1`,
           description: "Creative direction and studio production",
           quantity: 1,
-          unit_price: 3850,
+          unit_price: 4200,
         },
       ],
     },
-    rate_cents: 385000,
-    deliverables: "15 high quality edited videos, 40+ edited photos",
-    turnaround: "10–15 business days",
+    rate_cents: 420000,
+    deliverables: "8 edited reels, 50+ stills",
+    turnaround: "10–12 business days",
     share_settings: {
-      subject: "Your Studio 7 proposal — Corrales & Co.",
-      message: "Hi Luis — here is the creative plan we prepared for you.",
+      subject: "Your Studio 7 proposal — Casa Ortiz",
+      message: "Camila — here’s what we put together for you.",
       expires_days: 30,
     },
     current_revision_id: `${id}-revision-1`,
@@ -196,8 +195,7 @@ const luisCorralesProposal = () => {
 };
 
 const initialProposals = () => {
-  // Luis is the live client record. The rest of this catalog stays local-only.
-  const luis = luisCorralesProposal();
+  const casa = casaOrtizProposal();
   const portrait = baseProposal({
     id: `${MOCK_PREFIX}portrait-session`,
     title: "Founder Portrait Session",
@@ -224,7 +222,7 @@ const initialProposals = () => {
   });
 
   return [
-    luis,
+    casa,
     baseProposal({
       id: `${MOCK_PREFIX}summer-campaign`,
       title: "Summer Campaign Content",
