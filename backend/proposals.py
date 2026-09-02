@@ -1066,13 +1066,15 @@ def _staff_paid_email(proposal: dict, payment_type: str, amount_cents: int) -> t
     body = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light">
-<title>{html.escape(subject)}</title></head>
+<title>{html.escape(subject)}</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
 <body style="margin:0;padding:0;background:#F7F7F5;font-family:{font};color:#111;-webkit-text-size-adjust:100%;">
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#F7F7F5;"><tr><td align="center">
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:100%;max-width:600px;background:#F7F7F5;">
 <tr><td bgcolor="#000000" style="background:#000;padding:0;text-align:center;line-height:0;"><img src="{logo}" width="600" alt="Studio 7 Miami" style="display:block;width:100%;max-width:600px;height:auto;border:0;background:#000;"></td></tr>
 <tr><td style="padding:36px 28px 12px;"><p style="margin:0 0 8px;font-size:10px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#6F6F6B;">Paid</p>
-<h1 style="margin:0 0 10px;font-size:28px;font-weight:600;letter-spacing:-.02em;line-height:1.15;color:#111;">The date is locked in</h1>
+<h1 style="margin:0 0 10px;font-family:{font};font-size:28px;font-weight:600;letter-spacing:-.02em;line-height:1.15;color:#111;">The date is locked in</h1>
 <p style="margin:0;font-size:15px;line-height:1.6;color:#6F6F6B;">{html.escape(intro_text)}</p></td></tr>
 <tr><td style="padding:20px 28px 8px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#FCFCFA;border:1px solid rgba(17,17,17,.08);border-radius:24px;">
 <tr><td style="padding:22px 24px 8px;"><p style="margin:0;font-size:10px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#6F6F6B;">Booking</p></td></tr>
@@ -1143,14 +1145,16 @@ def _booked_email(proposal: dict, payment_type: str = "deposit") -> tuple[str, s
     subject = "You're booked — your agreement is attached"
     body = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{html.escape(subject)}</title></head>
+<title>{html.escape(subject)}</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
 <body style="margin:0;padding:0;background:#F7F7F5;font-family:{font};color:#111;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F7F7F5;"><tr><td align="center">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;">
 <tr><td bgcolor="#000000" style="background:#000;padding:0;text-align:center;"><img src="{logo}" width="600" alt="Studio 7 Miami" style="display:block;width:100%;max-width:600px;height:auto;border:0;"></td></tr>
 <tr><td style="padding:36px 28px 12px;">
 <p style="margin:0 0 8px;font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#C9A227;">Confirmed</p>
-<h1 style="margin:0 0 12px;font-size:28px;font-weight:600;letter-spacing:-.02em;">You're booked.</h1>
+<h1 style="margin:0 0 12px;font-family:{font};font-size:28px;font-weight:600;letter-spacing:-.02em;">You're booked.</h1>
 <p style="margin:0 0 22px;font-size:15px;line-height:1.6;color:#6F6F6B;">{calendar_line}</p>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
 <tr>
@@ -1600,6 +1604,43 @@ def _client_first_name(proposal: dict) -> str:
     return (str(proposal.get("client_name") or "there").strip().split() or ["there"])[0]
 
 
+_PROPOSAL_EMAIL_CSS = """
+  img { max-width: 100% !important; height: auto !important; }
+  .s7-email-title {
+    margin: 0 0 10px;
+    font-family: Manrope, Helvetica, Arial, sans-serif;
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    color: #111;
+  }
+  .s7-email-pad { padding: 36px 28px 12px; }
+  .s7-email-block { padding: 20px 28px 8px; }
+  .s7-email-foot { padding: 28px 28px 40px; }
+  @media only screen and (max-width: 600px) {
+    .s7-email-title {
+      font-size: 22px !important;
+      letter-spacing: -0.03em !important;
+      line-height: 1.25 !important;
+      white-space: normal !important;
+    }
+    .s7-email-pad { padding: 24px 18px 10px !important; }
+    .s7-email-block { padding-left: 18px !important; padding-right: 18px !important; }
+    .s7-email-foot { padding-left: 18px !important; padding-right: 18px !important; }
+    .s7-email-card-pad { padding-left: 16px !important; padding-right: 16px !important; }
+    .s7-email-spec-label {
+      font-size: 9px !important;
+      letter-spacing: 0.08em !important;
+    }
+    .s7-email-spec-value {
+      font-size: 13px !important;
+      padding-left: 10px !important;
+    }
+  }
+"""
+
+
 def _proposal_email(proposal: dict, link: str) -> tuple[str, str, str]:
     font = "Manrope, Helvetica, Arial, sans-serif"
     logo = "https://framerusercontent.com/assets/3HwVggLmyKfOrpHHCI76j8tFoTY.png"
@@ -1633,10 +1674,10 @@ def _proposal_email(proposal: dict, link: str) -> tuple[str, str, str]:
     def spec_row(label: str, value: str, last: bool = False) -> str:
         border = "none" if last else "1px solid rgba(17,17,17,0.08)"
         return (
-            f'<tr><td style="padding:13px 0;border-bottom:{border};font-family:{font};'
+            f'<tr><td class="s7-email-spec-label" style="padding:13px 0;border-bottom:{border};font-family:{font};'
             'font-size:10px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;'
             f'color:#6F6F6B;vertical-align:top;">{html.escape(label)}</td>'
-            f'<td style="padding:13px 0 13px 16px;border-bottom:{border};font-family:{font};'
+            f'<td class="s7-email-spec-value" style="padding:13px 0 13px 16px;border-bottom:{border};font-family:{font};'
             f'font-size:14px;color:#111;text-align:right;line-height:1.45;">{value}</td></tr>'
         )
 
@@ -1659,45 +1700,24 @@ def _proposal_email(proposal: dict, link: str) -> tuple[str, str, str]:
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&display=swap" rel="stylesheet">
 <title>{html.escape(subject)}</title>
 <style>
-  .s7-email-title {{
-    margin: 0 0 10px;
-    font-size: 28px;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-    line-height: 1.15;
-    color: #111;
-    white-space: nowrap;
-  }}
-  .s7-email-pad {{
-    padding: 36px 28px 12px;
-  }}
-  @media only screen and (max-width: 600px) {{
-    .s7-email-title {{
-      font-size: 18px !important;
-      letter-spacing: -0.03em !important;
-      white-space: nowrap !important;
-    }}
-    .s7-email-pad {{
-      padding: 28px 16px 12px !important;
-    }}
-  }}
+{_PROPOSAL_EMAIL_CSS}
 </style>
 </head>
 <body style="margin:0;padding:0;background:#F7F7F5;font-family:{font};color:#111;-webkit-text-size-adjust:100%;">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">{html.escape(headline) if sign_pay else intro}</div>
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#F7F7F5;"><tr><td align="center">
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:100%;max-width:600px;background:#F7F7F5;">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;max-width:600px;background:#F7F7F5;">
 <tr><td bgcolor="#000000" style="background:#000;padding:0;text-align:center;line-height:0;"><img src="{logo}" width="600" alt="Studio 7 Miami" style="display:block;width:100%;max-width:600px;height:auto;border:0;background:#000;"></td></tr>
 <tr><td class="s7-email-pad" style="padding:36px 28px 12px;"><p style="margin:0 0 8px;font-size:10px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#6F6F6B;">{html.escape(kicker)}</p>
-<h1 class="s7-email-title" style="margin:0 0 10px;font-size:28px;font-weight:600;letter-spacing:-.02em;line-height:1.15;color:#111;white-space:nowrap;">{html.escape(headline)}</h1>
+<h1 class="s7-email-title" style="margin:0 0 10px;font-family:{font};font-size:28px;font-weight:600;letter-spacing:-.02em;line-height:1.2;color:#111;">{html.escape(headline)}</h1>
 <p style="margin:0;font-size:15px;line-height:1.6;color:#6F6F6B;">{intro}</p></td></tr>
-<tr><td style="padding:20px 28px 8px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#FCFCFA;border:1px solid rgba(17,17,17,.08);border-radius:24px;">
-<tr><td style="padding:22px 24px 8px;"><p style="margin:0;font-size:10px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#6F6F6B;">Your session at a glance</p></td></tr>
-<tr><td style="padding:0 24px 8px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">{spec_html}</table></td></tr></table></td></tr>
-<tr><td style="padding:20px 28px 8px;" align="center"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#111111" style="background:#111;border-radius:999px;">
+<tr><td class="s7-email-block" style="padding:20px 28px 8px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#FCFCFA;border:1px solid rgba(17,17,17,.08);border-radius:24px;">
+<tr><td class="s7-email-card-pad" style="padding:22px 24px 8px;"><p style="margin:0;font-size:10px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#6F6F6B;">Your session at a glance</p></td></tr>
+<tr><td class="s7-email-card-pad" style="padding:0 24px 8px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">{spec_html}</table></td></tr></table></td></tr>
+<tr><td class="s7-email-block" style="padding:20px 28px 8px;" align="center"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#111111" style="background:#111;border-radius:999px;">
 <a href="{href}" style="display:inline-block;padding:14px 28px;font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;text-decoration:none;color:#F7F7F5;">{html.escape(cta)}</a>
 </td></tr></table></td></tr>
-<tr><td style="padding:28px 28px 40px;text-align:center;">{_studio_footer_html()}
+<tr><td class="s7-email-foot" style="padding:28px 28px 40px;text-align:center;">{_studio_footer_html()}
 <p style="margin:0;font-size:12px;line-height:1.6;"><a href="https://studio7.miami" style="color:#111;text-decoration:none;">studio7.miami</a><span style="color:#C8C8C4;"> · </span><a href="https://book.studio7.miami" style="color:#111;text-decoration:none;">book.studio7.miami</a></p>
 </td></tr></table></td></tr></table></body></html>"""
     text = "\n".join(filter(None, [
@@ -1758,6 +1778,7 @@ def _changes_requested_email(proposal: dict, message: str, client_name: str) -> 
 <style>
   .s7-email-title {{
     margin: 0 0 10px;
+    font-family: Manrope, Helvetica, Arial, sans-serif;
     font-size: 28px;
     font-weight: 600;
     letter-spacing: -0.02em;
@@ -1784,7 +1805,7 @@ def _changes_requested_email(proposal: dict, message: str, client_name: str) -> 
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:100%;max-width:600px;background:#F7F7F5;">
 <tr><td bgcolor="#000000" style="background:#000;padding:0;text-align:center;line-height:0;"><img src="{logo}" width="600" alt="Studio 7 Miami" style="display:block;width:100%;max-width:600px;height:auto;border:0;background:#000;"></td></tr>
 <tr><td class="s7-email-pad" style="padding:36px 28px 12px;"><p style="margin:0 0 8px;font-size:10px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#6F6F6B;">Content proposal</p>
-<h1 class="s7-email-title" style="margin:0 0 10px;font-size:28px;font-weight:600;letter-spacing:-.02em;line-height:1.15;color:#111;">A client requested changes</h1>
+<h1 class="s7-email-title" style="margin:0 0 10px;font-family:{font};font-size:28px;font-weight:600;letter-spacing:-.02em;line-height:1.15;color:#111;">A client requested changes</h1>
 <p style="margin:0;font-size:15px;line-height:1.6;color:#6F6F6B;">{intro}</p></td></tr>
 <tr><td style="padding:20px 28px 8px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#FCFCFA;border:1px solid rgba(17,17,17,.08);border-radius:24px;">
 <tr><td style="padding:22px 24px 8px;"><p style="margin:0;font-size:10px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#6F6F6B;">What they asked for</p></td></tr>
